@@ -1,10 +1,10 @@
 use nom::{
     branch::alt,
-    bytes::complete::{tag},
-    character::complete::{digit0, one_of, satisfy, multispace0},
-    combinator::{recognize},
-    multi::many1,
-    sequence::{pair},
+    bytes::complete::{tag, is_not, take_until},
+    character::complete::{digit0, one_of, satisfy, multispace1, alpha1, alphanumeric1},
+    combinator::{recognize, value, opt},
+    multi::{many1, many0_count},
+    sequence::{pair, tuple},
     IResult,
 };
 
@@ -24,11 +24,15 @@ fn main() {
     let mut tokens = Vec::new();
     let mut input = input.as_str();
     while !input.is_empty() {
-        let (i, _) = ltrim(input).unwrap();
-        if i.is_empty() {
+        if let Ok((i, _)) = junk(input) {
+            input = i;
+            continue;
+        }
+        if input.is_empty() {
             break;
         }
-        let (i, o) = alt((integer_const, word))(i).unwrap();
+
+        let (i, o) = alt((integer_const, word))(input).unwrap();
         input = i;
         tokens.push(o);
     }
@@ -39,7 +43,39 @@ fn main() {
 }
 
 fn ltrim(input: &str) -> IResult<&str, ()> {
-    multispace0(input).map(|(i, _)| (i, ()))
+    value(
+        (),
+        multispace1
+    )(input)
+}
+
+fn peol_comment(input: &str) -> IResult<&str, ()> {
+    value(
+        (),
+        pair(
+            tag("//"),
+            opt(is_not("\r\n"))
+        )
+    )(input)
+}
+
+fn pinline_comment(input: &str) -> IResult<&str, ()> {
+    value(
+        (),
+        tuple((
+            tag("/*"),
+            take_until("*/"),
+            tag("*/")
+        ))
+    )(input)
+}
+
+fn junk(input: &str) -> IResult<&str, ()> {
+    alt((
+        ltrim,
+        peol_comment,
+        pinline_comment
+    ))(input)
 }
 
 fn decimal_const(input: &str) -> IResult<&str, &str> {
@@ -77,8 +113,8 @@ fn keyword(input: &str) -> IResult<&str, Token> {
 
 fn identifier(input: &str) -> IResult<&str, Token> {
     recognize(pair(
-        satisfy(|c: char| c.is_alphabetic() || c == '_'),
-        many1(satisfy(|c: char| c.is_alphanumeric() || c == '_'))
+        alt((alpha1, tag("_"))),
+        many0_count(alt((alphanumeric1, tag("_"))))
     ))(input).map(|(i, o)| (i, Token::Identifier(o)))
 }
 
