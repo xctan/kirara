@@ -6,6 +6,7 @@ use crate::token::TokenSpan;
 pub enum AstNodeType<'a> {
     Number,
     Return(Rc<AstNode<'a>>),
+    Add(Rc<AstNode<'a>>, Rc<AstNode<'a>>),
 }
 
 #[derive(Debug)]

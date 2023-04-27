@@ -108,6 +108,7 @@ fn punctuation(input: &str) -> IResult<&str, Token> {
     map(
         alt((
             tag(";"),
+            tag("+"),
         )),
         |s| Token(s, TokenType::Punctuation)
     )(input)

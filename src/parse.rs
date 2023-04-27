@@ -3,6 +3,7 @@ use nom::{
     combinator::map,
     sequence::tuple,
     InputLength,
+    multi::many0,
 };
 
 use std::rc::Rc;
@@ -40,8 +41,37 @@ fn number_constant(cursor: TokenSpan) -> IResult<TokenSpan, Rc<AstNode>> {
     )(cursor)
 }
 
-fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<AstNode>> {
+fn primary(cursor: TokenSpan) -> IResult<TokenSpan, Rc<AstNode>> {
     number_constant(cursor)
+}
+
+fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<AstNode>> {
+    // primary ( '+' primary )*
+    map(
+        tuple((
+            primary,
+            many0(
+                tuple((
+                    ttag!(P("+")),
+                    primary))))),
+        |(first, others)| {
+            let mut node = first;
+            for (sign, other) in others {
+                let length =
+                    node.token.input_len() + sign.input_len() + other.token.input_len();
+                match sign.0[0].0 {
+                    "+" => {
+                        node = Rc::new(AstNode {
+                            node: AstNodeType::Add(node, other),
+                            token: TokenSpan(cursor.0.split_at(length).0),
+                        });
+                    },
+                    _ => unreachable!(),
+                }
+            }
+            node
+        }
+    )(cursor)
 }
 
 fn return_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<AstNode>> {
