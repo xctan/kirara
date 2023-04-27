@@ -4,8 +4,10 @@ mod token;
 mod lex;
 mod ast;
 mod parse;
-use crate::lex::tokenize;
-use crate::parse::parse;
+use crate::{
+    lex::tokenize,
+    parse::parse,
+};
 
 fn main() {
     let mut input = String::new();

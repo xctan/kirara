@@ -1,22 +1,38 @@
 use nom::{
-    IResult, 
-    combinator::map, 
-    sequence::tuple, 
-    bytes::complete::tag, 
-    InputLength
+    IResult,
+    combinator::map,
+    sequence::tuple,
+    InputLength,
 };
 
 use std::rc::Rc;
 
 use crate::{
-    token::{TokenSpan, TokenType, Token}, 
+    token::TokenSpan,
     ast::{AstNode, AstNodeType}
 };
 
-fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<AstNode>> {
-    // as for now, just a most simplified version: number
+macro_rules! ttag {
+    (IntCn) => {
+        nom::bytes::complete::tag(
+            $crate::token::TokenType::IntegerConst
+        )
+    };
+    (K ( $t:literal )) => {
+        nom::bytes::complete::tag(
+            $crate::token::Token($t, $crate::token::TokenType::Keyword)
+        )
+    };
+    (P ( $t:literal )) => {
+        nom::bytes::complete::tag(
+            $crate::token::Token($t, $crate::token::TokenType::Punctuation)
+        )
+    };
+}
+
+fn number_constant(cursor: TokenSpan) -> IResult<TokenSpan, Rc<AstNode>> {
     map(
-        tag(TokenType::IntegerConst),
+        ttag!(IntCn),
         |token| Rc::new(AstNode {
             node: AstNodeType::Number,
             token,
@@ -24,13 +40,16 @@ fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<AstNode>> {
     )(cursor)
 }
 
+fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<AstNode>> {
+    number_constant(cursor)
+}
+
 fn return_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<AstNode>> {
     map(
         tuple((
-            tag(Token("return", TokenType::Keyword)),
+            ttag!(K("return")),
             expression,
-            tag(Token(";", TokenType::Punctuation)),
-        )),
+            ttag!(P(";")))),
         |(_, expr, _)| Rc::new(AstNode {
             node: AstNodeType::Return(expr.clone()),
             token: TokenSpan(cursor.0.split_at(1 + expr.token.input_len() + 1).0),
