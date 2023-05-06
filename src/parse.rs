@@ -46,15 +46,49 @@ fn primary(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     number_constant(cursor)
 }
 
-fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
-    // primary ( ('+' | '-') primary )*
+fn multiplication(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // primary ( ('*' | '/' | '%') primary )*
     map(
         tuple((
             primary,
             many0(
                 tuple((
-                    alt((ttag!(P("+")), ttag!(P("-")))),
+                    alt((ttag!(P("*")), ttag!(P("/")), ttag!(P("%")))),
                     primary))))),
+        |(first, others)| {
+            let mut node = first;
+            for (sign, other) in others {
+                let length =
+                    node.borrow().token.input_len() + sign.input_len() + other.borrow().token.input_len();
+                let op = match sign.0[0].0 {
+                    "*" => BinaryOpType::Mul,
+                    "/" => BinaryOpType::Div,
+                    "%" => BinaryOpType::Mod,
+                    _ => unreachable!(),
+                };
+                node = Rc::new(RefCell::new(AstNode {
+                    node: AstNodeType::BinaryOp(BinaryOp {
+                        lhs: node,
+                        rhs: other,
+                        op,
+                    }),
+                    token: TokenSpan(cursor.0.split_at(length).0),
+                }));
+            }
+            node
+        }
+    )(cursor)
+}
+
+fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // multiplication ( ('+' | '-') multiplication )*
+    map(
+        tuple((
+            multiplication,
+            many0(
+                tuple((
+                    alt((ttag!(P("+")), ttag!(P("-")))),
+                    multiplication))))),
         |(first, others)| {
             let mut node = first;
             for (sign, other) in others {

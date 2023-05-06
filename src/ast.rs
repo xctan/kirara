@@ -8,6 +8,7 @@ pub enum BinaryOpType {
     Sub,
     Mul,
     Div,
+    Mod,
 }
 
 #[derive(Debug)]
