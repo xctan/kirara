@@ -68,9 +68,9 @@ fn hexadecimal_const(input: &str) -> IResult<&str, &str> {
 fn integer_const(input: &str) -> IResult<&str, Token> {
     map(
         alt((
+            decimal_const,
             hexadecimal_const,
-            octal_const,
-            decimal_const,)),
+            octal_const,)),
         |s| Token(s, TokenType::IntegerConst)
     )(input)
 }
@@ -109,6 +109,7 @@ fn punctuation(input: &str) -> IResult<&str, Token> {
         alt((
             tag(";"),
             tag("+"),
+            tag("-"),
         )),
         |s| Token(s, TokenType::Punctuation)
     )(input)

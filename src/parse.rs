@@ -4,6 +4,7 @@ use nom::{
     sequence::tuple,
     InputLength,
     multi::many0,
+    branch::alt,
 };
 
 use std::{rc::Rc, cell::RefCell};
@@ -46,32 +47,32 @@ fn primary(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
 }
 
 fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
-    // primary ( '+' primary )*
+    // primary ( ('+' | '-') primary )*
     map(
         tuple((
             primary,
             many0(
                 tuple((
-                    ttag!(P("+")),
+                    alt((ttag!(P("+")), ttag!(P("-")))),
                     primary))))),
         |(first, others)| {
             let mut node = first;
             for (sign, other) in others {
                 let length =
                     node.borrow().token.input_len() + sign.input_len() + other.borrow().token.input_len();
-                match sign.0[0].0 {
-                    "+" => {
-                        node = Rc::new(RefCell::new(AstNode {
-                            node: AstNodeType::BinaryOp(BinaryOp {
-                                lhs: node,
-                                rhs: other,
-                                op: BinaryOpType::Add,
-                            }),
-                            token: TokenSpan(cursor.0.split_at(length).0),
-                        }));
-                    },
+                let op = match sign.0[0].0 {
+                    "+" => BinaryOpType::Add,
+                    "-" => BinaryOpType::Sub,
                     _ => unreachable!(),
-                }
+                };
+                node = Rc::new(RefCell::new(AstNode {
+                    node: AstNodeType::BinaryOp(BinaryOp {
+                        lhs: node,
+                        rhs: other,
+                        op,
+                    }),
+                    token: TokenSpan(cursor.0.split_at(length).0),
+                }));
             }
             node
         }
