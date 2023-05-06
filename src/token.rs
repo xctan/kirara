@@ -86,3 +86,26 @@ impl<'a> From<&'a std::vec::Vec<Token<'_>>> for TokenSpan<'a> {
         TokenSpan(tokens.as_slice())
     }
 }
+
+// useful parsers for a single token
+
+impl TryInto<i64> for TokenSpan<'_> {
+    type Error = ();
+
+    fn try_into(self) -> Result<i64, Self::Error> {
+        if self.0.len() != 1 {
+            return Err(());
+        }
+        if !matches!(self.0[0].1, TokenType::IntegerConst) {
+            return Err(())
+        }
+        let s = self.0[0].0;
+        if s.starts_with("0x") || s.starts_with("0X") {
+            i64::from_str_radix(&s[2..], 16).map_err(|_| ())
+        } else if s.starts_with('0') {
+            i64::from_str_radix(s, 8).map_err(|_| ())
+        } else {
+            s.parse().map_err(|_| ())
+        }
+    }
+}

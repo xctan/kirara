@@ -4,9 +4,12 @@ mod token;
 mod lex;
 mod ast;
 mod parse;
+mod ir;
+mod ctype;
 use crate::{
     lex::tokenize,
     parse::parse,
+    ir::gen::EmitIr,
 };
 
 fn main() {
@@ -21,4 +24,8 @@ fn main() {
 
     let ast = parse(&tokens).unwrap().1;
     println!("{:#?}", ast);
+
+    let mut unit = ir::unit::TransUnit::new();
+    ast.borrow().emit_ir(&mut unit);
+    println!("{:#?}", unit);
 }

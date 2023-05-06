@@ -1,28 +1,24 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::token::TokenSpan;
+use crate::{
+    token::TokenSpan,
+    ctype::BinaryOpType,
+};
 
-#[derive(Debug)]
-pub enum BinaryOpType {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinaryOp<'a> {
     pub lhs: Rc<RefCell<AstNode<'a>>>,
     pub rhs: Rc<RefCell<AstNode<'a>>>,
     pub op: BinaryOpType,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AstNodeType<'a> {
-    Number,
-    Return(Rc<RefCell<AstNode<'a>>>),
+    Unit,
+    I64Number(i64),
     BinaryOp(BinaryOp<'a>),
+    ExprStmt(Rc<RefCell<AstNode<'a>>>),
+    Return(Rc<RefCell<AstNode<'a>>>),
 }
 
 #[derive(Debug)]
