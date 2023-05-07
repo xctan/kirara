@@ -23,9 +23,9 @@ fn main() {
     }
 
     let ast = parse(&tokens).unwrap().1;
-    println!("{:#?}", ast);
+    // println!("{:#?}", ast);
 
     let mut unit = ir::unit::TransUnit::new();
     ast.borrow().emit_ir(&mut unit);
-    println!("{:#?}", unit);
+    unit.print();
 }

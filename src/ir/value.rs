@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use id_arena::Id;
 
 use crate::ctype::{Type, BinaryOpType as BinaryOp};
@@ -76,7 +78,7 @@ pub struct GlobalValue {
 
 impl_value_trait!(GlobalValue);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ConstantValue {
     I32(i32),
 }
