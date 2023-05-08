@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use id_arena::{Arena, Id};
+use id_arena::Arena;
 
 use crate::ir::value::ValueTrait;
 

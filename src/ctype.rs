@@ -1,9 +1,10 @@
-use std::fmt::Display;
+use std::{fmt::Display, rc::Rc};
 
 #[derive(Debug, Clone)]
 pub enum Type {
     Void,
     I32,
+    Ptr(Rc<Type>),
 }
 
 impl Type {
@@ -11,6 +12,7 @@ impl Type {
         match self {
             Type::Void => 0,
             Type::I32 => 4,
+            Type::Ptr(_) => 8,
         }
     }
 
@@ -18,6 +20,7 @@ impl Type {
         match self {
             Type::Void => 0,
             Type::I32 => 4,
+            Type::Ptr(_) => 8,
         }
     }
 }
@@ -27,6 +30,7 @@ impl Display for Type {
         let s = match self {
             Type::Void => "void",
             Type::I32 => "i32",
+            Type::Ptr(_) => "i32*",
         };
         write!(f, "{}", s)
     }
@@ -39,6 +43,7 @@ pub enum BinaryOpType {
     Mul,
     Div,
     Mod,
+    Assign,
 }
 
 impl Display for BinaryOpType {
@@ -49,6 +54,7 @@ impl Display for BinaryOpType {
             BinaryOpType::Mul => "mul",
             BinaryOpType::Div => "sdiv",
             BinaryOpType::Mod => "srem",
+            BinaryOpType::Assign => unimplemented!(),
         };
         write!(f, "{}", s)
     }

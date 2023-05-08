@@ -1,18 +1,18 @@
 use nom::{
     IResult,
-    combinator::{map, opt},
+    combinator::{map, opt, success},
     sequence::tuple,
     InputLength,
-    multi::many0,
+    multi::{many0, many1, many0_count},
     branch::alt,
 };
 
 use std::{rc::Rc, cell::RefCell, convert::TryInto};
 
 use crate::{
-    token::TokenSpan,
-    ast::{AstNode, AstNodeType, BinaryOp},
-    ctype::BinaryOpType,
+    token::{TokenSpan, Token, range_between},
+    ast::{AstNode, AstNodeType, BinaryOp, AstContext, ObjectId},
+    ctype::{BinaryOpType, Type},
 };
 
 macro_rules! ttag {
@@ -21,13 +21,22 @@ macro_rules! ttag {
             $crate::token::TokenType::IntegerConst
         )
     };
+    (I) => {
+        nom::bytes::complete::tag(
+            $crate::token::TokenType::Identifier
+        )
+    };
     (K ( $t:literal )) => {
         nom::bytes::complete::tag(
             $crate::token::Token($t, $crate::token::TokenType::Keyword)
         )
     };
     (P ( $t:literal )) => {
-        nom::bytes::complete::tag(
+        nom::bytes::complete::tag::<
+            $crate::token::Token<'_>,
+            $crate::token::TokenSpan<'_>,
+            nom::error::Error<$crate::token::TokenSpan<'_>>
+        >(
             $crate::token::Token($t, $crate::token::TokenType::Punctuation)
         )
     };
@@ -36,10 +45,16 @@ macro_rules! ttag {
 fn number_constant(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     map(
         ttag!(IntCn),
-        |token| Rc::new(RefCell::new(AstNode {
-            node: AstNodeType::I64Number(0),
-            token,
-        }))
+        |token: TokenSpan<'_>| {
+            let num = match TryInto::<i64>::try_into(token) {
+                Ok(num) => num,
+                Err(_) => panic!("integer constant overflow"),
+            };
+            Rc::new(RefCell::new(AstNode {
+                node: AstNodeType::I64Number(num),
+                token: token.as_range(),
+            }))
+        }
     )(cursor)
 }
 
@@ -60,20 +75,21 @@ fn multiplication(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>>
             let mut node = first;
             for (sign, other) in others {
                 let length =
-                    node.borrow().token.input_len() + sign.input_len() + other.borrow().token.input_len();
+                    node.borrow().token.len() + sign.input_len() + other.borrow().token.len();
                 let op = match sign.0[0].0 {
                     "*" => BinaryOpType::Mul,
                     "/" => BinaryOpType::Div,
                     "%" => BinaryOpType::Mod,
                     _ => unreachable!(),
                 };
+                let token = range_between(&node.borrow().token, &other.borrow().token);
                 node = Rc::new(RefCell::new(AstNode {
+                    token,
                     node: AstNodeType::BinaryOp(BinaryOp {
                         lhs: node,
                         rhs: other,
                         op,
                     }),
-                    token: TokenSpan(cursor.0.split_at(length).0),
                 }));
             }
             node
@@ -94,19 +110,20 @@ fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
             let mut node = first;
             for (sign, other) in others {
                 let length =
-                    node.borrow().token.input_len() + sign.input_len() + other.borrow().token.input_len();
+                    node.borrow().token.len() + sign.input_len() + other.borrow().token.len();
                 let op = match sign.0[0].0 {
                     "+" => BinaryOpType::Add,
                     "-" => BinaryOpType::Sub,
                     _ => unreachable!(),
                 };
+                let token = range_between(&node.borrow().token, &other.borrow().token);
                 node = Rc::new(RefCell::new(AstNode {
                     node: AstNodeType::BinaryOp(BinaryOp {
                         lhs: node,
                         rhs: other,
                         op,
                     }),
-                    token: TokenSpan(cursor.0.split_at(length).0),
+                    token,
                 }));
             }
             node
@@ -119,16 +136,17 @@ fn expression_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstN
         tuple((
             opt(expression),
             ttag!(P(";")))),
-        |(expr, _)| {
+        |(expr, semi)| {
             if let Some(expr) = expr {
+                let token = range_between(&expr.borrow().token, &semi.as_range());
                 Rc::new(RefCell::new(AstNode {
-                    node: AstNodeType::ExprStmt(expr.clone()),
-                    token: TokenSpan(cursor.0.split_at(expr.borrow().token.input_len() + 1).0),
+                    node: AstNodeType::ExprStmt(expr),
+                    token,
                 }))
             } else {
                 Rc::new(RefCell::new(AstNode { 
                     node: AstNodeType::Unit,
-                    token: TokenSpan(cursor.0.split_at(1).0),
+                    token: semi.as_range(),
                 }))
             }
         }
@@ -140,17 +158,157 @@ fn return_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>
         tuple((
             ttag!(K("return")),
             expression_statement)),
-        |(_, expr)| Rc::new(RefCell::new(AstNode {
-            node: AstNodeType::Return(expr.clone()),
-            token: TokenSpan(cursor.0.split_at(1 + expr.borrow().token.input_len()).0),
-        }))
+        |(r, expr)| {
+            let token = range_between(&r.as_range(), &expr.borrow().token);
+            Rc::new(RefCell::new(AstNode {
+                node: AstNodeType::Return(expr.clone()),
+                token,
+            }))
+        }
     )(cursor)
 }
 
-pub fn parse<'a, T>(curosr: T) -> IResult<TokenSpan<'a>, Rc<RefCell<AstNode<'a>>>>
-where T: Into<TokenSpan<'a>>
+// declspec contains base type and variable attributes; todo: var_attr
+fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Type> {
+    map(
+        many1(alt((
+            ttag!(K("int")),
+        ))),
+        |decl: Vec<TokenSpan>| {
+            const VOID: i32 = 1 << 0;
+            const INT: i32 = 1 << 8;
+            let mut ty = Type::I32;
+            let mut counter = 0;
+
+            for d in decl {
+                match d.0[0].0 {
+                    "void" => counter += VOID,
+                    "int" => counter += INT,
+                    _ => unreachable!(),
+                }
+
+                match counter {
+                    VOID => ty = Type::Void,
+                    INT => ty = Type::I32,
+                    _ => unreachable!(),
+                }
+            }
+            
+            ty
+        }
+    )(cursor)
+}
+
+fn declarator((cursor, ty): (TokenSpan, Type)) -> IResult<TokenSpan, (Type, TokenSpan)> {
+    // "*"* ("(" declarator ")" | identifier) type_suffix
+    let mut ty = ty.clone();
+
+    let (left, _consumed) = many0_count(ttag!(P("*")))(cursor)?;
+    // todo: parse pointer
+
+    if let Ok((_cursor, _)) = ttag!(P("("))(left) {
+        todo!()
+    } else {
+        let (cursor, id) = ttag!(I)(left)?;
+        // let (cursor, _) = type_suffix(cursor)?;
+        Ok((cursor, (ty, id)))
+    }
+}
+
+fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // declspec declarator ("=" expression)? ("," declarator ("=" expression)?)* ";"
+    let (mut cursor0, ty) = declspec(cursor)?;
+    let init = vec![];
+
+    while let Ok((cursor1, (ty, id))) = declarator((cursor0, ty.clone())) {
+        cursor0 = cursor1;
+        let object_id = new_local_var(id, ty);
+        
+        if let Ok((cursor2, _)) = ttag!(P("="))(cursor0) {
+            todo!();
+            cursor0 = cursor2;
+        }
+
+        if let Ok((cursor2, _)) = ttag!(P(","))(cursor0) {
+            cursor0 = cursor2;
+        } else {
+            break;
+        }
+    }
+
+    let (cursor0, _) = ttag!(P(";"))(cursor0)?;
+    
+    Ok((
+        cursor0,
+        Rc::new(RefCell::new(AstNode{
+            node: AstNodeType::Block(init),
+            token: range_between(&cursor.as_range(), &cursor0.as_range()),
+        }))
+    ))
+}
+
+static mut CTX: Option<AstContext> = None;
+
+fn enter_scope() {
+    unsafe {
+        CTX.as_mut().unwrap().enter_scope();
+    }
+}
+
+fn leave_scope() {
+    unsafe {
+        CTX.as_mut().unwrap().leave_scope();
+    }
+}
+
+fn new_local_var(id: TokenSpan, ty: Type) -> ObjectId {
+    unsafe {
+        CTX.as_mut().unwrap().new_local_var(id, ty)
+    }
+}
+
+fn find_var(id: &str) -> Option<ObjectId> {
+    unsafe {
+        CTX.as_mut().unwrap().find_var(id)
+    }
+}
+
+pub fn statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // return_statement | expression_statement | ... // todo
+    // declaration is not a statement!
+    alt((
+        return_statement,
+        compound_statement,
+        expression_statement,
+    ))(cursor)
+}
+
+pub fn compound_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // "{" (declaration | statement)* "}"
+    map(
+        tuple((
+            map(success(()), |_| enter_scope()),
+            ttag!(P("{")),
+            many0(alt((
+                declaration,
+                statement))),
+            ttag!(P("}")),
+            map(success(()), |_| leave_scope()))),
+        |(_, l, v, r, _)| {
+            let token = range_between(&l.as_range(), &r.as_range());
+            Rc::new(RefCell::new(AstNode {
+                node: AstNodeType::Block(v),
+                token,
+            }))
+        }
+    )(cursor)
+}
+
+pub fn parse<'a>(curosr: &'a Vec<Token>) -> IResult<TokenSpan<'a>, Rc<RefCell<AstNode>>>
 {
-    return_statement(curosr.into())
+    unsafe { CTX = Some(AstContext::new()); }
+    enter_scope();
+    compound_statement(curosr.into())
         .map(|(rest, node)| {
             ast_const_fold(node.clone());
             (rest, node)
@@ -158,14 +316,10 @@ where T: Into<TokenSpan<'a>>
 }
 
 /// do constant folding on AST
-fn ast_const_fold(tree: Rc<RefCell<AstNode<'_>>>) {
+fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
     let tree0 = tree.borrow();
     let new_node: Option<AstNodeType> = match tree0.node.clone() {
-        AstNodeType::I64Number(_) => {
-            // fixme: handle overflow
-            let num = TryInto::<i64>::try_into(tree0.token).unwrap();
-            Some(AstNodeType::I64Number(num))
-        },
+        AstNodeType::I64Number(_) => None,
         AstNodeType::BinaryOp(BinaryOp{lhs, rhs, op}) => {
             ast_const_fold(lhs.clone());
             ast_const_fold(rhs.clone());
@@ -177,6 +331,7 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode<'_>>>) {
                         BinaryOpType::Mul => lhs * rhs,
                         BinaryOpType::Div => lhs / rhs,
                         BinaryOpType::Mod => lhs % rhs,
+                        BinaryOpType::Assign => return,
                     };
                     Some(AstNodeType::I64Number(num))
                 },
@@ -184,14 +339,20 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode<'_>>>) {
             }
         },
         AstNodeType::Return(expr) => {
-            ast_const_fold(expr.clone());
+            ast_const_fold(expr);
             None
         },
         AstNodeType::ExprStmt(expr) => {
-            ast_const_fold(expr.clone());
+            ast_const_fold(expr);
             None
         },
         AstNodeType::Unit => None,
+        AstNodeType::Block(v) => {
+            for expr in v {
+                ast_const_fold(expr.clone());
+            }
+            None
+        },
     };
     drop(tree0);
 

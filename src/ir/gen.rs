@@ -8,7 +8,7 @@ pub trait EmitIr {
     fn emit_ir(&self, unit: &mut TransUnit);
 }
 
-impl EmitIr for AstNode<'_> {
+impl EmitIr for AstNode {
     fn emit_ir(&self, unit: &mut TransUnit) {
         match &self.node {
             AstNodeType::ExprStmt(expr) => {
@@ -22,6 +22,11 @@ impl EmitIr for AstNode<'_> {
                 let id = unit.values.borrow_mut().alloc(val);
                 unit.push_inst(id);
             },
+            AstNodeType::Block(stmts) => {
+                for stmt in stmts {
+                    stmt.borrow().emit_ir(unit);
+                }
+            },
             _ => unimplemented!(),
         }
     }
@@ -31,7 +36,7 @@ trait EmitIrExpr {
     fn emit_ir_expr(&self, unit: &mut TransUnit) -> Option<ValueId>;
 }
 
-impl EmitIrExpr for AstNodeType<'_> {
+impl EmitIrExpr for AstNodeType {
     fn emit_ir_expr(&self, unit: &mut TransUnit) -> Option<ValueId> {
         match self {
             AstNodeType::ExprStmt(expr) => expr.borrow().node.emit_ir_expr(unit),

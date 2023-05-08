@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use nom::{Compare, InputTake, InputLength};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -108,4 +110,23 @@ impl TryInto<i64> for TokenSpan<'_> {
             s.parse().map_err(|_| ())
         }
     }
+}
+
+pub type TokenRange = Range<usize>;
+
+impl TokenSpan<'_> {
+    pub fn as_str(&self) -> &str {
+        self.0[0].0
+    }
+
+    // return the *wild* ptr range on the source string
+    pub fn as_range(&self) -> TokenRange {
+        let start = self.0[0].0.as_ptr() as usize;
+        let end = start + self.0[0].0.len();
+        start..end
+    }
+}
+
+pub fn range_between(a: &TokenRange, b: &TokenRange) -> TokenRange {
+    a.start..b.end
 }

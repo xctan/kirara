@@ -79,7 +79,8 @@ fn keyword(input: &str) -> IResult<&str, Token> {
     map(
         pair(
             alt((
-                tag("return"),)),
+                tag("return"),
+                tag("int"))),
             not(
                 alt((
                     alphanumeric1,
@@ -108,11 +109,15 @@ fn punctuation(input: &str) -> IResult<&str, Token> {
     map(
         alt((
             tag(";"),
+            tag(","),
             tag("+"),
             tag("-"),
             tag("*"),
             tag("/"),
             tag("%"),
+            tag("="),
+            tag("{"),
+            tag("}"),
         )),
         |s| Token(s, TokenType::Punctuation)
     )(input)
