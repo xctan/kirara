@@ -1,6 +1,9 @@
 use super::{
     unit::TransUnit,
-    value::{BinaryOperator, ConstantValue, InstructionValue, Value, ValueId, ReturnInst, GlobalValue, AllocaInst, LoadInst, StoreInst},
+    value::{
+        BinaryOperator, ConstantValue, InstructionValue, Value, ValueId, 
+        ReturnInst, GlobalValue, AllocaInst, LoadInst, StoreInst
+    },
 };
 use crate::{ast::*, ctype::{Type, BinaryOpType}};
 
