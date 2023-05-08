@@ -5,8 +5,8 @@ use id_arena::{Arena, Id};
 pub type ObjectId = Id<AstObject>;
 
 use crate::{
-    token::{TokenRange, TokenSpan, Token},
-    ctype::{BinaryOpType, Type},
+    token::TokenRange,
+    ctype::{BinaryOpType, Type}, ir::value::ValueId,
 };
 
 #[derive(Debug, Clone)]
@@ -20,6 +20,7 @@ pub struct BinaryOp {
 pub enum AstNodeType {
     Unit,
     I64Number(i64),
+    Variable(ObjectId),
     BinaryOp(BinaryOp),
     Block(Vec<Rc<RefCell<AstNode>>>),
     ExprStmt(Rc<RefCell<AstNode>>),
@@ -41,16 +42,31 @@ pub struct AstObject {
     pub is_local: bool,
 
     pub data: AstObjectType,
+
+    pub ir_value: Option<ValueId>,
 }
 
-#[derive(Debug)]
+impl AstObject {
+    fn new(name: String, ty: Type, is_local: bool, data: AstObjectType) -> Self {
+        Self {
+            name,
+            ty,
+            token: 0..0,
+            is_local,
+            data,
+            ir_value: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct AstFuncData {
     pub params: Vec<ObjectId>,
     pub locals: Vec<ObjectId>,
     pub body: Rc<RefCell<AstNode>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AstObjectType {
     Func(AstFuncData),
     Var,
@@ -71,7 +87,7 @@ pub struct Scope {
 
 #[derive(Debug)]
 pub struct AstContext {
-    pub objects: RefCell<Arena<AstObject>>,
+    pub objects: Arena<AstObject>,
     pub globals: Vec<ObjectId>,
     pub locals: Vec<ObjectId>,
     pub scopes: Vec<Scope>,
@@ -80,7 +96,7 @@ pub struct AstContext {
 impl AstContext {
     pub fn new() -> Self {
         Self {
-            objects: RefCell::new(Arena::new()),
+            objects: Arena::new(),
             globals: Vec::new(),
             locals: Vec::new(),
             scopes: vec![Scope {
@@ -99,31 +115,48 @@ impl AstContext {
         self.scopes.pop();
     }
 
-    pub fn find_var(&self, name: &str) -> Option<ObjectId> {
+    pub fn find_var(&self, name: &str) -> Option<ScopeVar> {
         for scope in self.scopes.iter().rev() {
             if let Some(ScopeVar::Var(id)) = scope.vars.get(name) {
-                return Some(*id);
+                return Some(ScopeVar::Var(*id));
             }
         }
         None
     }
 
-    pub fn new_local_var(&mut self, token: TokenSpan<'_>, ty: Type) -> ObjectId {
-        let name = token.as_str().to_string();
-        if self.find_var(name.as_str()).is_some() {
-            panic!("redefinition of variable: {}", name);
-        }
-
-        let obj = AstObject {
-            name: name.clone(),
+    pub fn new_local_var(&mut self, name: &str, ty: Type) -> ObjectId {
+        let name = name.to_string();
+        let obj = AstObject::new(
+            name.clone(),
             ty,
-            token: token.as_range(),
-            is_local: true,
-            data: AstObjectType::Var,
-        };
-        let id = self.objects.borrow_mut().alloc(obj);
+            true,
+            AstObjectType::Var,
+        );
+        let id = self.objects.alloc(obj);
         self.locals.push(id);
         self.scopes.last_mut().unwrap().vars.insert(name, ScopeVar::Var(id));
         id
+    }
+
+    pub fn new_global_var(&mut self, name: &str, ty: Type) -> ObjectId {
+        let name = name.to_string();
+        let obj = AstObject::new(
+            name.clone(),
+            ty,
+            false,
+            AstObjectType::Var,
+        );
+        let id = self.objects.alloc(obj);
+        self.globals.push(id);
+        self.scopes.first_mut().unwrap().vars.insert(name, ScopeVar::Var(id));
+        id
+    }
+
+    pub fn get_object_mut(&mut self, id: ObjectId) -> Option<&mut AstObject> {
+        self.objects.get_mut(id)
+    }
+
+    pub fn get_object(&self, id: ObjectId) -> Option<&AstObject> {
+        self.objects.get(id)
     }
 }

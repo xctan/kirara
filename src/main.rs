@@ -9,7 +9,6 @@ mod ctype;
 use crate::{
     lex::tokenize,
     parse::parse,
-    ir::gen::EmitIr,
 };
 
 fn main() {
@@ -18,14 +17,14 @@ fn main() {
 
     let tokens = tokenize(input.as_str()).unwrap().1;
 
-    for token in &tokens {
-        println!("{:?}", token);
-    }
+    // for token in &tokens {
+    //     println!("{:?}", token);
+    // }
 
-    let ast = parse(&tokens).unwrap().1;
+    let mut ast = parse(&tokens).unwrap();
     // println!("{:#?}", ast);
 
     let mut unit = ir::unit::TransUnit::new();
-    ast.borrow().emit_ir(&mut unit);
+    ast.emit_ir(&mut unit);
     unit.print();
 }

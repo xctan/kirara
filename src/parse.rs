@@ -7,11 +7,11 @@ use nom::{
     branch::alt,
 };
 
-use std::{rc::Rc, cell::RefCell, convert::TryInto};
+use std::{rc::Rc, cell::RefCell, convert::TryInto, mem::{ManuallyDrop, swap}, borrow::BorrowMut};
 
 use crate::{
     token::{TokenSpan, Token, range_between},
-    ast::{AstNode, AstNodeType, BinaryOp, AstContext, ObjectId},
+    ast::{AstNode, AstNodeType, BinaryOp, AstContext, ObjectId, ScopeVar, AstFuncData, AstObject, AstObjectType},
     ctype::{BinaryOpType, Type},
 };
 
@@ -58,8 +58,28 @@ fn number_constant(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>
     )(cursor)
 }
 
+fn identifier(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    map(
+        ttag!(I),
+        |token: TokenSpan<'_>| {
+            let var = find_var(token.as_str());
+            match var {
+                Some(ScopeVar::Var(var)) => Rc::new(RefCell::new(AstNode {
+                    node: AstNodeType::Variable(var),
+                    token: token.as_range(),
+                })),
+                None => panic!("undefined variable: {}", token.as_str()),
+            }
+        }
+    )(cursor)
+}
+
 fn primary(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
-    number_constant(cursor)
+    // identifier | number_constant
+    alt((
+        identifier,
+        number_constant,
+    ))(cursor)
 }
 
 fn multiplication(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
@@ -97,7 +117,7 @@ fn multiplication(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>>
     )(cursor)
 }
 
-fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+fn addition(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     // multiplication ( ('+' | '-') multiplication )*
     map(
         tuple((
@@ -131,6 +151,38 @@ fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     )(cursor)
 }
 
+fn assignment(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // conditional ( '=' assignment )?
+    // use addition temporarily
+    map(
+        tuple((
+            addition,
+            opt(tuple((
+                ttag!(P("=")),
+                assignment))))),
+        |(first, others)| {
+            if let Some((_, other)) = others {
+                let token = range_between(&first.borrow().token, &other.borrow().token);
+                Rc::new(RefCell::new(AstNode {
+                    node: AstNodeType::BinaryOp(BinaryOp {
+                        lhs: first,
+                        rhs: other,
+                        op: BinaryOpType::Assign,
+                    }),
+                    token,
+                }))
+            } else {
+                first
+            }
+        }
+    )(cursor)
+}
+
+fn expression(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // assignment, as for now
+    assignment(cursor)
+}
+
 fn expression_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     map(
         tuple((
@@ -161,7 +213,7 @@ fn return_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>
         |(r, expr)| {
             let token = range_between(&r.as_range(), &expr.borrow().token);
             Rc::new(RefCell::new(AstNode {
-                node: AstNodeType::Return(expr.clone()),
+                node: AstNodeType::Return(expr),
                 token,
             }))
         }
@@ -219,24 +271,29 @@ fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     // declspec declarator ("=" expression)? ("," declarator ("=" expression)?)* ";"
     let (mut cursor0, ty) = declspec(cursor)?;
     let init = vec![];
+    let mut count = 0;
 
-    while let Ok((cursor1, (ty, id))) = declarator((cursor0, ty.clone())) {
-        cursor0 = cursor1;
-        let object_id = new_local_var(id, ty);
-        
-        if let Ok((cursor2, _)) = ttag!(P("="))(cursor0) {
-            todo!();
-            cursor0 = cursor2;
-        }
-
-        if let Ok((cursor2, _)) = ttag!(P(","))(cursor0) {
-            cursor0 = cursor2;
-        } else {
+    loop {
+        if let Ok((cursor1, _)) = ttag!(P(";"))(cursor0) {
+            cursor0 = cursor1;
             break;
         }
-    }
 
-    let (cursor0, _) = ttag!(P(";"))(cursor0)?;
+        if count > 0 {
+            let (cursor1, _) = ttag!(P(","))(cursor0)?;
+            cursor0 = cursor1;
+        }
+        count += 1;
+
+        let (cursor1, (ty, id)) = declarator((cursor0, ty.clone()))?;
+        cursor0 = cursor1;
+        let object_id = new_local_var_with_token(id, ty);
+
+        if let Ok((cursor2, _)) = ttag!(P("="))(cursor0) {
+            cursor0 = cursor2;
+            todo!();
+        }
+    }
     
     Ok((
         cursor0,
@@ -261,13 +318,30 @@ fn leave_scope() {
     }
 }
 
-fn new_local_var(id: TokenSpan, ty: Type) -> ObjectId {
+fn new_local_var_with_token(id: TokenSpan, ty: Type) -> ObjectId {
+    let instance = unsafe {
+        CTX.as_mut().unwrap()
+    };
+    let obj_id = instance.new_local_var(id.as_str(), ty);
+    let obj = instance.get_object_mut(obj_id).unwrap();
+    obj.token = id.as_range();
+    obj_id
+}
+
+fn new_global_var(id: &str, ty: Type) -> ObjectId {
+    let instance = unsafe {
+        CTX.as_mut().unwrap()
+    };
+    instance.new_global_var(id, ty)
+}
+
+fn get_object_mut(id: ObjectId) -> Option<&'static mut AstObject> {
     unsafe {
-        CTX.as_mut().unwrap().new_local_var(id, ty)
+        CTX.as_mut().unwrap().get_object_mut(id)
     }
 }
 
-fn find_var(id: &str) -> Option<ObjectId> {
+fn find_var(id: &str) -> Option<ScopeVar> {
     unsafe {
         CTX.as_mut().unwrap().find_var(id)
     }
@@ -287,14 +361,14 @@ pub fn compound_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<As
     // "{" (declaration | statement)* "}"
     map(
         tuple((
-            map(success(()), |_| enter_scope()),
             ttag!(P("{")),
+            map(success(()), |_| enter_scope()),
             many0(alt((
                 declaration,
                 statement))),
-            ttag!(P("}")),
-            map(success(()), |_| leave_scope()))),
-        |(_, l, v, r, _)| {
+            map(success(()), |_| leave_scope()),
+            ttag!(P("}")))),
+        |(l, _, v, _, r)| {
             let token = range_between(&l.as_range(), &r.as_range());
             Rc::new(RefCell::new(AstNode {
                 node: AstNodeType::Block(v),
@@ -304,15 +378,27 @@ pub fn compound_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<As
     )(cursor)
 }
 
-pub fn parse<'a>(curosr: &'a Vec<Token>) -> IResult<TokenSpan<'a>, Rc<RefCell<AstNode>>>
+pub fn parse<'a>(curosr: &'a Vec<Token>) -> Result<AstContext, nom::Err<nom::error::Error<TokenSpan<'a>>>>
 {
-    unsafe { CTX = Some(AstContext::new()); }
-    enter_scope();
-    compound_statement(curosr.into())
+    unsafe { CTX.replace(AstContext::new()); }
+
+    let (_, body) = compound_statement(curosr.into())
         .map(|(rest, node)| {
             ast_const_fold(node.clone());
             (rest, node)
-        })
+        })?;
+    let mut l = vec![];
+    unsafe { swap(&mut l, &mut CTX.as_mut().unwrap().locals); }
+    let function = AstFuncData {
+        params: vec![],
+        locals: l,
+        body,
+    };
+    let id = new_global_var("main", Type::Void);
+    let obj = get_object_mut(id).unwrap();
+    obj.data = AstObjectType::Func(function);
+    
+    unsafe { Ok(CTX.take().unwrap()) }
 }
 
 /// do constant folding on AST
@@ -320,6 +406,7 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
     let tree0 = tree.borrow();
     let new_node: Option<AstNodeType> = match tree0.node.clone() {
         AstNodeType::I64Number(_) => None,
+        AstNodeType::Variable(_) => None,
         AstNodeType::BinaryOp(BinaryOp{lhs, rhs, op}) => {
             ast_const_fold(lhs.clone());
             ast_const_fold(rhs.clone());
@@ -357,6 +444,6 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
     drop(tree0);
 
     if let Some(new_node) = new_node {
-        tree.borrow_mut().node = new_node;
+        (*tree).borrow_mut().node = new_node;
     }
 }
