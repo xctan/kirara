@@ -7,7 +7,7 @@ use nom::{
     branch::alt,
 };
 
-use std::{rc::{Rc, Weak}, cell::RefCell, convert::TryInto, mem::{ManuallyDrop, swap}, borrow::BorrowMut};
+use std::{rc::{Rc, Weak}, cell::RefCell, convert::TryInto, mem::{ManuallyDrop, swap}, borrow::BorrowMut, os::unix::thread};
 
 use crate::{
     token::{TokenSpan, Token, range_between},
@@ -347,6 +347,24 @@ fn find_var(id: &str) -> Option<ScopeVar> {
     }
 }
 
+fn init_context() {
+    unsafe {
+        CTX.replace(AstContext::new());
+    }
+}
+
+fn take_context() -> AstContext {
+    unsafe {
+        CTX.take().unwrap()
+    }
+}
+
+fn get_context_locals_mut() -> &'static mut Vec<ObjectId> {
+    unsafe {
+        &mut CTX.as_mut().unwrap().locals
+    }
+}
+
 pub fn statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     // return_statement | expression_statement | ... // todo
     // declaration is not a statement!
@@ -380,7 +398,7 @@ pub fn compound_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<As
 
 pub fn parse<'a>(curosr: &'a Vec<Token>) -> Result<AstContext, nom::Err<nom::error::Error<TokenSpan<'a>>>>
 {
-    unsafe { CTX.replace(AstContext::new()); }
+    init_context();
 
     let (_, body) = compound_statement(curosr.into())
         .map(|(rest, node)| {
@@ -388,7 +406,7 @@ pub fn parse<'a>(curosr: &'a Vec<Token>) -> Result<AstContext, nom::Err<nom::err
             (rest, node)
         })?;
     let mut l = vec![];
-    unsafe { swap(&mut l, &mut CTX.as_mut().unwrap().locals); }
+    swap(&mut l, get_context_locals_mut());
     let function = AstFuncData {
         params: vec![],
         locals: l,
@@ -398,7 +416,7 @@ pub fn parse<'a>(curosr: &'a Vec<Token>) -> Result<AstContext, nom::Err<nom::err
     let obj = get_object_mut(id).unwrap();
     obj.data = AstObjectType::Func(function);
     
-    unsafe { Ok(CTX.take().unwrap()) }
+    Ok(take_context())
 }
 
 /// do constant folding on AST
