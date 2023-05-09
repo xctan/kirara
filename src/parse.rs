@@ -77,6 +77,13 @@ fn identifier(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
 fn primary(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     // identifier | number_constant
     alt((
+        map(
+            tuple((ttag!(P("(")), expression, ttag!(P(")")))),
+            |(l, expr, r)| {
+                let token = range_between(&l.as_range(), &r.as_range());
+                (*expr).borrow_mut().token = token;
+                expr
+            }),
         identifier,
         number_constant,
     ))(cursor)
@@ -268,9 +275,9 @@ fn declarator((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, (Weak
 }
 
 fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
-    // declspec declarator ("=" expression)? ("," declarator ("=" expression)?)* ";"
+    // declspec declarator ("=" initializer)? ("," declarator ("=" initializer)?)* ";"
     let (mut cursor0, ty) = declspec(cursor)?;
-    let init = vec![];
+    let mut init = vec![];
     let mut count = 0;
 
     loop {
@@ -291,7 +298,28 @@ fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
 
         if let Ok((cursor2, _)) = ttag!(P("="))(cursor0) {
             cursor0 = cursor2;
-            todo!();
+            
+            let (cursor2, expr) = assignment(cursor0)?;
+            cursor0 = cursor2;
+            let obj = get_object_mut(object_id).unwrap();
+            let token = range_between(&obj.token, &expr.borrow().token);
+            let node = BinaryOp{
+                lhs: Rc::new(RefCell::new(AstNode{
+                    node: AstNodeType::Variable(object_id),
+                    token: obj.token.clone(),
+                })),
+                rhs: expr,
+                op: BinaryOpType::Assign,
+            };
+            let node = Rc::new(RefCell::new(AstNode{
+                node: AstNodeType::BinaryOp(node),
+                token: token.clone(),
+            }));
+            let node = Rc::new(RefCell::new(AstNode{
+                node: AstNodeType::ExprStmt(node),
+                token,
+            }));
+            init.push(node);
         }
     }
     
