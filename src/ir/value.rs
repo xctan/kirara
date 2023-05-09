@@ -1,5 +1,7 @@
 
 
+use std::rc::Weak;
+
 use id_arena::Id;
 
 use crate::ctype::{Type, BinaryOpType as BinaryOp};
@@ -9,8 +11,8 @@ pub type ValueId = Id<Value>;
 pub trait ValueTrait {
     fn name(&self) -> String { String::new() }
     fn set_name(&mut self, _name: String) {}
-    fn ty(&self) -> Type { Type::Void }
-    fn set_ty(&mut self, _ty: Type) {}
+    fn ty(&self) -> Weak<Type> { Type::void_type() }
+    fn set_ty(&mut self, _ty: Weak<Type>) {}
 }
 
 // todo: use derive macro
@@ -23,10 +25,10 @@ macro_rules! impl_value_trait {
             fn set_name(&mut self, name: String) {
                 self.name = name;
             }
-            fn ty(&self) -> Type {
+            fn ty(&self) -> Weak<Type> {
                 self.ty.clone()
             }
-            fn set_ty(&mut self, ty: Type) {
+            fn set_ty(&mut self, ty: Weak<Type>) {
                 self.ty = ty;
             }
         }
@@ -43,12 +45,12 @@ macro_rules! impl_value_trait {
                     $( $en::$var(v) => v.set_name(name), )+
                 }
             }
-            fn ty(&self) -> Type {
+            fn ty(&self) -> Weak<Type> {
                 match self {
                     $( $en::$var(v) => v.ty(), )+
                 }
             }
-            fn set_ty(&mut self, ty: Type) {
+            fn set_ty(&mut self, ty: Weak<Type>) {
                 match self {
                     $( $en::$var(v) => v.set_ty(ty), )+
                 }
@@ -73,7 +75,7 @@ impl_value_trait!{Value{
 #[derive(Debug, Clone)]
 pub struct GlobalValue {
     pub name: String,
-    pub ty: Type,
+    pub ty: Weak<Type>,
 }
 
 impl_value_trait!(GlobalValue);
@@ -84,9 +86,9 @@ pub enum ConstantValue {
 }
 
 impl ValueTrait for ConstantValue {
-    fn ty(&self) -> Type {
+    fn ty(&self) -> Weak<Type> {
         match self {
-            ConstantValue::I32(_) => Type::I32,
+            ConstantValue::I32(_) => Type::i32_type(),
         }
     }
 }
@@ -114,7 +116,7 @@ pub struct BinaryOperator {
     pub rhs: ValueId,
     pub op: BinaryOp,
     pub name: String,
-    pub ty: Type,
+    pub ty: Weak<Type>,
 }
 
 impl_value_trait!(BinaryOperator);
@@ -123,7 +125,7 @@ impl_value_trait!(BinaryOperator);
 pub struct LoadInst {
     pub ptr: ValueId,
     pub name: String,
-    pub ty: Type,
+    pub ty: Weak<Type>,
 }
 
 impl_value_trait!(LoadInst);
@@ -138,7 +140,7 @@ impl ValueTrait for StoreInst {}
 
 #[derive(Debug, Clone)]
 pub struct AllocaInst {
-    pub ty: Type,
+    pub ty: Weak<Type>,
     pub name: String,
 }
 

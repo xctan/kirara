@@ -107,7 +107,7 @@ impl EmitIrExpr for AstNodeType {
                         op: op.clone(),
                         name: unit.gen_local_name(),
                         // todo: type annotation and type checking in ast
-                        ty: Type::I32,
+                        ty: Type::i32_type(),
                     };
                     let val = Value::Instruction(InstructionValue::BinaryOperator(insn));
                     let id = unit.values.borrow_mut().alloc(val);

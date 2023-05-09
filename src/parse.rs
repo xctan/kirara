@@ -7,7 +7,7 @@ use nom::{
     branch::alt,
 };
 
-use std::{rc::Rc, cell::RefCell, convert::TryInto, mem::{ManuallyDrop, swap}, borrow::BorrowMut};
+use std::{rc::{Rc, Weak}, cell::RefCell, convert::TryInto, mem::{ManuallyDrop, swap}, borrow::BorrowMut};
 
 use crate::{
     token::{TokenSpan, Token, range_between},
@@ -221,7 +221,7 @@ fn return_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>
 }
 
 // declspec contains base type and variable attributes; todo: var_attr
-fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Type> {
+fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Weak<Type>> {
     map(
         many1(alt((
             ttag!(K("int")),
@@ -229,7 +229,7 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Type> {
         |decl: Vec<TokenSpan>| {
             const VOID: i32 = 1 << 0;
             const INT: i32 = 1 << 8;
-            let mut ty = Type::I32;
+            let mut ty = Type::i32_type();
             let mut counter = 0;
 
             for d in decl {
@@ -240,9 +240,9 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Type> {
                 }
 
                 match counter {
-                    VOID => ty = Type::Void,
-                    INT => ty = Type::I32,
-                    _ => unreachable!(),
+                    VOID => ty = Type::void_type(),
+                    INT => ty = Type::i32_type(),
+                    _ => panic!("invalid type"),
                 }
             }
             
@@ -251,7 +251,7 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Type> {
     )(cursor)
 }
 
-fn declarator((cursor, ty): (TokenSpan, Type)) -> IResult<TokenSpan, (Type, TokenSpan)> {
+fn declarator((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, (Weak<Type>, TokenSpan)> {
     // "*"* ("(" declarator ")" | identifier) type_suffix
     let mut ty = ty.clone();
 
@@ -318,7 +318,7 @@ fn leave_scope() {
     }
 }
 
-fn new_local_var_with_token(id: TokenSpan, ty: Type) -> ObjectId {
+fn new_local_var_with_token(id: TokenSpan, ty: Weak<Type>) -> ObjectId {
     let instance = unsafe {
         CTX.as_mut().unwrap()
     };
@@ -328,7 +328,7 @@ fn new_local_var_with_token(id: TokenSpan, ty: Type) -> ObjectId {
     obj_id
 }
 
-fn new_global_var(id: &str, ty: Type) -> ObjectId {
+fn new_global_var(id: &str, ty: Weak<Type>) -> ObjectId {
     let instance = unsafe {
         CTX.as_mut().unwrap()
     };
@@ -394,7 +394,7 @@ pub fn parse<'a>(curosr: &'a Vec<Token>) -> Result<AstContext, nom::Err<nom::err
         locals: l,
         body,
     };
-    let id = new_global_var("main", Type::Void);
+    let id = new_global_var("main", Type::void_type());
     let obj = get_object_mut(id).unwrap();
     obj.data = AstObjectType::Func(function);
     

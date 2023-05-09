@@ -1,3 +1,5 @@
+use crate::ctype::TypePtrHelper;
+
 use super::{
     value::{Value, ValueId, ConstantValue, InstructionValue, ValueTrait},
     unit::TransUnit
@@ -5,15 +7,15 @@ use super::{
 
 impl TransUnit {
     pub fn print(&self) {
-        let bb = self.values.borrow();
+        let arena = self.values.borrow();
         for inst in &self.instns {
-            let inst = bb.get(*inst).unwrap();
+            let inst = arena.get(*inst).unwrap();
             match *inst {
                 Value::Global(_) => unimplemented!(),
                 Value::Instruction(ref insn) => {
                     match *insn {
                         InstructionValue::BinaryOperator(ref insn) => {
-                            print!("{} = {} {} ", insn.name, insn.op, insn.ty);
+                            print!("{} = {} {} ", insn.name, insn.op, insn.ty.get());
                             self.print_value(insn.lhs);
                             print!(", ");
                             self.print_value(insn.rhs);
@@ -22,7 +24,7 @@ impl TransUnit {
                         InstructionValue::ReturnInst(ref insn) => {
                             print!("ret");
                             if let Some(val) = insn.value {
-                                print!(" {} ", bb.get(val).unwrap().ty());
+                                print!(" {} ", arena.get(val).unwrap().ty().get());
                                 self.print_value(val);
                             } else {
                                 print!(" void");
@@ -30,20 +32,20 @@ impl TransUnit {
                             println!();
                         }
                         InstructionValue::LoadInst(ref insn) => {
-                            print!("{} = load {}, ptr ", insn.name, insn.ty);
+                            print!("{} = load {}, ptr ", insn.name, insn.ty.get());
                             self.print_value(insn.ptr);
                             println!();
                         }
                         InstructionValue::StoreInst(ref insn) => {
-                            let v = bb.get(insn.value).unwrap();
-                            print!("store {} ", v.ty());
+                            let v = arena.get(insn.value).unwrap();
+                            print!("store {} ", v.ty().get());
                             self.print_value(insn.value);
                             print!(", ptr ");
                             self.print_value(insn.ptr);
                             println!();
                         }
                         InstructionValue::AllocaInst(ref insn) => {
-                            print!("{} = alloca {}, align {}", insn.name, insn.ty, insn.ty.align());
+                            print!("{} = alloca {}, align {}", insn.name, insn.ty.get(), insn.ty.get().align());
                             println!();
                         }
                     }

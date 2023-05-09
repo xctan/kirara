@@ -1,10 +1,15 @@
-use std::{fmt::Display, rc::Rc};
+use std::{fmt::Display, rc::{Rc, Weak}};
 
 #[derive(Debug, Clone)]
 pub enum Type {
     Void,
     I32,
-    Ptr(Rc<Type>),
+    Ptr(Weak<Type>),
+}
+
+thread_local! {
+    static VOID_TYPE: Rc<Type> = Rc::new(Type::Void);
+    static I32_TYPE: Rc<Type> = Rc::new(Type::I32);
 }
 
 impl Type {
@@ -23,6 +28,14 @@ impl Type {
             Type::Ptr(_) => 8,
         }
     }
+
+    pub fn void_type() -> Weak<Type> {
+        VOID_TYPE.with(|t| Rc::downgrade(t))
+    }
+
+    pub fn i32_type() -> Weak<Type> {
+        I32_TYPE.with(|t| Rc::downgrade(t))
+    }
 }
 
 impl Display for Type {
@@ -33,6 +46,16 @@ impl Display for Type {
             Type::Ptr(_) => "i32*",
         };
         write!(f, "{}", s)
+    }
+}
+
+pub trait TypePtrHelper {
+    fn get(&self) -> Rc<Type>;
+}
+
+impl TypePtrHelper for Weak<Type> {
+    fn get(&self) -> Rc<Type> {
+        self.upgrade().unwrap()
     }
 }
 
@@ -54,7 +77,7 @@ impl Display for BinaryOpType {
             BinaryOpType::Mul => "mul",
             BinaryOpType::Div => "sdiv",
             BinaryOpType::Mod => "srem",
-            BinaryOpType::Assign => unimplemented!(),
+            BinaryOpType::Assign => unreachable!(),
         };
         write!(f, "{}", s)
     }

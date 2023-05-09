@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, collections::HashMap};
+use std::{cell::RefCell, rc::{Rc, Weak}, collections::HashMap};
 
 use id_arena::{Arena, Id};
 
@@ -37,7 +37,7 @@ pub struct AstNode {
 #[derive(Debug)]
 pub struct AstObject {
     pub name: String,
-    pub ty: Type,
+    pub ty: Weak<Type>,
     pub token: TokenRange,
     pub is_local: bool,
 
@@ -47,7 +47,7 @@ pub struct AstObject {
 }
 
 impl AstObject {
-    fn new(name: String, ty: Type, is_local: bool, data: AstObjectType) -> Self {
+    fn new(name: String, ty: Weak<Type>, is_local: bool, data: AstObjectType) -> Self {
         Self {
             name,
             ty,
@@ -124,7 +124,7 @@ impl AstContext {
         None
     }
 
-    pub fn new_local_var(&mut self, name: &str, ty: Type) -> ObjectId {
+    pub fn new_local_var(&mut self, name: &str, ty: Weak<Type>) -> ObjectId {
         let name = name.to_string();
         let obj = AstObject::new(
             name.clone(),
@@ -138,7 +138,7 @@ impl AstContext {
         id
     }
 
-    pub fn new_global_var(&mut self, name: &str, ty: Type) -> ObjectId {
+    pub fn new_global_var(&mut self, name: &str, ty: Weak<Type>) -> ObjectId {
         let name = name.to_string();
         let obj = AstObject::new(
             name.clone(),
