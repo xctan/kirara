@@ -3,6 +3,7 @@ use std::{fmt::Display, rc::{Rc, Weak}};
 #[derive(Debug, Clone)]
 pub enum Type {
     Void,
+    I1,
     I32,
     Ptr(Weak<Type>),
 }
@@ -16,6 +17,7 @@ impl Type {
     pub fn size(&self) -> usize {
         match self {
             Type::Void => 0,
+            Type::I1 => 1,
             Type::I32 => 4,
             Type::Ptr(_) => 8,
         }
@@ -24,6 +26,7 @@ impl Type {
     pub fn align(&self) -> usize {
         match self {
             Type::Void => 0,
+            Type::I1 => 1,
             Type::I32 => 4,
             Type::Ptr(_) => 8,
         }
@@ -42,6 +45,7 @@ impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             Type::Void => "void",
+            Type::I1 => "i1",
             Type::I32 => "i32",
             Type::Ptr(_) => "i32*",
         };
@@ -59,13 +63,14 @@ impl TypePtrHelper for Weak<Type> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinaryOpType {
     Add,
     Sub,
     Mul,
     Div,
     Mod,
+    Ne,
     Assign,
 }
 
@@ -77,6 +82,7 @@ impl Display for BinaryOpType {
             BinaryOpType::Mul => "mul",
             BinaryOpType::Div => "sdiv",
             BinaryOpType::Mod => "srem",
+            BinaryOpType::Ne => "icmp ne",
             BinaryOpType::Assign => unreachable!(),
         };
         write!(f, "{}", s)

@@ -1,11 +1,7 @@
-use super::{
-    unit::TransUnit,
-    value::{
-        BinaryOperator, ConstantValue, InstructionValue, Value, ValueId, 
-        ReturnInst, GlobalValue, AllocaInst, LoadInst, StoreInst
-    },
-};
-use crate::{ast::*, ctype::{Type, BinaryOpType}};
+use std::{rc::Rc, cell::RefCell};
+
+use super::{unit::{TransUnit, LocalInstExt}, value::ValueId};
+use crate::{ast::*, ctype::BinaryOpType};
 
 pub trait EmitIr {
     fn emit_ir(&self, unit: &mut TransUnit, ctx: &mut AstContext);
@@ -16,31 +12,17 @@ impl AstContext {
         for var in self.globals.clone() {
             let var = self.get_object(var).unwrap();
             match var.data.clone() {
-                AstObjectType::Func(func) => {
+                AstObjectType::Func(ref func) => {
                     for v in &func.locals {
                         let obj = self.get_object_mut(*v).unwrap();
-                        let inst = AllocaInst {
-                            name: format!("%{}", obj.name),
-                            ty: obj.ty.clone(),
-                        };
-                        let val = Value::Instruction(InstructionValue::AllocaInst(inst));
-                        let id = unit.values.borrow_mut().alloc(val);
-                        unit.push_inst(id);
+                        let id = unit.alloca(obj.ty.clone()).push();
                         obj.ir_value = Some(id);
                     }
 
-                    func.body.borrow().emit_ir(unit, self);
+                    func.body.emit_ir(unit, self);
                 }
                 AstObjectType::Var => {
-                    let val = Value::Global(
-                        GlobalValue {
-                            name: var.name.clone(),
-                            ty: var.ty.clone(),
-                            // init: None,
-                        }
-                    );
-                    let id = unit.values.borrow_mut().alloc(val);
-                    unit.push_inst(id);
+                    todo!()
                 }
             }
         }
@@ -51,102 +33,90 @@ impl EmitIr for AstNode {
     fn emit_ir(&self, unit: &mut TransUnit, ctx: &mut AstContext) {
         match &self.node {
             AstNodeType::ExprStmt(expr) => {
-                expr.borrow().node.emit_ir_expr(unit, ctx);
+                expr.emit_ir_expr(unit, ctx);
             },
             AstNodeType::Return(expr) => {
-                let expr = expr.borrow().node.emit_ir_expr(unit, ctx);
-                let insn = ReturnInst { value: expr };
-                let insn = InstructionValue::ReturnInst(insn);
-                let val = Value::Instruction(insn);
-                let id = unit.values.borrow_mut().alloc(val);
-                unit.push_inst(id);
+                // current implementation is not correct for multiple returns
+                let expr = expr.emit_ir_expr(unit, ctx);
+                unit.ret(Some(expr)).push();
             },
             AstNodeType::Block(stmts) => {
                 for stmt in stmts {
-                    stmt.borrow().emit_ir(unit, ctx);
+                    stmt.emit_ir(unit, ctx);
                 }
+            },
+            AstNodeType::IfStmt(ifs) => {
+                // let cond = ifs.cond.emit_ir_expr(unit, ctx);
+                todo!()
             },
             _ => unimplemented!(),
         }
+    }
+}
+
+impl EmitIr for Rc<RefCell<AstNode>> {
+    fn emit_ir(&self, unit: &mut TransUnit, ctx: &mut AstContext) {
+        self.borrow().emit_ir(unit, ctx);
     }
 }
 
 trait EmitIrExpr {
-    fn emit_ir_expr(&self, unit: &mut TransUnit, ctx: &mut AstContext) -> Option<ValueId>;
+    fn emit_ir_expr(&self, unit: &mut TransUnit, ctx: &mut AstContext) -> ValueId;
 }
 
 impl EmitIrExpr for AstNodeType {
-    fn emit_ir_expr(&self, unit: &mut TransUnit, ctx: &mut AstContext) -> Option<ValueId> {
+    fn emit_ir_expr(&self, unit: &mut TransUnit, ctx: &mut AstContext) -> ValueId {
         match self {
-            AstNodeType::ExprStmt(expr) => expr.borrow().node.emit_ir_expr(unit, ctx),
+            AstNodeType::ExprStmt(expr) => expr.emit_ir_expr(unit, ctx),
             AstNodeType::I64Number(num) => {
-                let val = Value::Constant(ConstantValue::I32(
-                    i32::try_from(*num % i32::MAX as i64).unwrap(),
-                ));
-                let id = unit.values.borrow_mut().alloc(val);
-                Some(id)
+                unit.const_i32(*num as i32)
             }
             AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op }) => {
                 if matches!(op, &BinaryOpType::Assign) {
-                    let lhs = lhs.borrow().node.emit_ir_lvalue(unit, ctx).unwrap();
-                    let rhs = rhs.borrow().node.emit_ir_expr(unit, ctx).unwrap();
-                    let inst = StoreInst {
-                        value: rhs,
-                        ptr: lhs,
-                    };
-                    let val = Value::Instruction(InstructionValue::StoreInst(inst));
-                    let id = unit.values.borrow_mut().alloc(val);
-                    unit.push_inst(id);
-                    Some(rhs)
+                    let lhs = lhs.emit_ir_lvalue(unit, ctx);
+                    let rhs = rhs.emit_ir_expr(unit, ctx);
+                    unit.store(rhs, lhs).push();
+                    rhs
                 } else {
-                    let lhs = lhs.borrow().node.emit_ir_expr(unit, ctx).unwrap();
-                    let rhs = rhs.borrow().node.emit_ir_expr(unit, ctx).unwrap();
-                    let insn = BinaryOperator {
-                        lhs,
-                        rhs,
-                        op: op.clone(),
-                        name: unit.gen_local_name(),
-                        // todo: type annotation and type checking in ast
-                        ty: Type::i32_type(),
-                    };
-                    let val = Value::Instruction(InstructionValue::BinaryOperator(insn));
-                    let id = unit.values.borrow_mut().alloc(val);
-                    unit.push_inst(id);
-                    Some(id)
+                    let lhs = lhs.emit_ir_expr(unit, ctx);
+                    let rhs = rhs.emit_ir_expr(unit, ctx);
+                    unit.binary(*op, lhs, rhs).push()
                 }
             }
             AstNodeType::Variable(var) => {
                 let var = ctx.get_object(*var).unwrap();
                 let val = var.ir_value.unwrap();
-                let inst = LoadInst {
-                    name: unit.gen_local_name(),
-                    ty: var.ty.clone(),
-                    ptr: val,
-                };
-                let val = Value::Instruction(InstructionValue::LoadInst(inst));
-                let id = unit.values.borrow_mut().alloc(val);
-                unit.push_inst(id);
-                Some(id)
+                unit.load(val).push()
             }
-            AstNodeType::Unit => None,
             _ => unimplemented!(),
         }
     }
 }
 
+impl EmitIrExpr for Rc<RefCell<AstNode>> {
+    fn emit_ir_expr(&self, unit: &mut TransUnit, ctx: &mut AstContext) -> ValueId {
+        self.borrow().node.emit_ir_expr(unit, ctx)
+    }
+}
+
 trait EmitIrLValue {
-    fn emit_ir_lvalue(&self, unit: &mut TransUnit, ctx: &mut AstContext) -> Option<ValueId>;
+    fn emit_ir_lvalue(&self, unit: &mut TransUnit, ctx: &mut AstContext) -> ValueId;
 }
 
 impl EmitIrLValue for AstNodeType {
-    fn emit_ir_lvalue(&self, _unit: &mut TransUnit, ctx: &mut AstContext) -> Option<ValueId> {
+    fn emit_ir_lvalue(&self, _unit: &mut TransUnit, ctx: &mut AstContext) -> ValueId {
         match self {
             AstNodeType::Variable(var) => {
                 let var = ctx.get_object(*var).unwrap();
-                let val = var.ir_value.unwrap();
-                Some(val)
+                var.ir_value.unwrap()
             }
             _ => unimplemented!(),
         }
+    }
+}
+
+impl EmitIrLValue for Rc<RefCell<AstNode>> {
+    fn emit_ir_lvalue(&self, unit: &mut TransUnit, ctx: &mut AstContext) -> ValueId {
+        self.borrow().node.emit_ir_lvalue(unit, ctx)
     }
 }

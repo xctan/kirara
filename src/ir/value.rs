@@ -1,6 +1,4 @@
-
-
-use std::rc::Weak;
+use std::{rc::Weak, collections::HashSet};
 
 use id_arena::Id;
 
@@ -60,13 +58,41 @@ macro_rules! impl_value_trait {
 }
 
 #[derive(Debug, Clone)]
-pub enum Value {
+pub struct Value {
+    pub value: ValueType,
+
+    pub prev: Option<ValueId>,
+    pub next: Option<ValueId>,
+
+    pub(in crate::ir) used_by: HashSet<ValueId>,
+}
+
+impl ValueTrait for Value {
+    fn name(&self) -> String { self.value.name() }
+    fn set_name(&mut self, name: String) { self.value.set_name(name); }
+    fn ty(&self) -> Weak<Type> { self.value.ty() }
+    fn set_ty(&mut self, ty: Weak<Type>) { self.value.set_ty(ty); }
+}
+
+impl Value {
+    pub fn new(v: ValueType) -> Self {
+        Self {
+            value: v,
+            prev: None,
+            next: None,
+            used_by: HashSet::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ValueType {
     Global(GlobalValue),
     Instruction(InstructionValue),
     Constant(ConstantValue),
 }
 
-impl_value_trait!{Value{
+impl_value_trait!{ValueType{
     Global,
     Instruction,
     Constant,
@@ -95,7 +121,7 @@ impl ValueTrait for ConstantValue {
 
 #[derive(Debug, Clone)]
 pub enum InstructionValue {
-    BinaryOperator(BinaryOperator),
+    BinaryInst(BinaryInst),
     LoadInst(LoadInst),
     StoreInst(StoreInst),
     AllocaInst(AllocaInst),
@@ -103,7 +129,7 @@ pub enum InstructionValue {
 }
 
 impl_value_trait!{InstructionValue{
-    BinaryOperator,
+    BinaryInst,
     LoadInst,
     StoreInst,
     AllocaInst,
@@ -111,7 +137,7 @@ impl_value_trait!{InstructionValue{
 }}
 
 #[derive(Debug, Clone)]
-pub struct BinaryOperator {
+pub struct BinaryInst {
     pub lhs: ValueId,
     pub rhs: ValueId,
     pub op: BinaryOp,
@@ -119,7 +145,7 @@ pub struct BinaryOperator {
     pub ty: Weak<Type>,
 }
 
-impl_value_trait!(BinaryOperator);
+impl_value_trait!(BinaryInst);
 
 #[derive(Debug, Clone)]
 pub struct LoadInst {

@@ -1,20 +1,23 @@
 use crate::ctype::TypePtrHelper;
 
 use super::{
-    value::{Value, ValueId, ConstantValue, InstructionValue, ValueTrait},
+    value::{ValueType, ValueId, ConstantValue, InstructionValue, ValueTrait},
     unit::TransUnit
 };
 
 impl TransUnit {
     pub fn print(&self) {
-        let arena = self.values.borrow();
-        for inst in &self.instns {
-            let inst = arena.get(*inst).unwrap();
-            match *inst {
-                Value::Global(_) => unimplemented!(),
-                Value::Instruction(ref insn) => {
+        let arena = &self.values;
+        let bb0 = self.blocks.get(self.entry_bb).unwrap();
+        let mut insts = bb0.insts_start;
+        while let Some(inst) = insts {
+            let inst = arena.get(inst).unwrap();
+            insts = inst.next;
+            match inst.value {
+                ValueType::Global(_) => unimplemented!(),
+                ValueType::Instruction(ref insn) => {
                     match *insn {
-                        InstructionValue::BinaryOperator(ref insn) => {
+                        InstructionValue::BinaryInst(ref insn) => {
                             print!("{} = {} {} ", insn.name, insn.op, insn.ty.get());
                             self.print_value(insn.lhs);
                             print!(", ");
@@ -50,22 +53,22 @@ impl TransUnit {
                         }
                     }
                 }
-                Value::Constant(_) => unimplemented!(),
+                ValueType::Constant(_) => unimplemented!(),
             }
         }
     }
 
     pub fn print_value(&self, id: ValueId) {
-        let bb = self.values.borrow();
+        let bb = &self.values;
         let val = bb.get(id).unwrap();
-        match *val {
-            Value::Global(_) => unimplemented!(),
-            Value::Constant(c) => {
+        match val.value {
+            ValueType::Global(_) => unimplemented!(),
+            ValueType::Constant(c) => {
                 match c {
                     ConstantValue::I32(i) => print!("{}", i),
                 }
             }
-            Value::Instruction(ref insn) => {
+            ValueType::Instruction(ref insn) => {
                 print!("{}", insn.name());
             }
         }

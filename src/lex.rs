@@ -80,7 +80,10 @@ fn keyword(input: &str) -> IResult<&str, Token> {
         pair(
             alt((
                 tag("return"),
-                tag("int"))),
+                tag("int"),
+                tag("if"),
+                tag("else"),
+            )),
             not(
                 alt((
                     alphanumeric1,

@@ -7,11 +7,11 @@ use nom::{
     branch::alt,
 };
 
-use std::{rc::{Rc, Weak}, cell::RefCell, convert::TryInto, mem::{ManuallyDrop, swap}, borrow::BorrowMut, os::unix::thread};
+use std::{rc::{Rc, Weak}, cell::RefCell, convert::TryInto, mem::swap};
 
 use crate::{
     token::{TokenSpan, Token, range_between},
-    ast::{AstNode, AstNodeType, BinaryOp, AstContext, ObjectId, ScopeVar, AstFuncData, AstObject, AstObjectType},
+    ast::{AstNode, AstNodeType, BinaryOp, AstContext, ObjectId, ScopeVar, AstFuncData, AstObject, AstObjectType, IfStmt},
     ctype::{BinaryOpType, Type},
 };
 
@@ -101,8 +101,6 @@ fn multiplication(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>>
         |(first, others)| {
             let mut node = first;
             for (sign, other) in others {
-                let length =
-                    node.borrow().token.len() + sign.input_len() + other.borrow().token.len();
                 let op = match sign.0[0].0 {
                     "*" => BinaryOpType::Mul,
                     "/" => BinaryOpType::Div,
@@ -393,17 +391,18 @@ fn get_context_locals_mut() -> &'static mut Vec<ObjectId> {
     }
 }
 
-pub fn statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+fn statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     // return_statement | expression_statement | ... // todo
     // declaration is not a statement!
     alt((
         return_statement,
+        if_statement,
         compound_statement,
         expression_statement,
     ))(cursor)
 }
 
-pub fn compound_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+fn compound_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     // "{" (declaration | statement)* "}"
     map(
         tuple((
@@ -420,6 +419,44 @@ pub fn compound_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<As
                 node: AstNodeType::Block(v),
                 token,
             }))
+        }
+    )(cursor)
+}
+
+fn if_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // "if" "(" expression ")" statement ("else" statement)?
+    map(
+        tuple((
+            ttag!(K("if")),
+            ttag!(P("(")),
+            expression,
+            ttag!(P(")")),
+            statement,
+            opt(tuple((
+                ttag!(K("else")),
+                statement))))),
+        |(k_if, _, exp, _, stmt, el)| {
+            if let Some((_, els)) = el {
+                let token = range_between(&k_if.as_range(), &els.borrow().token);
+                Rc::new(RefCell::new(AstNode {
+                    node: AstNodeType::IfStmt(IfStmt {
+                        cond: exp,
+                        then: stmt,
+                        els: Some(els),
+                    }),
+                    token,
+                }))
+            } else {
+                let token = range_between(&k_if.as_range(), &stmt.borrow().token);
+                Rc::new(RefCell::new(AstNode {
+                    node: AstNodeType::IfStmt(IfStmt {
+                        cond: exp,
+                        then: stmt,
+                        els: None,
+                    }),
+                    token,
+                }))
+            }
         }
     )(cursor)
 }
@@ -464,6 +501,7 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
                         BinaryOpType::Mul => lhs * rhs,
                         BinaryOpType::Div => lhs / rhs,
                         BinaryOpType::Mod => lhs % rhs,
+                        BinaryOpType::Ne => i64::from(lhs != rhs),
                         BinaryOpType::Assign => return,
                     };
                     Some(AstNodeType::I64Number(num))
@@ -483,6 +521,14 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::Block(v) => {
             for expr in v {
                 ast_const_fold(expr.clone());
+            }
+            None
+        },
+        AstNodeType::IfStmt(ifs) => {
+            ast_const_fold(ifs.cond.clone());
+            ast_const_fold(ifs.then.clone());
+            if let Some(els) = ifs.els {
+                ast_const_fold(els);
             }
             None
         },

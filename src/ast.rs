@@ -25,6 +25,14 @@ pub enum AstNodeType {
     Block(Vec<Rc<RefCell<AstNode>>>),
     ExprStmt(Rc<RefCell<AstNode>>),
     Return(Rc<RefCell<AstNode>>),
+    IfStmt(IfStmt),
+}
+
+#[derive(Debug, Clone)]
+pub struct IfStmt {
+    pub cond: Rc<RefCell<AstNode>>,
+    pub then: Rc<RefCell<AstNode>>,
+    pub els: Option<Rc<RefCell<AstNode>>>,
 }
 
 #[derive(Debug)]
