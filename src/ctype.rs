@@ -11,6 +11,7 @@ pub enum Type {
 thread_local! {
     static VOID_TYPE: Rc<Type> = Rc::new(Type::Void);
     static I32_TYPE: Rc<Type> = Rc::new(Type::I32);
+    static I1_TYPE: Rc<Type> = Rc::new(Type::I1);
 }
 
 impl Type {
@@ -32,12 +33,27 @@ impl Type {
         }
     }
 
+    pub fn base_type(&self) -> Weak<Type> {
+        match self {
+            Type::Ptr(ty) => ty.clone(),
+            _ => panic!("not applicable"),
+        }
+    }
+
+    pub fn is_ptr(&self) -> bool {
+        matches!(self, Type::Ptr(_))
+    }
+
     pub fn void_type() -> Weak<Type> {
         VOID_TYPE.with(|t| Rc::downgrade(t))
     }
 
     pub fn i32_type() -> Weak<Type> {
         I32_TYPE.with(|t| Rc::downgrade(t))
+    }
+
+    pub fn i1_type() -> Weak<Type> {
+        I1_TYPE.with(|t| Rc::downgrade(t))
     }
 }
 
@@ -60,6 +76,25 @@ pub trait TypePtrHelper {
 impl TypePtrHelper for Weak<Type> {
     fn get(&self) -> Rc<Type> {
         self.upgrade().unwrap()
+    }
+}
+
+pub trait TypePtrCompare {
+    fn same_as(self, other: Self) -> bool;
+}
+
+impl TypePtrCompare for Weak<Type> {
+    fn same_as(self, other: Self) -> bool {
+        if self.get().is_ptr() && other.get().is_ptr() {
+            self.get().base_type().same_as(other.get().base_type())
+        } else {
+            matches!(
+                (&*self.get(), &*other.get()), 
+                (&Type::Void, &Type::Void) | 
+                (&Type::I1, &Type::I1) | 
+                (&Type::I32, &Type::I32)
+            )
+        }
     }
 }
 

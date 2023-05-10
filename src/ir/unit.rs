@@ -15,7 +15,7 @@ pub struct TransUnit {
     // funcs
 
     // todo: move to function
-    pub bbs: HashSet<BlockId>,
+    pub bbs: Vec<BlockId>,
     // temporary usage
     pub cur_bb: BlockId,
     pub entry_bb: BlockId,
@@ -33,7 +33,7 @@ impl TransUnit {
             blocks: bb_arena,
             cur_bb: entry_bb,
             entry_bb,
-            bbs: HashSet::new(),
+            bbs: vec![entry_bb],
             counter: 1,
         }
     }
@@ -49,11 +49,11 @@ impl TransUnit {
         name
     }
 
-    #[allow(unused)]
-    pub fn new_bb(&mut self) -> BlockId {
+    pub fn start_new_bb(&mut self) -> BlockId {
         let name = format!("{}", self.count());
         let bb = self.blocks.alloc(BasicBlock::new(name));
-        self.bbs.insert(bb);
+        self.bbs.push(bb);
+        self.cur_bb = bb;
         bb
     }
 
@@ -117,7 +117,7 @@ impl TransUnit {
             name: self.gen_local_name(),
             ty,
         };
-        let val = ValueType::Instruction(InstructionValue::AllocaInst(inst));
+        let val = ValueType::Instruction(InstructionValue::Alloca(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
         (self, id)
@@ -127,9 +127,13 @@ impl TransUnit {
         let inst = ReturnInst {
             value,
         };
-        let val = ValueType::Instruction(InstructionValue::ReturnInst(inst));
+        let val = ValueType::Instruction(InstructionValue::Return(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
+        if let Some(value) = value {
+            let value = self.values.get_mut(value).unwrap();
+            value.used_by.insert(id);
+        }
         (self, id)
     }
 
@@ -138,9 +142,11 @@ impl TransUnit {
             value,
             ptr,
         };
-        let val = ValueType::Instruction(InstructionValue::StoreInst(inst));
+        let val = ValueType::Instruction(InstructionValue::Store(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
+        let value = self.values.get_mut(value).unwrap();
+        value.used_by.insert(id);
         (self, id)
     }
 
@@ -152,15 +158,27 @@ impl TransUnit {
             ty,
             ptr,
         };
-        let val = ValueType::Instruction(InstructionValue::LoadInst(inst));
+        let val = ValueType::Instruction(InstructionValue::Load(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
+        let ptr_val = self.values.get_mut(ptr).unwrap();
+        ptr_val.used_by.insert(id);
         (self, id)
     }
 
     pub fn binary(&mut self, op: BinaryOpType, lhs: ValueId, rhs: ValueId) -> (&mut Self, ValueId) {
-        let left_val = self.values.get(lhs).unwrap();
-        let ty = left_val.ty();
+        let ty = match op {
+            BinaryOpType::Add |
+            BinaryOpType::Sub |
+            BinaryOpType::Mul |
+            BinaryOpType::Div |
+            BinaryOpType::Mod |
+            BinaryOpType::Assign => {
+                let lhs = self.values.get(lhs).unwrap();
+                lhs.ty()
+            },
+            BinaryOpType::Ne => Type::i1_type(),
+        };
         let inst = BinaryInst {
             lhs,
             rhs,
@@ -168,7 +186,35 @@ impl TransUnit {
             name: self.gen_local_name(),
             ty,
         };
-        let val = ValueType::Instruction(InstructionValue::BinaryInst(inst));
+        let val = ValueType::Instruction(InstructionValue::Binary(inst));
+        let val = Value::new(val);
+        let id = self.values.alloc(val);
+        let lhs = self.values.get_mut(lhs).unwrap();
+        lhs.used_by.insert(id);
+        let rhs = self.values.get_mut(rhs).unwrap();
+        rhs.used_by.insert(id);
+        (self, id)
+    }
+
+    pub fn branch(&mut self, cond: ValueId, succ: BlockId, fail: BlockId) -> (&mut Self, ValueId) {
+        let inst = BranchInst {
+            cond,
+            succ,
+            fail,
+        };
+        let val = ValueType::Instruction(InstructionValue::Branch(inst));
+        let val = Value::new(val);
+        let id = self.values.alloc(val);
+        let cond = self.values.get_mut(cond).unwrap();
+        cond.used_by.insert(id);
+        (self, id)
+    }
+
+    pub fn jump(&mut self, succ: BlockId) -> (&mut Self, ValueId) {
+        let inst = JumpInst {
+            succ,
+        };
+        let val = ValueType::Instruction(InstructionValue::Jump(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
         (self, id)
@@ -177,12 +223,20 @@ impl TransUnit {
 
 pub trait LocalInstExt {
     fn push(self) -> ValueId;
+
+    fn push_to(self, at: BlockId) -> ValueId;
 }
 
 impl LocalInstExt for (&mut TransUnit, ValueId) {
     fn push(self) -> ValueId {
         let (unit, value) = self;
         unit.push(value);
+        value
+    }
+
+    fn push_to(self, at: BlockId) -> ValueId {
+        let (unit, value) = self;
+        unit.push_at(at, value);
         value
     }
 }

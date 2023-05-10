@@ -4,6 +4,8 @@ use id_arena::Id;
 
 use crate::ctype::{Type, BinaryOpType as BinaryOp};
 
+use super::unit::BlockId;
+
 pub type ValueId = Id<Value>;
 
 pub trait ValueTrait {
@@ -121,19 +123,23 @@ impl ValueTrait for ConstantValue {
 
 #[derive(Debug, Clone)]
 pub enum InstructionValue {
-    BinaryInst(BinaryInst),
-    LoadInst(LoadInst),
-    StoreInst(StoreInst),
-    AllocaInst(AllocaInst),
-    ReturnInst(ReturnInst),
+    Binary(BinaryInst),
+    Load(LoadInst),
+    Store(StoreInst),
+    Alloca(AllocaInst),
+    Return(ReturnInst),
+    Branch(BranchInst),
+    Jump(JumpInst),
 }
 
 impl_value_trait!{InstructionValue{
-    BinaryInst,
-    LoadInst,
-    StoreInst,
-    AllocaInst,
-    ReturnInst,
+    Binary,
+    Load,
+    Store,
+    Alloca,
+    Return,
+    Branch,
+    Jump,
 }}
 
 #[derive(Debug, Clone)]
@@ -178,3 +184,19 @@ pub struct ReturnInst {
 }
 
 impl ValueTrait for ReturnInst {}
+
+#[derive(Debug, Clone)]
+pub struct BranchInst {
+    pub cond: ValueId,
+    pub succ: BlockId,
+    pub fail: BlockId,
+}
+
+impl ValueTrait for BranchInst {}
+
+#[derive(Debug, Clone)]
+pub struct JumpInst {
+    pub succ: BlockId,
+}
+
+impl ValueTrait for JumpInst {}

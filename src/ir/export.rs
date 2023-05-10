@@ -8,52 +8,71 @@ use super::{
 impl TransUnit {
     pub fn print(&self) {
         let arena = &self.values;
-        let bb0 = self.blocks.get(self.entry_bb).unwrap();
-        let mut insts = bb0.insts_start;
-        while let Some(inst) = insts {
-            let inst = arena.get(inst).unwrap();
-            insts = inst.next;
-            match inst.value {
-                ValueType::Global(_) => unimplemented!(),
-                ValueType::Instruction(ref insn) => {
-                    match *insn {
-                        InstructionValue::BinaryInst(ref insn) => {
-                            print!("{} = {} {} ", insn.name, insn.op, insn.ty.get());
-                            self.print_value(insn.lhs);
-                            print!(", ");
-                            self.print_value(insn.rhs);
-                            println!();
-                        }
-                        InstructionValue::ReturnInst(ref insn) => {
-                            print!("ret");
-                            if let Some(val) = insn.value {
-                                print!(" {} ", arena.get(val).unwrap().ty().get());
-                                self.print_value(val);
-                            } else {
-                                print!(" void");
+        for bb in &self.bbs {
+            let bb = *bb;
+            let bb0 = self.blocks.get(bb).unwrap();
+            println!("{}:", bb0.name);
+            let mut insts = bb0.insts_start;
+            while let Some(inst) = insts {
+                print!("  ");
+                let inst = arena.get(inst).unwrap();
+                insts = inst.next;
+                match inst.value {
+                    ValueType::Global(_) => unimplemented!(),
+                    ValueType::Instruction(ref insn) => {
+                        match *insn {
+                            InstructionValue::Binary(ref insn) => {
+                                let lhs = arena.get(insn.lhs).unwrap();
+                                print!("{} = {} {} ", insn.name, insn.op, lhs.ty().get());
+                                self.print_value(insn.lhs);
+                                print!(", ");
+                                self.print_value(insn.rhs);
+                                println!();
                             }
-                            println!();
-                        }
-                        InstructionValue::LoadInst(ref insn) => {
-                            print!("{} = load {}, ptr ", insn.name, insn.ty.get());
-                            self.print_value(insn.ptr);
-                            println!();
-                        }
-                        InstructionValue::StoreInst(ref insn) => {
-                            let v = arena.get(insn.value).unwrap();
-                            print!("store {} ", v.ty().get());
-                            self.print_value(insn.value);
-                            print!(", ptr ");
-                            self.print_value(insn.ptr);
-                            println!();
-                        }
-                        InstructionValue::AllocaInst(ref insn) => {
-                            print!("{} = alloca {}, align {}", insn.name, insn.ty.get(), insn.ty.get().align());
-                            println!();
+                            InstructionValue::Return(ref insn) => {
+                                print!("ret");
+                                if let Some(val) = insn.value {
+                                    print!(" {} ", arena.get(val).unwrap().ty().get());
+                                    self.print_value(val);
+                                } else {
+                                    print!(" void");
+                                }
+                                println!();
+                            }
+                            InstructionValue::Load(ref insn) => {
+                                print!("{} = load {}, ptr ", insn.name, insn.ty.get());
+                                self.print_value(insn.ptr);
+                                println!();
+                            }
+                            InstructionValue::Store(ref insn) => {
+                                let v = arena.get(insn.value).unwrap();
+                                print!("store {} ", v.ty().get());
+                                self.print_value(insn.value);
+                                print!(", ptr ");
+                                self.print_value(insn.ptr);
+                                println!();
+                            }
+                            InstructionValue::Alloca(ref insn) => {
+                                print!("{} = alloca {}, align {}", insn.name, insn.ty.get(), insn.ty.get().align());
+                                println!();
+                            }
+                            InstructionValue::Branch(ref insn) => {
+                                print!("br ");
+                                print!("{} ", arena.get(insn.cond).unwrap().ty().get());
+                                self.print_value(insn.cond);
+                                print!(", ");
+                                let succ = self.blocks.get(insn.succ).unwrap();
+                                let fail = self.blocks.get(insn.fail).unwrap();
+                                println!("label %{}, label %{}", succ.name, fail.name);
+                            }
+                            InstructionValue::Jump(ref insn) => {
+                                let succ = self.blocks.get(insn.succ).unwrap();
+                                println!("br label %{}", succ.name);
+                            }
                         }
                     }
+                    ValueType::Constant(_) => unimplemented!(),
                 }
-                ValueType::Constant(_) => unimplemented!(),
             }
         }
     }

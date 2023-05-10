@@ -1,7 +1,7 @@
 use std::{rc::Rc, cell::RefCell};
 
 use super::{unit::{TransUnit, LocalInstExt}, value::ValueId};
-use crate::{ast::*, ctype::BinaryOpType};
+use crate::{ast::*, ctype::{BinaryOpType, TypePtrCompare, Type}, ir::value::ValueTrait};
 
 pub trait EmitIr {
     fn emit_ir(&self, unit: &mut TransUnit, ctx: &mut AstContext);
@@ -46,8 +46,29 @@ impl EmitIr for AstNode {
                 }
             },
             AstNodeType::IfStmt(ifs) => {
-                // let cond = ifs.cond.emit_ir_expr(unit, ctx);
-                todo!()
+                let cond = ifs.cond.emit_ir_expr(unit, ctx);
+                let cond_val = unit.values.get(cond).unwrap();
+                let cond_checked = if cond_val.ty().same_as(Type::i1_type()) {
+                    cond
+                } else if cond_val.ty().same_as(Type::i32_type()) {
+                    let zero = unit.const_i32(0);
+                    unit.binary(BinaryOpType::Ne, cond, zero).push()
+                } else {
+                    panic!("invalid type for if condition");
+                };
+                let root = unit.cur_bb;
+                let succ = unit.start_new_bb();
+                ifs.then.emit_ir(unit, ctx);
+                let fail = unit.start_new_bb();
+                unit.branch(cond_checked, succ, fail).push_to(root);
+                if let Some(els) = &ifs.els {
+                    els.emit_ir(unit, ctx);
+                    let finally = unit.start_new_bb();
+                    unit.jump(finally).push_to(succ);
+                    unit.jump(finally).push_to(fail);
+                } else {
+                    unit.jump(fail).push_to(succ);
+                }
             },
             _ => unimplemented!(),
         }
