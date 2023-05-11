@@ -50,10 +50,7 @@ fn number_constant(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>
                 Ok(num) => num,
                 Err(_) => panic!("integer constant overflow"),
             };
-            Rc::new(RefCell::new(AstNode {
-                node: AstNodeType::I64Number(num),
-                token: token.as_range(),
-            }))
+            Rc::new(RefCell::new(AstNode::new(AstNodeType::I64Number(num), token.as_range())))
         }
     )(cursor)
 }
@@ -64,10 +61,7 @@ fn identifier(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
         |token: TokenSpan<'_>| {
             let var = find_var(token.as_str());
             match var {
-                Some(ScopeVar::Var(var)) => Rc::new(RefCell::new(AstNode {
-                    node: AstNodeType::Variable(var),
-                    token: token.as_range(),
-                })),
+                Some(ScopeVar::Var(var)) => Rc::new(RefCell::new(AstNode::new(AstNodeType::Variable(var), token.as_range()))),
                 None => panic!("undefined variable: {}", token.as_str()),
             }
         }
@@ -108,14 +102,7 @@ fn multiplication(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>>
                     _ => unreachable!(),
                 };
                 let token = range_between(&node.borrow().token, &other.borrow().token);
-                node = Rc::new(RefCell::new(AstNode {
-                    token,
-                    node: AstNodeType::BinaryOp(BinaryOp {
-                        lhs: node,
-                        rhs: other,
-                        op,
-                    }),
-                }));
+                node = AstNode::binary(node, other, op, token);
             }
             node
         }
@@ -134,48 +121,90 @@ fn addition(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
         |(first, others)| {
             let mut node = first;
             for (sign, other) in others {
-                let length =
-                    node.borrow().token.len() + sign.input_len() + other.borrow().token.len();
                 let op = match sign.0[0].0 {
                     "+" => BinaryOpType::Add,
                     "-" => BinaryOpType::Sub,
                     _ => unreachable!(),
                 };
                 let token = range_between(&node.borrow().token, &other.borrow().token);
-                node = Rc::new(RefCell::new(AstNode {
-                    node: AstNodeType::BinaryOp(BinaryOp {
-                        lhs: node,
-                        rhs: other,
-                        op,
-                    }),
-                    token,
-                }));
+                node = AstNode::binary(node, other, op, token);
             }
             node
         }
     )(cursor)
 }
 
-fn assignment(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
-    // conditional ( '=' assignment )?
-    // use addition temporarily
+fn relational(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // shift ( ('<' | '>' | "<=" | ">=") shift )*
+    // use addition as shift temporarily
     map(
         tuple((
             addition,
+            many0(
+                tuple((
+                    alt((
+                        ttag!(P("<")),
+                        ttag!(P(">")),
+                        ttag!(P("<=")),
+                        ttag!(P(">=")))),
+                    addition))))),
+        |(first, others)| {
+            let mut node = first;
+            for (sign, other) in others {
+                let op = match sign.0[0].0 {
+                    "<" => BinaryOpType::Lt,
+                    ">" => BinaryOpType::Gt,
+                    "<=" => BinaryOpType::Le,
+                    ">=" => BinaryOpType::Ge,
+                    _ => unreachable!(),
+                };
+                let token = range_between(&node.borrow().token, &other.borrow().token);
+                node = AstNode::binary(node, other, op, token);
+            }
+            node
+        }
+    )(cursor)
+}
+
+fn equality(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // relational ( ("==" | "!=") relational )*
+    map(
+        tuple((
+            relational,
+            many0(
+                tuple((
+                    alt((ttag!(P("==")), ttag!(P("!=")))),
+                    relational))))),
+        |(first, others)| {
+            let mut node = first;
+            for (sign, other) in others {
+                let op = match sign.0[0].0 {
+                    "==" => BinaryOpType::Eq,
+                    "!=" => BinaryOpType::Ne,
+                    _ => unreachable!(),
+                };
+                let token = range_between(&node.borrow().token, &other.borrow().token);
+                node = AstNode::binary(node, other, op, token);
+            }
+            node
+        }
+    )(cursor)
+}
+
+
+fn assignment(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // conditional ( '=' assignment )?
+    // use equality as conditional temporarily
+    map(
+        tuple((
+            equality,
             opt(tuple((
                 ttag!(P("=")),
                 assignment))))),
         |(first, others)| {
             if let Some((_, other)) = others {
                 let token = range_between(&first.borrow().token, &other.borrow().token);
-                Rc::new(RefCell::new(AstNode {
-                    node: AstNodeType::BinaryOp(BinaryOp {
-                        lhs: first,
-                        rhs: other,
-                        op: BinaryOpType::Assign,
-                    }),
-                    token,
-                }))
+                AstNode::binary(first, other, BinaryOpType::Assign, token)
             } else {
                 first
             }
@@ -196,15 +225,9 @@ fn expression_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstN
         |(expr, semi)| {
             if let Some(expr) = expr {
                 let token = range_between(&expr.borrow().token, &semi.as_range());
-                Rc::new(RefCell::new(AstNode {
-                    node: AstNodeType::ExprStmt(expr),
-                    token,
-                }))
+                AstNode::expr_stmt(expr, token)
             } else {
-                Rc::new(RefCell::new(AstNode { 
-                    node: AstNodeType::Unit,
-                    token: semi.as_range(),
-                }))
+                AstNode::unit(semi.as_range())
             }
         }
     )(cursor)
@@ -214,13 +237,15 @@ fn return_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>
     map(
         tuple((
             ttag!(K("return")),
-            expression_statement)),
-        |(r, expr)| {
-            let token = range_between(&r.as_range(), &expr.borrow().token);
-            Rc::new(RefCell::new(AstNode {
-                node: AstNodeType::Return(expr),
-                token,
-            }))
+            opt(expression),
+            ttag!(P(";")))),
+        |(r, expr, p)| {
+            if let Some(expr) = expr {
+                let token = range_between(&r.as_range(), &expr.borrow().token);
+                AstNode::ret(expr, token)
+            } else {
+                AstNode::ret(AstNode::unit(r.as_range()), r.as_range())
+            }
         }
     )(cursor)
 }
@@ -301,32 +326,19 @@ fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
             cursor0 = cursor2;
             let obj = get_object_mut(object_id).unwrap();
             let token = range_between(&obj.token, &expr.borrow().token);
-            let node = BinaryOp{
-                lhs: Rc::new(RefCell::new(AstNode{
-                    node: AstNodeType::Variable(object_id),
-                    token: obj.token.clone(),
-                })),
-                rhs: expr,
-                op: BinaryOpType::Assign,
-            };
-            let node = Rc::new(RefCell::new(AstNode{
-                node: AstNodeType::BinaryOp(node),
-                token: token.clone(),
-            }));
-            let node = Rc::new(RefCell::new(AstNode{
-                node: AstNodeType::ExprStmt(node),
-                token,
-            }));
+            let var = AstNode::variable(object_id, obj.token.clone());
+            let assign_expr = AstNode::binary(var, expr, BinaryOpType::Assign, token.clone());
+            let node = AstNode::expr_stmt(assign_expr, token);
             init.push(node);
         }
     }
     
     Ok((
         cursor0,
-        Rc::new(RefCell::new(AstNode{
-            node: AstNodeType::Block(init),
-            token: range_between(&cursor.as_range(), &cursor0.as_range()),
-        }))
+        AstNode::block(
+            init, 
+            range_between(&cursor.as_range(), &cursor0.as_range())
+        )
     ))
 }
 
@@ -415,10 +427,7 @@ fn compound_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNod
             ttag!(P("}")))),
         |(l, _, v, _, r)| {
             let token = range_between(&l.as_range(), &r.as_range());
-            Rc::new(RefCell::new(AstNode {
-                node: AstNodeType::Block(v),
-                token,
-            }))
+            AstNode::block(v, token)
         }
     )(cursor)
 }
@@ -438,24 +447,10 @@ fn if_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
         |(k_if, _, exp, _, stmt, el)| {
             if let Some((_, els)) = el {
                 let token = range_between(&k_if.as_range(), &els.borrow().token);
-                Rc::new(RefCell::new(AstNode {
-                    node: AstNodeType::IfStmt(IfStmt {
-                        cond: exp,
-                        then: stmt,
-                        els: Some(els),
-                    }),
-                    token,
-                }))
+                AstNode::r#if(exp, stmt, Some(els), token)
             } else {
                 let token = range_between(&k_if.as_range(), &stmt.borrow().token);
-                Rc::new(RefCell::new(AstNode {
-                    node: AstNodeType::IfStmt(IfStmt {
-                        cond: exp,
-                        then: stmt,
-                        els: None,
-                    }),
-                    token,
-                }))
+                AstNode::r#if(exp, stmt, None, token)
             }
         }
     )(cursor)
@@ -488,6 +483,7 @@ pub fn parse<'a>(curosr: &'a Vec<Token>) -> Result<AstContext, nom::Err<nom::err
 fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
     let tree0 = tree.borrow();
     let new_node: Option<AstNodeType> = match tree0.node.clone() {
+        AstNodeType::I1Number(_) => None,
         AstNodeType::I64Number(_) => None,
         AstNodeType::Variable(_) => None,
         AstNodeType::BinaryOp(BinaryOp{lhs, rhs, op}) => {
@@ -495,16 +491,25 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
             ast_const_fold(rhs.clone());
             match (lhs.borrow().node.clone(), rhs.borrow().node.clone()) {
                 (AstNodeType::I64Number(lhs), AstNodeType::I64Number(rhs)) => {
+                    use {
+                        AstNodeType::I64Number as I64,
+                        AstNodeType::I1Number as Bool,
+                    };
                     let num = match op {
-                        BinaryOpType::Add => lhs + rhs,
-                        BinaryOpType::Sub => lhs - rhs,
-                        BinaryOpType::Mul => lhs * rhs,
-                        BinaryOpType::Div => lhs / rhs,
-                        BinaryOpType::Mod => lhs % rhs,
-                        BinaryOpType::Ne => i64::from(lhs != rhs),
+                        BinaryOpType::Add => I64(lhs + rhs),
+                        BinaryOpType::Sub => I64(lhs - rhs),
+                        BinaryOpType::Mul => I64(lhs * rhs),
+                        BinaryOpType::Div => I64(lhs / rhs),
+                        BinaryOpType::Mod => I64(lhs % rhs),
+                        BinaryOpType::Ne => Bool(lhs != rhs),
+                        BinaryOpType::Eq => Bool(lhs == rhs),
+                        BinaryOpType::Lt => Bool(lhs < rhs),
+                        BinaryOpType::Le => Bool(lhs <= rhs),
+                        BinaryOpType::Gt => Bool(lhs > rhs),
+                        BinaryOpType::Ge => Bool(lhs >= rhs),
                         BinaryOpType::Assign => return,
                     };
-                    Some(AstNodeType::I64Number(num))
+                    Some(num)
                 },
                 _ => None,
             }

@@ -111,6 +111,12 @@ fn word(input: &str) -> IResult<&str, Token> {
 fn punctuation(input: &str) -> IResult<&str, Token> {
     map(
         alt((
+            tag("<="),
+            tag(">="),
+            tag("=="),
+            tag("!="),
+            tag("<"),
+            tag(">"),
             tag(";"),
             tag(","),
             tag("+"),

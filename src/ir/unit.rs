@@ -177,7 +177,12 @@ impl TransUnit {
                 let lhs = self.values.get(lhs).unwrap();
                 lhs.ty()
             },
-            BinaryOpType::Ne => Type::i1_type(),
+            BinaryOpType::Ne |
+            BinaryOpType::Eq |
+            BinaryOpType::Lt |
+            BinaryOpType::Le |  
+            BinaryOpType::Gt |
+            BinaryOpType::Ge => Type::i1_type(),
         };
         let inst = BinaryInst {
             lhs,

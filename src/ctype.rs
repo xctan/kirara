@@ -106,6 +106,11 @@ pub enum BinaryOpType {
     Div,
     Mod,
     Ne,
+    Eq,
+    Lt,
+    Le,
+    Gt,
+    Ge,
     Assign,
 }
 
@@ -118,6 +123,11 @@ impl Display for BinaryOpType {
             BinaryOpType::Div => "sdiv",
             BinaryOpType::Mod => "srem",
             BinaryOpType::Ne => "icmp ne",
+            BinaryOpType::Eq => "icmp eq",
+            BinaryOpType::Lt => "icmp slt",
+            BinaryOpType::Le => "icmp sle",
+            BinaryOpType::Gt => "icmp sgt",
+            BinaryOpType::Ge => "icmp sge",
             BinaryOpType::Assign => unreachable!(),
         };
         write!(f, "{}", s)

@@ -1,12 +1,17 @@
-use std::{cell::RefCell, rc::{Rc, Weak}, collections::HashMap};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    rc::{Rc, Weak},
+};
 
 use id_arena::{Arena, Id};
 
 pub type ObjectId = Id<AstObject>;
 
 use crate::{
+    ctype::{BinaryOpType, Type},
+    ir::value::ValueId,
     token::TokenRange,
-    ctype::{BinaryOpType, Type}, ir::value::ValueId,
 };
 
 #[derive(Debug, Clone)]
@@ -19,6 +24,7 @@ pub struct BinaryOp {
 #[derive(Debug, Clone)]
 pub enum AstNodeType {
     Unit,
+    I1Number(bool),
     I64Number(i64),
     Variable(ObjectId),
     BinaryOp(BinaryOp),
@@ -39,7 +45,62 @@ pub struct IfStmt {
 pub struct AstNode {
     pub node: AstNodeType,
     pub token: TokenRange,
-    // ty: Type,
+    pub ty: Weak<Type>,
+}
+
+impl AstNode {
+    pub fn new(node: AstNodeType, token: TokenRange) -> Self {
+        Self {
+            node,
+            token,
+            ty: Weak::new(),
+        }
+    }
+
+    pub fn binary(
+        lhs: Rc<RefCell<AstNode>>,
+        rhs: Rc<RefCell<AstNode>>,
+        op: BinaryOpType,
+        token: TokenRange,
+    ) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op }), token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn expr_stmt(expr: Rc<RefCell<Self>>, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::ExprStmt(expr), token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn unit(token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::Unit, token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn ret(expr: Rc<RefCell<Self>>, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::Return(expr), token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn variable(id: ObjectId, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::Variable(id), token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn block(stmts: Vec<Rc<RefCell<Self>>>, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::Block(stmts), token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn r#if(
+        cond: Rc<RefCell<Self>>,
+        then: Rc<RefCell<Self>>,
+        els: Option<Rc<RefCell<Self>>>,
+        token: TokenRange,
+    ) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::IfStmt(IfStmt { cond, then, els }), token);
+        Rc::new(RefCell::new(node))
+    }
 }
 
 #[derive(Debug)]
@@ -134,29 +195,27 @@ impl AstContext {
 
     pub fn new_local_var(&mut self, name: &str, ty: Weak<Type>) -> ObjectId {
         let name = name.to_string();
-        let obj = AstObject::new(
-            name.clone(),
-            ty,
-            true,
-            AstObjectType::Var,
-        );
+        let obj = AstObject::new(name.clone(), ty, true, AstObjectType::Var);
         let id = self.objects.alloc(obj);
         self.locals.push(id);
-        self.scopes.last_mut().unwrap().vars.insert(name, ScopeVar::Var(id));
+        self.scopes
+            .last_mut()
+            .unwrap()
+            .vars
+            .insert(name, ScopeVar::Var(id));
         id
     }
 
     pub fn new_global_var(&mut self, name: &str, ty: Weak<Type>) -> ObjectId {
         let name = name.to_string();
-        let obj = AstObject::new(
-            name.clone(),
-            ty,
-            false,
-            AstObjectType::Var,
-        );
+        let obj = AstObject::new(name.clone(), ty, false, AstObjectType::Var);
         let id = self.objects.alloc(obj);
         self.globals.push(id);
-        self.scopes.first_mut().unwrap().vars.insert(name, ScopeVar::Var(id));
+        self.scopes
+            .first_mut()
+            .unwrap()
+            .vars
+            .insert(name, ScopeVar::Var(id));
         id
     }
 
