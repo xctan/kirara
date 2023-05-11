@@ -22,12 +22,20 @@ pub struct BinaryOp {
 }
 
 #[derive(Debug, Clone)]
+pub struct Convert {
+    pub from: Rc<RefCell<AstNode>>,
+    pub to: Weak<Type>,
+}
+
+#[derive(Debug, Clone)]
 pub enum AstNodeType {
     Unit,
     I1Number(bool),
+    I32Number(i32),
     I64Number(i64),
     Variable(ObjectId),
     BinaryOp(BinaryOp),
+    Convert(Convert),
     Block(Vec<Rc<RefCell<AstNode>>>),
     ExprStmt(Rc<RefCell<AstNode>>),
     Return(Rc<RefCell<AstNode>>),
@@ -38,10 +46,10 @@ pub enum AstNodeType {
 pub struct IfStmt {
     pub cond: Rc<RefCell<AstNode>>,
     pub then: Rc<RefCell<AstNode>>,
-    pub els: Option<Rc<RefCell<AstNode>>>,
+    pub els: Rc<RefCell<AstNode>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AstNode {
     pub node: AstNodeType,
     pub token: TokenRange,
@@ -55,6 +63,21 @@ impl AstNode {
             token,
             ty: Weak::new(),
         }
+    }
+
+    pub fn i32_number(val: i32, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::I32Number(val), token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn i64_number(val: i64, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::I64Number(val), token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn convert(from: Rc<RefCell<Self>>, to: Weak<Type>, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::Convert(Convert { from, to }), token);
+        Rc::new(RefCell::new(node))
     }
 
     pub fn binary(
@@ -77,6 +100,10 @@ impl AstNode {
         Rc::new(RefCell::new(node))
     }
 
+    pub fn is_unit(&self) -> bool {
+        matches!(self.node, AstNodeType::Unit)
+    }
+
     pub fn ret(expr: Rc<RefCell<Self>>, token: TokenRange) -> Rc<RefCell<Self>> {
         let node = Self::new(AstNodeType::Return(expr), token);
         Rc::new(RefCell::new(node))
@@ -95,7 +122,7 @@ impl AstNode {
     pub fn r#if(
         cond: Rc<RefCell<Self>>,
         then: Rc<RefCell<Self>>,
-        els: Option<Rc<RefCell<Self>>>,
+        els: Rc<RefCell<Self>>,
         token: TokenRange,
     ) -> Rc<RefCell<Self>> {
         let node = Self::new(AstNodeType::IfStmt(IfStmt { cond, then, els }), token);

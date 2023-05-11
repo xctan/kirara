@@ -69,6 +69,12 @@ impl TransUnit {
                                 let succ = self.blocks.get(insn.succ).unwrap();
                                 println!("br label %{}", succ.name);
                             }
+                            InstructionValue::Zext(ref insn) => {
+                                print!("{} = zext {} ", insn.name, arena.get(insn.value).unwrap().ty().get());
+                                self.print_value(insn.value);
+                                print!(" to {}", insn.ty.get());
+                                println!();
+                            }
                         }
                     }
                     ValueType::Constant(_) => unimplemented!(),

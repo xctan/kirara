@@ -1,17 +1,21 @@
-use std::{fmt::Display, rc::{Rc, Weak}};
+use std::{fmt::{Display, Debug}, rc::{Rc, Weak}, cell::RefCell};
 
 #[derive(Debug, Clone)]
 pub enum Type {
     Void,
     I1,
     I32,
+    I64,
     Ptr(Weak<Type>),
 }
 
 thread_local! {
+    static TYPES: RefCell<Vec<Rc<Type>>> = RefCell::new(vec![]);
+
     static VOID_TYPE: Rc<Type> = Rc::new(Type::Void);
-    static I32_TYPE: Rc<Type> = Rc::new(Type::I32);
     static I1_TYPE: Rc<Type> = Rc::new(Type::I1);
+    static I32_TYPE: Rc<Type> = Rc::new(Type::I32);
+    static I64_TYPE: Rc<Type> = Rc::new(Type::I64);
 }
 
 impl Type {
@@ -20,6 +24,7 @@ impl Type {
             Type::Void => 0,
             Type::I1 => 1,
             Type::I32 => 4,
+            Type::I64 => 8,
             Type::Ptr(_) => 8,
         }
     }
@@ -29,6 +34,7 @@ impl Type {
             Type::Void => 0,
             Type::I1 => 1,
             Type::I32 => 4,
+            Type::I64 => 8,
             Type::Ptr(_) => 8,
         }
     }
@@ -48,12 +54,49 @@ impl Type {
         VOID_TYPE.with(|t| Rc::downgrade(t))
     }
 
+    pub fn i1_type() -> Weak<Type> {
+        I1_TYPE.with(|t| Rc::downgrade(t))
+    }
+
     pub fn i32_type() -> Weak<Type> {
         I32_TYPE.with(|t| Rc::downgrade(t))
     }
 
-    pub fn i1_type() -> Weak<Type> {
-        I1_TYPE.with(|t| Rc::downgrade(t))
+    pub fn i64_type() -> Weak<Type> {
+        I64_TYPE.with(|t| Rc::downgrade(t))
+    }
+
+    pub fn ptr_to(ty: Weak<Type>) -> Weak<Type> {
+        let ty = Rc::new(Type::Ptr(ty));
+        TYPES.with(|t| t.borrow_mut().push(ty.clone()));
+        Rc::downgrade(&ty)
+    }
+
+    pub fn get_common_type(mut a: Weak<Type>, mut b: Weak<Type>) -> Weak<Type> {
+        // todo: a is arr or ptr
+
+        // todo: func ptr
+
+        // todo: float types
+
+        if a.get().size() < 4 {
+            a = Type::i32_type();
+        }
+        if b.get().size() < 4 {
+            b = Type::i32_type();
+        }
+
+        if a.get().size() != b.get().size() {
+            return if a.get().size() > b.get().size() {
+                a
+            } else {
+                b
+            };
+        }
+
+        // todo: unsigned type
+        
+        a
     }
 }
 
@@ -63,7 +106,11 @@ impl Display for Type {
             Type::Void => "void",
             Type::I1 => "i1",
             Type::I32 => "i32",
-            Type::Ptr(_) => "i32*",
+            Type::I64 => "i64",
+            Type::Ptr(p) => {
+                write!(f, "{}", p.get().base_type().get());
+                "*"
+            },
         };
         write!(f, "{}", s)
     }
@@ -80,13 +127,13 @@ impl TypePtrHelper for Weak<Type> {
 }
 
 pub trait TypePtrCompare {
-    fn same_as(self, other: Self) -> bool;
+    fn is_same_as(&self, other: &Self) -> bool;
 }
 
 impl TypePtrCompare for Weak<Type> {
-    fn same_as(self, other: Self) -> bool {
+    fn is_same_as(&self, other: &Self) -> bool {
         if self.get().is_ptr() && other.get().is_ptr() {
-            self.get().base_type().same_as(other.get().base_type())
+            self.get().base_type().is_same_as(&other.get().base_type())
         } else {
             matches!(
                 (&*self.get(), &*other.get()), 

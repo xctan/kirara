@@ -130,6 +130,7 @@ pub enum InstructionValue {
     Return(ReturnInst),
     Branch(BranchInst),
     Jump(JumpInst),
+    Zext(ZextInst),
 }
 
 impl_value_trait!{InstructionValue{
@@ -140,6 +141,7 @@ impl_value_trait!{InstructionValue{
     Return,
     Branch,
     Jump,
+    Zext,
 }}
 
 #[derive(Debug, Clone)]
@@ -200,3 +202,13 @@ pub struct JumpInst {
 }
 
 impl ValueTrait for JumpInst {}
+
+#[derive(Debug, Clone)]
+pub struct ZextInst {
+    pub value: ValueId,
+    pub from: Weak<Type>,
+    pub ty: Weak<Type>,
+    pub name: String,
+}
+
+impl_value_trait!(ZextInst);

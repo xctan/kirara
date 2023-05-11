@@ -1,7 +1,7 @@
 use std::{rc::Rc, cell::RefCell};
 
 use super::{unit::{TransUnit, LocalInstExt}, value::ValueId};
-use crate::{ast::*, ctype::{BinaryOpType, TypePtrCompare, Type}, ir::value::ValueTrait};
+use crate::{ast::*, ctype::{BinaryOpType, TypePtrHelper, Type}};
 
 pub trait EmitIr {
     fn emit_ir(&self, unit: &mut TransUnit, ctx: &mut AstContext);
@@ -48,23 +48,14 @@ impl EmitIr for AstNode {
             AstNodeType::Unit => (),
             AstNodeType::IfStmt(ifs) => {
                 let cond = ifs.cond.emit_ir_expr(unit, ctx);
-                let cond_val = unit.values.get(cond).unwrap();
-                let cond_checked = if cond_val.ty().same_as(Type::i1_type()) {
-                    cond
-                } else if cond_val.ty().same_as(Type::i32_type()) {
-                    let zero = unit.const_i32(0);
-                    unit.binary(BinaryOpType::Ne, cond, zero).push()
-                } else {
-                    panic!("invalid type for if condition");
-                };
                 let root = unit.cur_bb;
                 unit.start_new_bb();
                 ifs.then.emit_ir(unit, ctx);
                 let succ = unit.cur_bb; // last bb of then ext bb
                 let fail = unit.start_new_bb();
-                unit.branch(cond_checked, succ, fail).push_to(root);
-                if let Some(els) = &ifs.els {
-                    els.emit_ir(unit, ctx);
+                unit.branch(cond, succ, fail).push_to(root);
+                if !&ifs.els.borrow().is_unit() {
+                    ifs.els.emit_ir(unit, ctx);
                     let fail_last = unit.cur_bb;
                     let finally = unit.start_new_bb();
                     unit.jump(finally).push_to(succ);
@@ -91,9 +82,22 @@ trait EmitIrExpr {
 impl EmitIrExpr for AstNodeType {
     fn emit_ir_expr(&self, unit: &mut TransUnit, ctx: &mut AstContext) -> ValueId {
         match self {
-            AstNodeType::ExprStmt(expr) => expr.emit_ir_expr(unit, ctx),
-            AstNodeType::I64Number(num) => {
-                unit.const_i32(*num as i32)
+            AstNodeType::I32Number(num) => {
+                unit.const_i32(*num)
+            }
+            AstNodeType::Convert(Convert { from, to }) => {
+                let from_id = from.emit_ir_expr(unit, ctx);
+                let to = to.upgrade().unwrap();
+                match ((*from.borrow().ty.get()).clone(), (*to).clone()) {
+                    (Type::I32, Type::I1) => {
+                        let zero = unit.const_i32(0);
+                        unit.binary(BinaryOpType::Ne, from_id, zero).push()
+                    },
+                    (Type::I1, Type::I32) => {
+                        unit.zext(from_id, Type::i32_type()).push()
+                    },
+                    _ => unimplemented!(),
+                }
             }
             AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op }) => {
                 if matches!(op, &BinaryOpType::Assign) {

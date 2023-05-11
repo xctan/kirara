@@ -224,6 +224,22 @@ impl TransUnit {
         let id = self.values.alloc(val);
         (self, id)
     }
+
+    pub fn zext(&mut self, value: ValueId, ty: Weak<Type>) -> (&mut Self, ValueId) {
+        let from = self.values.get(value).unwrap().ty();
+        let inst = ZextInst {
+            name: self.gen_local_name(),
+            value,
+            ty,
+            from,
+        };
+        let val = ValueType::Instruction(InstructionValue::Zext(inst));
+        let val = Value::new(val);
+        let id = self.values.alloc(val);
+        let value = self.values.get_mut(value).unwrap();
+        value.used_by.insert(id);
+        (self, id)
+    }
 }
 
 pub trait LocalInstExt {
