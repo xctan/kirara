@@ -1,4 +1,4 @@
-use std::{collections::HashSet, rc::Weak};
+use std::rc::Weak;
 
 use id_arena::{Arena, Id};
 
@@ -263,6 +263,10 @@ impl BasicBlock {
         }
     }
 
+    #[allow(unused)]
+    pub fn is_empty(&self) -> bool {
+        self.insts_start.is_none()
+    }
 }
 
 pub type BlockId = Id<BasicBlock>;

@@ -45,6 +45,7 @@ impl EmitIr for AstNode {
                     stmt.emit_ir(unit, ctx);
                 }
             },
+            AstNodeType::Unit => (),
             AstNodeType::IfStmt(ifs) => {
                 let cond = ifs.cond.emit_ir_expr(unit, ctx);
                 let cond_val = unit.values.get(cond).unwrap();
@@ -57,15 +58,17 @@ impl EmitIr for AstNode {
                     panic!("invalid type for if condition");
                 };
                 let root = unit.cur_bb;
-                let succ = unit.start_new_bb();
+                unit.start_new_bb();
                 ifs.then.emit_ir(unit, ctx);
+                let succ = unit.cur_bb; // last bb of then ext bb
                 let fail = unit.start_new_bb();
                 unit.branch(cond_checked, succ, fail).push_to(root);
                 if let Some(els) = &ifs.els {
                     els.emit_ir(unit, ctx);
+                    let fail_last = unit.cur_bb;
                     let finally = unit.start_new_bb();
                     unit.jump(finally).push_to(succ);
-                    unit.jump(finally).push_to(fail);
+                    unit.jump(finally).push_to(fail_last);
                 } else {
                     unit.jump(fail).push_to(succ);
                 }
