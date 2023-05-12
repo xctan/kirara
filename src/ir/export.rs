@@ -11,7 +11,16 @@ impl TransUnit {
         for bb in &self.bbs {
             let bb = *bb;
             let bb0 = self.blocks.get(bb).unwrap();
-            println!("{}:", bb0.name);
+            print!("{}:", bb0.name);
+            bb0.preds.iter().enumerate().for_each(|(idx, bb)| {
+                if idx == 0 {
+                    print!("                                  ; preds: ");
+                } else {
+                    print!(", ");
+                }
+                print!("%{}", self.blocks.get(*bb).unwrap().name);
+            });
+            println!();
             let mut insts = bb0.insts_start;
             while let Some(inst) = insts {
                 print!("  ");

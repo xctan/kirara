@@ -48,22 +48,30 @@ impl EmitIr for AstNode {
             AstNodeType::Unit => (),
             AstNodeType::IfStmt(ifs) => {
                 let cond = ifs.cond.emit_ir_expr(unit, ctx);
-                let root = unit.cur_bb;
-                unit.start_new_bb();
+                let (root, _) = unit.start_new_bb();
                 ifs.then.emit_ir(unit, ctx);
-                let succ = unit.cur_bb; // last bb of then ext bb
-                let fail = unit.start_new_bb();
+                // succ: get last bb of then ext bb
+                let (succ, fail) = unit.start_new_bb();
                 unit.branch(cond, succ, fail).push_to(root);
                 if !&ifs.els.borrow().is_unit() {
                     ifs.els.emit_ir(unit, ctx);
-                    let fail_last = unit.cur_bb;
-                    let finally = unit.start_new_bb();
+                    let (fail_last, finally) = unit.start_new_bb();
                     unit.jump(finally).push_to(succ);
                     unit.jump(finally).push_to(fail_last);
                 } else {
                     unit.jump(fail).push_to(succ);
                 }
             },
+            AstNodeType::WhileStmt(whiles) => {
+                let (root, test) = unit.start_new_bb();
+                unit.jump(test).push_to(root);
+                let cond = whiles.cond.emit_ir_expr(unit, ctx);
+                let (test_last, body) = unit.start_new_bb();
+                whiles.body.emit_ir(unit, ctx);
+                let (body_last, fail) = unit.start_new_bb();
+                unit.jump(test).push_to(body_last);
+                unit.branch(cond, body, fail).push_to(test_last);
+            }
             _ => unimplemented!(),
         }
     }

@@ -40,6 +40,7 @@ pub enum AstNodeType {
     ExprStmt(Rc<RefCell<AstNode>>),
     Return(Rc<RefCell<AstNode>>),
     IfStmt(IfStmt),
+    WhileStmt(WhileStmt),
 }
 
 #[derive(Debug, Clone)]
@@ -47,6 +48,12 @@ pub struct IfStmt {
     pub cond: Rc<RefCell<AstNode>>,
     pub then: Rc<RefCell<AstNode>>,
     pub els: Rc<RefCell<AstNode>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WhileStmt {
+    pub cond: Rc<RefCell<AstNode>>,
+    pub body: Rc<RefCell<AstNode>>,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +133,11 @@ impl AstNode {
         token: TokenRange,
     ) -> Rc<RefCell<Self>> {
         let node = Self::new(AstNodeType::IfStmt(IfStmt { cond, then, els }), token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn r#while(cond: Rc<RefCell<Self>>, body: Rc<RefCell<Self>>, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::WhileStmt(WhileStmt { cond, body }), token);
         Rc::new(RefCell::new(node))
     }
 }

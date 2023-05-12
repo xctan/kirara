@@ -83,6 +83,7 @@ fn keyword(input: &str) -> IResult<&str, Token> {
                 tag("int"),
                 tag("if"),
                 tag("else"),
+                tag("while"),
             )),
             not(
                 alt((

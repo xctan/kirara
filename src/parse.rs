@@ -417,6 +417,7 @@ fn statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     alt((
         return_statement,
         if_statement,
+        while_statement,
         compound_statement,
         expression_statement,
     ))(cursor)
@@ -460,6 +461,22 @@ fn if_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
                 let token = range_between(&k_if.as_range(), &stmt.borrow().token);
                 AstNode::r#if(exp, stmt, AstNode::unit(token.clone()), token)
             }
+        }
+    )(cursor)
+}
+
+fn while_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // "while" "(" expression ")" statement
+    map(
+        tuple((
+            ttag!(K("while")),
+            ttag!(P("(")),
+            expression,
+            ttag!(P(")")),
+            statement)),
+        |(k_while, _, exp, _, stmt)| {
+            let token = range_between(&k_while.as_range(), &stmt.borrow().token);
+            AstNode::r#while(exp, stmt, token)
         }
     )(cursor)
 }
@@ -559,6 +576,11 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
             }
             None
         },
+        AstNodeType::WhileStmt(ref whiles) => {
+            ast_const_fold(whiles.cond.clone());
+            ast_const_fold(whiles.body.clone());
+            None
+        },
     };
     drop(tree0);
 
@@ -642,6 +664,15 @@ fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             if !ifs.els.borrow().is_unit() {
                 ast_type_check(ifs.els);
             }
+            Type::void_type()
+        },
+        AstNodeType::WhileStmt(whiles) => {
+            ast_type_check(whiles.cond.clone());
+            let cond_new = ast_gen_convert(whiles.cond.clone(), Type::i1_type());
+            let mut cond_mut = whiles.cond.borrow_mut();
+            cond_mut.node = cond_new;
+            cond_mut.ty = Type::i1_type();
+            ast_type_check(whiles.body.clone());
             Type::void_type()
         },
     };

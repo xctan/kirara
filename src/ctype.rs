@@ -108,7 +108,7 @@ impl Display for Type {
             Type::I32 => "i32",
             Type::I64 => "i64",
             Type::Ptr(p) => {
-                write!(f, "{}", p.get().base_type().get());
+                write!(f, "{}", p.get().base_type().get())?;
                 "*"
             },
         };

@@ -49,16 +49,30 @@ impl TransUnit {
         name
     }
 
-    pub fn start_new_bb(&mut self) -> BlockId {
+    pub fn start_new_bb(&mut self) -> (BlockId, BlockId) {
+        let old = self.cur_bb;
         let name = format!("{}", self.count());
         let bb = self.blocks.alloc(BasicBlock::new(name));
         self.bbs.push(bb);
         self.cur_bb = bb;
-        bb
+        (old, bb)
     }
 
     // insert at end of bb
     pub fn push_at(&mut self, bb: BlockId, value: ValueId) {
+        // track preds of bb
+        let val = self.values.get(value).unwrap().clone();
+        match val.value {
+            ValueType::Instruction(InstructionValue::Branch(ref br)) => {
+                self.add_predecessor(br.succ, bb);
+                self.add_predecessor(br.fail, bb);
+            },
+            ValueType::Instruction(InstructionValue::Jump(ref jmp)) => {
+                self.add_predecessor(jmp.succ, bb);
+            },
+            _ => (),
+        }
+
         let bb = self.blocks.get_mut(bb).unwrap();
         match (bb.insts_start, bb.insts_end) {
             (None, None) => {
@@ -103,6 +117,16 @@ impl TransUnit {
         self.insert_at(self.cur_bb, value, before);
     }
 
+    pub fn add_used_by(&mut self, value: ValueId, user: ValueId) {
+        let value = self.values.get_mut(value).unwrap();
+        value.used_by.insert(user);
+    }
+
+    pub fn add_predecessor(&mut self, bb: BlockId, pred: BlockId) {
+        let bb = self.blocks.get_mut(bb).unwrap();
+        bb.preds.push(pred);
+    }
+
     // global value builders
     pub fn const_i32(&mut self, val: i32) -> ValueId {
         let val = ConstantValue::I32(val);
@@ -131,8 +155,7 @@ impl TransUnit {
         let val = Value::new(val);
         let id = self.values.alloc(val);
         if let Some(value) = value {
-            let value = self.values.get_mut(value).unwrap();
-            value.used_by.insert(id);
+            self.add_used_by(value, id);
         }
         (self, id)
     }
@@ -145,8 +168,7 @@ impl TransUnit {
         let val = ValueType::Instruction(InstructionValue::Store(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
-        let value = self.values.get_mut(value).unwrap();
-        value.used_by.insert(id);
+        self.add_used_by(value, id);
         (self, id)
     }
 
@@ -161,8 +183,7 @@ impl TransUnit {
         let val = ValueType::Instruction(InstructionValue::Load(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
-        let ptr_val = self.values.get_mut(ptr).unwrap();
-        ptr_val.used_by.insert(id);
+        self.add_used_by(ptr, id);
         (self, id)
     }
 
@@ -194,10 +215,8 @@ impl TransUnit {
         let val = ValueType::Instruction(InstructionValue::Binary(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
-        let lhs = self.values.get_mut(lhs).unwrap();
-        lhs.used_by.insert(id);
-        let rhs = self.values.get_mut(rhs).unwrap();
-        rhs.used_by.insert(id);
+        self.add_used_by(lhs, id);
+        self.add_used_by(rhs, id);
         (self, id)
     }
 
@@ -210,8 +229,7 @@ impl TransUnit {
         let val = ValueType::Instruction(InstructionValue::Branch(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
-        let cond = self.values.get_mut(cond).unwrap();
-        cond.used_by.insert(id);
+        self.add_used_by(cond, id);
         (self, id)
     }
 
@@ -236,8 +254,7 @@ impl TransUnit {
         let val = ValueType::Instruction(InstructionValue::Zext(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
-        let value = self.values.get_mut(value).unwrap();
-        value.used_by.insert(id);
+       self.add_used_by(value, id);
         (self, id)
     }
 }
@@ -266,7 +283,7 @@ impl LocalInstExt for (&mut TransUnit, ValueId) {
 pub struct BasicBlock {
     pub name: String,
 
-    // pred
+    pub preds: Vec<BlockId>,
     // idom
     // dom_by
     // doms
@@ -279,6 +296,7 @@ impl BasicBlock {
     pub fn new(name: String) -> Self {
         Self {
             name,
+            preds: Vec::new(),
             insts_start: None,
             insts_end: None,
         }
