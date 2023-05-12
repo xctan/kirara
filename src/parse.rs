@@ -242,10 +242,11 @@ fn return_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>
             ttag!(P(";")))),
         |(r, expr, p)| {
             if let Some(expr) = expr {
-                let token = range_between(&r.as_range(), &expr.borrow().token);
+                let token = range_between(&r.as_range(), &p.as_range());
                 AstNode::ret(expr, token)
             } else {
-                AstNode::ret(AstNode::unit(r.as_range()), r.as_range())
+                let token = range_between(&r.as_range(), &p.as_range());
+                AstNode::ret(AstNode::unit(r.as_range()), token)
             }
         }
     )(cursor)
