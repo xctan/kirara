@@ -1,4 +1,4 @@
-use std::rc::Weak;
+use std::{rc::Weak, collections::HashMap};
 
 use id_arena::{Arena, Id};
 
@@ -11,6 +11,7 @@ pub struct TransUnit {
     /// global value allocator
     pub values: Arena<Value>,
     pub blocks: Arena<BasicBlock>,
+    pub inst_bb: HashMap<ValueId, BlockId>,
     // global variable defs
     // funcs
 
@@ -31,6 +32,7 @@ impl TransUnit {
         Self {
             values: Arena::new(),
             blocks: bb_arena,
+            inst_bb: HashMap::new(),
             cur_bb: entry_bb,
             entry_bb,
             bbs: vec![entry_bb],
@@ -60,20 +62,23 @@ impl TransUnit {
     }
 
     // insert at end of bb
-    pub fn push_at(&mut self, bb: BlockId, value: ValueId) {
+    pub fn push_at(&mut self, bb: BlockId, value: ValueId, track: bool) {
         // track preds of bb
-        let val = self.values.get(value).unwrap().clone();
-        match val.value {
-            ValueType::Instruction(InstructionValue::Branch(ref br)) => {
-                self.add_predecessor(br.succ, bb);
-                self.add_predecessor(br.fail, bb);
-            },
-            ValueType::Instruction(InstructionValue::Jump(ref jmp)) => {
-                self.add_predecessor(jmp.succ, bb);
-            },
-            _ => (),
+        if track {
+            let val = self.values.get(value).unwrap().clone();
+            match val.value {
+                ValueType::Instruction(InstructionValue::Branch(ref br)) => {
+                    self.add_predecessor(br.succ, bb);
+                    self.add_predecessor(br.fail, bb);
+                },
+                ValueType::Instruction(InstructionValue::Jump(ref jmp)) => {
+                    self.add_predecessor(jmp.succ, bb);
+                },
+                _ => (),
+            }
         }
 
+        self.inst_bb.insert(value, bb);
         let bb = self.blocks.get_mut(bb).unwrap();
         match (bb.insts_start, bb.insts_end) {
             (None, None) => {
@@ -93,6 +98,7 @@ impl TransUnit {
 
     // insert before some inst in bb
     pub fn insert_at(&mut self, bb: BlockId, value: ValueId, before: ValueId) {
+        self.inst_bb.insert(value, bb);
         let that = self.values.get(before).unwrap();
         let prev = that.prev;
         let this = self.values.get_mut(value).unwrap();
@@ -110,7 +116,7 @@ impl TransUnit {
     }
 
     pub fn push(&mut self, value: ValueId) {
-        self.push_at(self.cur_bb, value);
+        self.push_at(self.cur_bb, value, true);
     }
 
     #[allow(unused)]
@@ -289,6 +295,8 @@ impl TransUnit {
 pub trait LocalInstExt {
     fn push(self) -> ValueId;
 
+    fn push_only(self) -> ValueId;
+
     fn push_to(self, at: BlockId) -> ValueId;
 }
 
@@ -299,9 +307,15 @@ impl LocalInstExt for (&mut TransUnit, ValueId) {
         value
     }
 
+    fn push_only(self) -> ValueId {
+        let (unit, value) = self;
+        unit.push_at(unit.cur_bb, value, false);
+        value
+    }
+
     fn push_to(self, at: BlockId) -> ValueId {
         let (unit, value) = self;
-        unit.push_at(at, value);
+        unit.push_at(at, value, true);
         value
     }
 }
