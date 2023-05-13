@@ -192,13 +192,53 @@ fn equality(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     )(cursor)
 }
 
-
-fn assignment(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
-    // conditional ( '=' assignment )?
-    // use equality as conditional temporarily
+fn logical_and(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // bitwise_or ( "&&" bitwise_or )*
+    // use equality as bitwise_or temporarily
     map(
         tuple((
             equality,
+            many0(
+                tuple((
+                    ttag!(P("&&")),
+                    equality))))),
+        |(first, others)| {
+            let mut node = first;
+            for (_, other) in others {
+                let token = range_between(&node.borrow().token, &other.borrow().token);
+                node = AstNode::binary(node, other, BinaryOpType::LogAnd, token);
+            }
+            node
+        }
+    )(cursor)
+}
+
+fn logical_or(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // logical_and ( "||" logical_and )*
+    map(
+        tuple((
+            logical_and,
+            many0(
+                tuple((
+                    ttag!(P("||")),
+                    logical_and))))),
+        |(first, others)| {
+            let mut node = first;
+            for (_, other) in others {
+                let token = range_between(&node.borrow().token, &other.borrow().token);
+                node = AstNode::binary(node, other, BinaryOpType::LogOr, token);
+            }
+            node
+        }
+    )(cursor)
+}
+
+fn assignment(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // conditional ( '=' assignment )?
+    // use logical_or as conditional temporarily
+    map(
+        tuple((
+            logical_or,
             opt(tuple((
                 ttag!(P("=")),
                 assignment))))),
@@ -265,7 +305,7 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Weak<Type>> {
             let mut counter = 0;
 
             for d in decl {
-                match d.0[0].0 {
+                match d.as_str() {
                     "void" => counter += VOID,
                     "int" => counter += INT,
                     _ => unreachable!(),
@@ -526,14 +566,14 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
             }
         }
         AstNodeType::BinaryOp(BinaryOp{lhs, rhs, op}) => {
+            use {
+                AstNodeType::I32Number as Int,
+                AstNodeType::I1Number as Bool,
+            };
             ast_const_fold(lhs.clone());
             ast_const_fold(rhs.clone());
             match (lhs.borrow().node.clone(), rhs.borrow().node.clone()) {
                 (AstNodeType::I32Number(lhs), AstNodeType::I32Number(rhs)) => {
-                    use {
-                        AstNodeType::I32Number as Int,
-                        AstNodeType::I1Number as Bool,
-                    };
                     let num = match op {
                         BinaryOpType::Add => Int(lhs + rhs),
                         BinaryOpType::Sub => Int(lhs - rhs),
@@ -546,10 +586,18 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
                         BinaryOpType::Le => Bool(lhs <= rhs),
                         BinaryOpType::Gt => Bool(lhs > rhs),
                         BinaryOpType::Ge => Bool(lhs >= rhs),
-                        BinaryOpType::Assign => return,
+                        _ => unreachable!(),
                     };
                     Some(num)
                 },
+                (AstNodeType::I1Number(lhs), AstNodeType::I1Number(rhs)) => {
+                    let num = match op {
+                        BinaryOpType::LogAnd => Bool(lhs && rhs),
+                        BinaryOpType::LogOr => Bool(lhs || rhs),
+                        _ => unreachable!(),
+                    };
+                    Some(num)
+                }
                 _ => None,
             }
         },
@@ -604,10 +652,13 @@ fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op }) => {
             ast_type_check(lhs.clone());
             ast_type_check(rhs.clone());
-            let common_ty = Type::get_common_type(
-                lhs.borrow().ty.clone(),
-                rhs.borrow().ty.clone(),
-            );
+            let common_ty = match op {
+                BinaryOpType::LogAnd | BinaryOpType::LogOr => Type::i1_type(),
+                _ => Type::get_common_type(
+                    lhs.borrow().ty.clone(),
+                    rhs.borrow().ty.clone(),
+                )
+            };
             let lhs_new = ast_gen_convert(lhs.clone(), common_ty.clone());
             let mut lhs_mut = lhs.borrow_mut();
             lhs_mut.node = lhs_new;
@@ -637,6 +688,8 @@ fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
                         panic!("type mismatch");
                     }
                 },
+                BinaryOpType::LogAnd => Type::i1_type(),
+                BinaryOpType::LogOr => Type::i1_type(),
             }
         },
         AstNodeType::Return(expr) => {

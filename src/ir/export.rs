@@ -84,6 +84,18 @@ impl TransUnit {
                                 print!(" to {}", insn.ty.get());
                                 println!();
                             }
+                            InstructionValue::Phi(ref insn) => {
+                                print!("{} = phi {} ", insn.name, insn.ty.get());
+                                for (idx, &(val, bb)) in insn.args.iter().enumerate() {
+                                    if idx != 0 {
+                                        print!(", ");
+                                    }
+                                    print!("[");
+                                    self.print_value(val);
+                                    print!(", %{}]", self.blocks.get(bb).unwrap().name);
+                                }
+                                println!();
+                            }
                         }
                     }
                     ValueType::Constant(_) => unimplemented!(),
@@ -99,6 +111,7 @@ impl TransUnit {
             ValueType::Global(_) => unimplemented!(),
             ValueType::Constant(c) => {
                 match c {
+                    ConstantValue::I1(b) => print!("{}", b),
                     ConstantValue::I32(i) => print!("{}", i),
                 }
             }

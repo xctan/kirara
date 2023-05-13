@@ -49,6 +49,7 @@ impl TransUnit {
         name
     }
 
+    /// start a new bb and return old and new bb
     pub fn start_new_bb(&mut self) -> (BlockId, BlockId) {
         let old = self.cur_bb;
         let name = format!("{}", self.count());
@@ -135,6 +136,13 @@ impl TransUnit {
         self.values.alloc(val)
     }
 
+    pub fn const_i1(&mut self, val: bool) -> ValueId {
+        let val = ConstantValue::I1(val);
+        let val = ValueType::Constant(val);
+        let val = Value::new(val);
+        self.values.alloc(val)
+    }
+
     // local inst builders
     pub fn alloca(&mut self, ty: Weak<Type>) -> (&mut Self, ValueId) {
         let inst = AllocaInst {
@@ -203,7 +211,9 @@ impl TransUnit {
             BinaryOpType::Lt |
             BinaryOpType::Le |  
             BinaryOpType::Gt |
-            BinaryOpType::Ge => Type::i1_type(),
+            BinaryOpType::Ge |
+            BinaryOpType::LogAnd |
+            BinaryOpType::LogOr => Type::i1_type(),
         };
         let inst = BinaryInst {
             lhs,
@@ -255,6 +265,23 @@ impl TransUnit {
         let val = Value::new(val);
         let id = self.values.alloc(val);
        self.add_used_by(value, id);
+        (self, id)
+    }
+
+    pub fn phi(&mut self, args: Vec<(ValueId, BlockId)>) -> (&mut Self, ValueId) {
+        assert!(!args.is_empty()); // used to infer type
+        let ty = self.values.get(args[0].0).unwrap().ty();
+        let inst = PhiInst {
+            name: self.gen_local_name(),
+            ty,
+            args: args.clone(),
+        };
+        let val = ValueType::Instruction(InstructionValue::Phi(inst));
+        let val = Value::new(val);
+        let id = self.values.alloc(val);
+        for (value, _) in args {
+            self.add_used_by(value, id);
+        }
         (self, id)
     }
 }

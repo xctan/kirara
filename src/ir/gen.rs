@@ -47,6 +47,13 @@ impl EmitIr for AstNode {
             },
             AstNodeType::Unit => (),
             AstNodeType::IfStmt(ifs) => {
+                // if let AstNodeType::BinaryOp(op) = &ifs.cond.borrow().node {
+                //     let BinaryOp { lhs, rhs, op } = op;
+                //     if matches!(op, BinaryOpType::LogAnd | BinaryOpType::LogOr) {
+
+                //         return;
+                //     }
+                // }
                 let cond = ifs.cond.emit_ir_expr(unit, ctx);
                 let (root, _) = unit.start_new_bb();
                 ifs.then.emit_ir(unit, ctx);
@@ -113,6 +120,24 @@ impl EmitIrExpr for AstNodeType {
                     let rhs = rhs.emit_ir_expr(unit, ctx);
                     unit.store(rhs, lhs).push();
                     rhs
+                } else if matches!(op, &BinaryOpType::LogAnd) {
+                    let lhs = lhs.emit_ir_expr(unit, ctx);
+                    let (left, _) = unit.start_new_bb();
+                    let rhs = rhs.emit_ir_expr(unit, ctx);
+                    let (right, fini) = unit.start_new_bb();
+                    let f = unit.const_i1(false);
+                    unit.branch(lhs, right, fini).push_to(left);
+                    unit.jump(fini).push_to(right);
+                    unit.phi(vec![(f, left), (rhs, right)]).push()
+                } else if matches!(op, &BinaryOpType::LogOr) {
+                    let lhs = lhs.emit_ir_expr(unit, ctx);
+                    let (left, _) = unit.start_new_bb();
+                    let rhs = rhs.emit_ir_expr(unit, ctx);
+                    let (right, fini) = unit.start_new_bb();
+                    let t = unit.const_i1(true);
+                    unit.branch(lhs, fini, right).push_to(left);
+                    unit.jump(fini).push_to(right);
+                    unit.phi(vec![(t, left), (rhs, right)]).push()
                 } else {
                     let lhs = lhs.emit_ir_expr(unit, ctx);
                     let rhs = rhs.emit_ir_expr(unit, ctx);

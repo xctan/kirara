@@ -110,12 +110,14 @@ impl_value_trait!(GlobalValue);
 
 #[derive(Debug, Clone, Copy)]
 pub enum ConstantValue {
+    I1(bool),
     I32(i32),
 }
 
 impl ValueTrait for ConstantValue {
     fn ty(&self) -> Weak<Type> {
         match self {
+            ConstantValue::I1(_) => Type::i1_type(),
             ConstantValue::I32(_) => Type::i32_type(),
         }
     }
@@ -131,6 +133,7 @@ pub enum InstructionValue {
     Branch(BranchInst),
     Jump(JumpInst),
     Zext(ZextInst),
+    Phi(PhiInst),
 }
 
 impl_value_trait!{InstructionValue{
@@ -142,6 +145,7 @@ impl_value_trait!{InstructionValue{
     Branch,
     Jump,
     Zext,
+    Phi,
 }}
 
 #[derive(Debug, Clone)]
@@ -212,3 +216,12 @@ pub struct ZextInst {
 }
 
 impl_value_trait!(ZextInst);
+
+#[derive(Debug, Clone)]
+pub struct PhiInst {
+    pub ty: Weak<Type>,
+    pub name: String,
+    pub args: Vec<(ValueId, BlockId)>,
+}
+
+impl_value_trait!(PhiInst);

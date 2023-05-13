@@ -159,6 +159,8 @@ pub enum BinaryOpType {
     Gt,
     Ge,
     Assign,
+    LogOr,
+    LogAnd,
 }
 
 impl Display for BinaryOpType {
@@ -175,7 +177,9 @@ impl Display for BinaryOpType {
             BinaryOpType::Le => "icmp sle",
             BinaryOpType::Gt => "icmp sgt",
             BinaryOpType::Ge => "icmp sge",
-            BinaryOpType::Assign => unreachable!(),
+            BinaryOpType::Assign |
+            BinaryOpType::LogOr |
+            BinaryOpType::LogAnd => unreachable!(),
         };
         write!(f, "{}", s)
     }
