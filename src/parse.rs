@@ -325,7 +325,8 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Weak<Type>> {
 
 fn declarator((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, (Weak<Type>, TokenSpan)> {
     // "*"* ("(" declarator ")" | identifier) type_suffix
-    let mut ty = ty.clone();
+    // let mut ty = ty.clone();
+    let ty = ty.clone();
 
     let (left, _consumed) = many0_count(ttag!(P("*")))(cursor)?;
     // todo: parse pointer

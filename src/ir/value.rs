@@ -89,6 +89,7 @@ impl Value {
 
 #[derive(Debug, Clone)]
 pub enum ValueType {
+    #[allow(unused)]
     Global(GlobalValue),
     Instruction(InstructionValue),
     Constant(ConstantValue),

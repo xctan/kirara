@@ -66,6 +66,7 @@ impl Type {
         I64_TYPE.with(|t| Rc::downgrade(t))
     }
 
+    #[allow(unused)]
     pub fn ptr_to(ty: Weak<Type>) -> Weak<Type> {
         let ty = Rc::new(Type::Ptr(ty));
         TYPES.with(|t| t.borrow_mut().push(ty.clone()));
