@@ -6,7 +6,13 @@ use std::{
 
 use id_arena::{Arena, Id};
 
+pub(in crate::ast) mod context;
+pub mod parse;
+pub mod transform;
+
 pub type ObjectId = Id<AstObject>;
+pub use parse::parse;
+pub(in crate::ast) use context::*;
 
 use crate::{
     ctype::{BinaryOpType, Type},

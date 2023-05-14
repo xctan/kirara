@@ -3,12 +3,11 @@ use std::io::stdin;
 mod token;
 mod lex;
 mod ast;
-mod parse;
 mod ir;
 mod ctype;
 use crate::{
     lex::tokenize,
-    parse::parse,
+    ast::parse,
 };
 
 fn main() {
