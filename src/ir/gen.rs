@@ -47,37 +47,29 @@ impl EmitIr for AstNode {
             },
             AstNodeType::Unit => (),
             AstNodeType::IfStmt(ifs) => {
-                // if let AstNodeType::BinaryOp(op) = &ifs.cond.borrow().node {
-                //     let BinaryOp { lhs, rhs, op } = op;
-                //     if matches!(op, BinaryOpType::LogAnd | BinaryOpType::LogOr) {
-
-                //         return;
-                //     }
-                // }
-                let cond = ifs.cond.emit_ir_expr(unit, ctx);
-                let (root, _) = unit.start_new_bb();
+                let (tl, fl) = ifs.cond.emit_ir_logical(unit, ctx);
+                tl.iter().for_each(|item| item.backpatch(unit, unit.cur_bb));
                 ifs.then.emit_ir(unit, ctx);
-                // succ: get last bb of then ext bb
-                let (succ, fail) = unit.start_new_bb();
-                unit.branch(cond, succ, fail).push_to(root);
+                let (succ_last, fail) = unit.start_new_bb();
+                fl.iter().for_each(|item| item.backpatch(unit, unit.cur_bb));
                 if !&ifs.els.borrow().is_unit() {
                     ifs.els.emit_ir(unit, ctx);
                     let (fail_last, finally) = unit.start_new_bb();
-                    unit.jump(finally).push_to(succ);
+                    unit.jump(finally).push_to(succ_last);
                     unit.jump(finally).push_to(fail_last);
                 } else {
-                    unit.jump(fail).push_to(succ);
+                    unit.jump(fail).push_to(succ_last);
                 }
             },
             AstNodeType::WhileStmt(whiles) => {
                 let (root, test) = unit.start_new_bb();
                 unit.jump(test).push_to(root);
-                let cond = whiles.cond.emit_ir_expr(unit, ctx);
-                let (test_last, body) = unit.start_new_bb();
+                let (tl, fl) = whiles.cond.emit_ir_logical(unit, ctx);
+                tl.iter().for_each(|item| item.backpatch(unit, unit.cur_bb));
                 whiles.body.emit_ir(unit, ctx);
                 let (body_last, fail) = unit.start_new_bb();
+                fl.iter().for_each(|item| item.backpatch(unit, fail));
                 unit.jump(test).push_to(body_last);
-                unit.branch(cond, body, fail).push_to(test_last);
             }
             _ => unimplemented!(),
         }
