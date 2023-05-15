@@ -89,6 +89,9 @@ trait EmitIrExpr {
 impl EmitIrExpr for AstNodeType {
     fn emit_ir_expr(&self, unit: &mut TransUnit, ctx: &mut AstContext) -> ValueId {
         match self {
+            AstNodeType::I1Number(num) => {
+                unit.const_i1(*num)
+            }
             AstNodeType::I32Number(num) => {
                 unit.const_i32(*num)
             }

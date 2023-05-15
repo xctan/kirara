@@ -102,4 +102,3 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
         (*tree).borrow_mut().node = new_node;
     }
 }
-

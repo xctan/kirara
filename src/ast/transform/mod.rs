@@ -1,6 +1,8 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::{Rc, Weak}};
 
-use super::AstNode;
+use crate::ctype::{Type, BinaryOpType};
+
+use super::{AstNode, ObjectId, AstNodeRewrite};
 
 pub trait AstTransformPass {
     fn apply(self, tree: Rc<RefCell<AstNode>>);
@@ -8,6 +10,7 @@ pub trait AstTransformPass {
 
 mod type_check;
 mod const_fold;
+mod dead_code;
 
 pub struct AstPassManager;
 
@@ -15,6 +18,74 @@ impl AstPassManager {
     pub fn apply_passes(self, tree: Rc<RefCell<AstNode>>) {
         type_check::TypeCheckPass.apply(tree.clone());
         const_fold::ConstFoldPass.apply(tree.clone());
+        dead_code::DeadCodeRemovalPass.apply(tree.clone());
         type_check::TypeCheckPass.apply(tree);
+    }
+}
+
+pub trait AstRewriteVisitor {
+    // basic elements
+    fn visit_i1_number(&mut self, _num: bool) -> Option<Rc<RefCell<AstNode>>> { None }
+    fn visit_i32_number(&mut self, _num: i32) -> Option<Rc<RefCell<AstNode>>> { None }
+    fn visit_i64_number(&mut self, _num: i64) -> Option<Rc<RefCell<AstNode>>> { None }
+    fn visit_variable(&mut self, _id: ObjectId) -> Option<Rc<RefCell<AstNode>>> { None }
+    // expression constructs
+    fn visit_convert(&mut self, _from: Rc<RefCell<AstNode>>, _to: Weak<Type>) -> Option<Rc<RefCell<AstNode>>> { 
+        self.rewrite(_from);
+        None
+     }
+    fn visit_binary_op(&mut self, _lhs: Rc<RefCell<AstNode>>, _rhs: Rc<RefCell<AstNode>>, _op: BinaryOpType) -> Option<Rc<RefCell<AstNode>>> {
+        self.rewrite(_lhs);
+        self.rewrite(_rhs);
+        None
+    }
+    // fn visit_unary_op(&mut self, _rhs: Rc<RefCell<AstNode>>, _op: BinaryOpType) -> Option<Rc<RefCell<AstNode>>> { None }
+    // control flow constructs
+    fn visit_return(&mut self, _expr: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> {
+        self.rewrite(_expr);
+        None
+    }
+    fn visit_expr_stmt(&mut self, _expr: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> {
+        self.rewrite(_expr);
+        None
+    }
+    fn visit_unit(&mut self) -> Option<Rc<RefCell<AstNode>>> { None }
+    fn visit_block(&mut self, _stmts: Vec<Rc<RefCell<AstNode>>>) -> Option<Rc<RefCell<AstNode>>> {
+        for stmt in _stmts {
+            self.rewrite(stmt);
+        }
+        None
+    }
+    fn visit_if(&mut self, _cond: Rc<RefCell<AstNode>>, _then: Rc<RefCell<AstNode>>, _els: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> {
+        self.rewrite(_cond);
+        self.rewrite(_then);
+        self.rewrite(_els);
+        None
+    }
+    fn visit_while(&mut self, _cond: Rc<RefCell<AstNode>>, _body: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> {
+        self.rewrite(_cond);
+        self.rewrite(_body);
+        None
+    }
+
+    fn rewrite(&mut self, tree: Rc<RefCell<AstNode>>) {
+        let new_node = match tree.borrow().node.clone() {
+            crate::ast::AstNodeType::I1Number(num) => self.visit_i1_number(num),
+            crate::ast::AstNodeType::I32Number(num) => self.visit_i32_number(num),
+            crate::ast::AstNodeType::I64Number(num) => self.visit_i64_number(num),
+            crate::ast::AstNodeType::Variable(id) => self.visit_variable(id),
+            crate::ast::AstNodeType::Convert(convert) => self.visit_convert(convert.from, convert.to),
+            crate::ast::AstNodeType::BinaryOp(binary_op) => self.visit_binary_op(binary_op.lhs, binary_op.rhs, binary_op.op),
+            // crate::ast::AstNodeType::UnaryOp(unary_op) => self.visit_unary_op(unary_op.rhs, unary_op.op),
+            crate::ast::AstNodeType::Return(expr) => self.visit_return(expr),
+            crate::ast::AstNodeType::ExprStmt(expr) => self.visit_expr_stmt(expr),
+            crate::ast::AstNodeType::Unit => self.visit_unit(),
+            crate::ast::AstNodeType::Block(stmts) => self.visit_block(stmts),
+            crate::ast::AstNodeType::IfStmt(r#if) => self.visit_if(r#if.cond, r#if.then, r#if.els),
+            crate::ast::AstNodeType::WhileStmt(r#while) => self.visit_while(r#while.cond, r#while.body),
+        };
+        if let Some(new_node) = new_node {
+            tree.rewrite(new_node);
+        }
     }
 }

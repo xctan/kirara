@@ -148,6 +148,17 @@ impl AstNode {
     }
 }
 
+pub trait AstNodeRewrite {
+    fn rewrite(&self, new: Rc<RefCell<AstNode>>);
+}
+
+impl AstNodeRewrite for Rc<RefCell<AstNode>> {
+    fn rewrite(&self, new: Rc<RefCell<AstNode>>) {
+        self.borrow_mut().node = new.borrow().node.clone();
+        self.borrow_mut().ty = new.borrow().ty.clone();
+    }
+}
+
 #[derive(Debug)]
 pub struct AstObject {
     pub name: String,
