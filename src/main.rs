@@ -23,7 +23,7 @@ fn main() {
     let mut ast = parse(&tokens).unwrap();
     // println!("{:#?}", ast);
 
-    let mut unit = ir::unit::TransUnit::new();
+    let mut unit = ir::builder::TransUnit::new();
     ast.emit_ir(&mut unit);
     unit.print();
 }

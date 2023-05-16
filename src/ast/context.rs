@@ -29,6 +29,24 @@ pub fn gen_unique_name(prefix: &str) -> String {
     }
 }
 
+pub fn register_goto(name: String) {
+    unsafe {
+        CTX.as_mut().unwrap().register_goto(name);
+    }
+}
+
+pub fn register_label(name: String) -> bool {
+    unsafe {
+        CTX.as_mut().unwrap().register_label(name)
+    }
+}
+
+pub fn validate_gotos() -> bool {
+    unsafe {
+        CTX.as_mut().unwrap().validate_gotos()
+    }
+}
+
 pub fn new_local_var_with_token(id: TokenSpan, ty: Weak<Type>) -> ObjectId {
     let instance = unsafe {
         CTX.as_mut().unwrap()

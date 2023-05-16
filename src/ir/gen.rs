@@ -1,6 +1,6 @@
-use std::{rc::Rc, cell::RefCell};
+use std::{rc::Rc, cell::RefCell, todo};
 
-use super::{unit::{TransUnit, LocalInstExt, BlockId}, value::ValueId};
+use super::{builder::{TransUnit, LocalInstExt, BackPatchItem, BackPatchType}, value::ValueId};
 use crate::{ast::*, ctype::{BinaryOpType, TypePtrHelper, Type}};
 
 pub trait EmitIr {
@@ -20,6 +20,11 @@ impl AstContext {
                     }
 
                     func.body.emit_ir(unit, self);
+
+                    let jumps = unit.jumps.clone();
+                    jumps.iter().for_each(|(j, target)| {
+                        j.backpatch(unit, unit.labels.get(target).unwrap().clone());
+                    });
                 }
                 AstObjectType::Var => {
                     todo!()
@@ -50,33 +55,73 @@ impl EmitIr for AstNode {
                 let (tl, fl) = ifs.cond.emit_ir_logical(unit, ctx);
                 tl.iter().for_each(|item| item.backpatch(unit, unit.cur_bb));
                 ifs.then.emit_ir(unit, ctx);
-                let (succ_last, fail) = unit.start_new_bb();
-                fl.iter().for_each(|item| item.backpatch(unit, unit.cur_bb));
-                if !&ifs.els.borrow().is_unit() {
+                if let Some((succ_last, fail)) = unit.start_new_bb() {
+                    fl.iter().for_each(|item| item.backpatch(unit, fail));
                     ifs.els.emit_ir(unit, ctx);
-                    let (fail_last, finally) = unit.start_new_bb();
-                    unit.jump(finally).push_to(succ_last);
-                    unit.jump(finally).push_to(fail_last);
+                    if let Some((fail_last, finally)) = unit.start_new_bb() {
+                        unit.jump(finally).push_to(succ_last);
+                        unit.jump(finally).push_to(fail_last);
+                    } else {
+                        unit.jump(fail).push_to(succ_last);
+                    }
                 } else {
-                    unit.jump(fail).push_to(succ_last);
+                    fl.iter().for_each(|item| item.backpatch(unit, unit.cur_bb));
+                    ifs.els.emit_ir(unit, ctx);
+                    if let Some((fail_last, finally)) = unit.start_new_bb() {
+                        unit.jump(finally).push_to(fail_last);
+                    }
                 }
             },
             AstNodeType::WhileStmt(whiles) => {
-                let (root, test) = unit.start_new_bb();
-                unit.jump(test).push_to(root);
+                let test = 
+                    if let Some((root, test)) = unit.start_new_bb() {
+                        unit.jump(test).push_to(root);
+                        test
+                    } else {
+                        unit.cur_bb
+                    };
                 if !matches!(whiles.cond.borrow().node, AstNodeType::I1Number(true)) {
                     let (tl, fl) = whiles.cond.emit_ir_logical(unit, ctx);
                     tl.iter().for_each(|item| item.backpatch(unit, unit.cur_bb));
                     whiles.body.emit_ir(unit, ctx);
-                    let (body_last, fail) = unit.start_new_bb();
+                    let fail = 
+                        if let Some((body_last, fail)) = unit.start_new_bb() {
+                            unit.jump(test).push_to(body_last);
+                            fail
+                        } else {
+                            unit.cur_bb
+                        };
                     fl.iter().for_each(|item| item.backpatch(unit, fail));
-                    unit.jump(test).push_to(body_last);
                 } else {
                     whiles.body.emit_ir(unit, ctx);
-                    let (body_last, _escape) = unit.start_new_bb();
-                    unit.jump(test).push_to(body_last);
+                    let _escape = 
+                        if let Some((body_last, escape)) = unit.start_new_bb() {
+                            unit.jump(test).push_to(body_last);
+                            escape
+                        } else {
+                            unit.cur_bb
+                        };
                 }
-            }
+            },
+            AstNodeType::LabelStmt(labeled) => {
+                let new = 
+                    if let Some((old, new)) = unit.start_new_bb() {
+                        unit.jump(new).push_to(old);
+                        new
+                    } else {
+                        unit.cur_bb
+                    };
+                labeled.body.emit_ir(unit, ctx);
+                unit.labels.insert(labeled.label.clone(), new);
+            },
+            AstNodeType::GotoStmt(goto) => {
+                let j = unit.jump(unit.cur_bb).push_only();
+                unit.jumps.push((BackPatchItem {
+                    branch: j,
+                    slot: BackPatchType::Jump,
+                }, goto.label.clone()));
+                unit.start_new_bb();
+            },
             _ => unimplemented!(),
         }
     }
@@ -167,44 +212,6 @@ impl EmitIrLValue for Rc<RefCell<AstNode>> {
     }
 }
 
-struct BackPatchItem {
-    pub branch: ValueId,
-    pub slot: BackPatchType,
-}
-
-enum BackPatchType {
-    BranchSuccess,
-    BranchFail,
-}
-
-impl BackPatchItem {
-    fn backpatch(&self, unit: &mut TransUnit, bb: BlockId) {
-        use super::value::{ValueType, InstructionValue};
-        match self.slot {
-            BackPatchType::BranchSuccess => {
-                let inst = unit.values.get_mut(self.branch).unwrap();
-                match &mut inst.value {
-                    ValueType::Instruction(InstructionValue::Branch(ref mut insn)) => {
-                        insn.succ = bb;
-                    }
-                    _ => unreachable!(),
-                }
-            },
-            BackPatchType::BranchFail => {
-                let inst = unit.values.get_mut(self.branch).unwrap();
-                match &mut inst.value {
-                    ValueType::Instruction(InstructionValue::Branch(ref mut insn)) => {
-                        insn.fail = bb;
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        }
-        let inst_bb = unit.inst_bb.get(&self.branch).unwrap();
-        unit.add_predecessor(bb, *inst_bb);
-    }
-}
-
 /// Emit IR for logical expression in control flow representation
 trait EmitIrLogical {
     /// Get (truelist, falselist) of logical expression, and backpatch later
@@ -261,8 +268,11 @@ impl EmitIrLogicalInner for AstNodeType {
                 None,
             )
         } else {
-            let (last, next) = unit.start_new_bb();
-            unit.jump(next).push_to(last);
+            // let (last, next) = unit.start_new_bb();
+            // unit.jump(next).push_to(last);
+            if let Some((last, next)) = unit.start_new_bb() {
+                unit.jump(next).push_to(last);
+            }
             (vec![], vec![], Some(val))
         }
     }

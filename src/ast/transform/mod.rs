@@ -88,6 +88,9 @@ pub trait AstRewriteVisitor {
         };
         if let Some(new_node) = new_node {
             tree.rewrite(new_node);
+            // tree is updated, so before_statement hook should be applied again
+            self.rewrite(tree);
+            return;
         }
         let new_node = match tree.borrow().node.clone() {
             crate::ast::AstNodeType::I1Number(num) => self.visit_i1_number(num),

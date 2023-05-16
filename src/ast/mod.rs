@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     rc::{Rc, Weak},
 };
 
@@ -240,7 +240,8 @@ pub struct AstContext {
 
     pub locals: Vec<ObjectId>,
     pub scopes: Vec<Scope>,
-    pub labels: Vec<String>,
+    pub labels: HashSet<String>,
+    pub gotos: Vec<String>,
     counter: usize,
 }
 
@@ -253,7 +254,8 @@ impl AstContext {
             scopes: vec![Scope {
                 vars: HashMap::new(),
             }],
-            labels: Vec::new(),
+            labels: HashSet::new(),
+            gotos: Vec::new(),
             counter: 0,
         }
     }
@@ -272,6 +274,19 @@ impl AstContext {
         let name = format!("{}{}", prefix, self.counter);
         self.counter += 1;
         name
+    }
+
+    pub fn register_label(&mut self, name: String) -> bool {
+        self.labels.insert(name)
+    }
+
+    pub fn register_goto(&mut self, name: String) {
+        self.gotos.push(name);
+    }
+
+    pub fn validate_gotos(&self) -> bool {
+        self.gotos.iter()
+            .all(|name| self.labels.contains(name))
     }
 
     pub fn find_var(&self, name: &str) -> Option<ScopeVar> {

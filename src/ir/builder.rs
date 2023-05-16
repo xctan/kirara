@@ -20,6 +20,8 @@ pub struct TransUnit {
     // temporary usage
     pub cur_bb: BlockId,
     pub entry_bb: BlockId,
+    pub labels: HashMap<String, BlockId>,
+    pub jumps: Vec<(BackPatchItem, String)>,
 
     counter: usize,
 }
@@ -36,6 +38,8 @@ impl TransUnit {
             cur_bb: entry_bb,
             entry_bb,
             bbs: vec![entry_bb],
+            labels: HashMap::new(),
+            jumps: vec![],
             counter: 1,
         }
     }
@@ -52,16 +56,19 @@ impl TransUnit {
     }
 
     /// start a new bb and return old and new bb
-    pub fn start_new_bb(&mut self) -> (BlockId, BlockId) {
+    pub fn start_new_bb(&mut self) -> Option<(BlockId, BlockId)> {
         let old = self.cur_bb;
+        if self.blocks.get(old).unwrap().insts_end.is_none() {
+            return None;
+        }
         let name = format!("{}", self.count());
         let bb = self.blocks.alloc(BasicBlock::new(name));
         self.bbs.push(bb);
         self.cur_bb = bb;
-        (old, bb)
+        Some((old, bb))
     }
 
-    // insert at end of bb
+    /// insert at end of bb
     pub fn push_at(&mut self, bb: BlockId, value: ValueId, track: bool) {
         // track preds of bb
         if track {
@@ -350,3 +357,52 @@ impl BasicBlock {
 }
 
 pub type BlockId = Id<BasicBlock>;
+
+#[derive(Debug, Clone)]
+pub struct BackPatchItem {
+    pub branch: ValueId,
+    pub slot: BackPatchType,
+}
+
+#[derive(Debug, Clone)]
+pub enum BackPatchType {
+    BranchSuccess,
+    BranchFail,
+    Jump,
+}
+
+impl BackPatchItem {
+    pub fn backpatch(&self, unit: &mut TransUnit, bb: BlockId) {
+        match self.slot {
+            BackPatchType::BranchSuccess => {
+                let inst = unit.values.get_mut(self.branch).unwrap();
+                match &mut inst.value {
+                    ValueType::Instruction(InstructionValue::Branch(ref mut insn)) => {
+                        insn.succ = bb;
+                    }
+                    _ => unreachable!(),
+                }
+            },
+            BackPatchType::BranchFail => {
+                let inst = unit.values.get_mut(self.branch).unwrap();
+                match &mut inst.value {
+                    ValueType::Instruction(InstructionValue::Branch(ref mut insn)) => {
+                        insn.fail = bb;
+                    }
+                    _ => unreachable!(),
+                }
+            },
+            BackPatchType::Jump => {
+                let inst = unit.values.get_mut(self.branch).unwrap();
+                match &mut inst.value {
+                    ValueType::Instruction(InstructionValue::Jump(ref mut insn)) => {
+                        insn.succ = bb;
+                    }
+                    _ => unreachable!(),
+                }
+            },
+        }
+        let inst_bb = unit.inst_bb.get(&self.branch).unwrap();
+        unit.add_predecessor(bb, *inst_bb);
+    }
+}

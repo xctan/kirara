@@ -4,7 +4,7 @@ use id_arena::Id;
 
 use crate::ctype::{Type, BinaryOpType as BinaryOp};
 
-use super::unit::BlockId;
+use super::builder::BlockId;
 
 pub type ValueId = Id<Value>;
 

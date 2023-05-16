@@ -466,6 +466,9 @@ fn label_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>
             statement)),
         |(id, _, stmt)| {
             let token = range_between(&id.as_range(), &stmt.borrow().token);
+            if !register_label(id.as_str().into()) {
+                panic!("label {} is already defined", id.as_str());
+            }
             AstNode::label(id.as_str().into(), stmt, token)
         }
     )(cursor)
@@ -481,6 +484,7 @@ fn goto_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>>
             ttag!(P(";")))),
         |(k_goto, id, _)| {
             let token = range_between(&k_goto.as_range(), &id.as_range());
+            register_goto(id.as_str().into());
             AstNode::r#goto(id.as_str().into(), token)
         }
     )(cursor)
@@ -495,6 +499,9 @@ pub fn parse<'a>(curosr: &'a Vec<Token>) -> Result<AstContext, nom::Err<nom::err
             transform::AstPassManager.apply_passes(node.clone());
             (rest, node)
         })?;
+    if !validate_gotos() {
+        panic!("goto undefined label");
+    }
     let mut l = vec![];
     swap(&mut l, get_context_locals_mut());
     let function = AstFuncData {
