@@ -95,6 +95,11 @@ fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
             ast_const_fold(whiles.body.clone());
             None
         },
+        AstNodeType::LabelStmt(ref label) => {
+            ast_const_fold(label.body.clone());
+            None
+        },
+        AstNodeType::GotoStmt(_) => None,
     };
     drop(tree0);
 

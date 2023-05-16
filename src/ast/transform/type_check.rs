@@ -103,6 +103,11 @@ fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             ast_type_check(whiles.body.clone());
             Type::void_type()
         },
+        AstNodeType::LabelStmt(label) => {
+            ast_type_check(label.body);
+            Type::void_type()
+        },
+        AstNodeType::GotoStmt(_) => Type::void_type(),
     };
     drop(tree0);
 

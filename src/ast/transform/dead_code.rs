@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     rc::{Rc, Weak},
 };
 
@@ -44,10 +44,11 @@ impl AstRewriteVisitor for DeadCodeRemovalHeurisic {
 #[derive(Debug)]
 struct CFGBuilder {
     pub entry: Rc<RefCell<AstNode>>,
-    pub preds: HashMap<usize, Vec<Weak<RefCell<AstNode>>>>,
-    pub previous: Vec<Weak<RefCell<AstNode>>>,
-    // labels
-    // jumps
+    pub preds: HashMap<usize, Vec<usize>>,
+    pub succs: HashMap<usize, Vec<usize>>,
+    pub previous: Vec<usize>,
+    // pub labels: HashMap<String, Weak<RefCell<AstNode>>>,
+    // pub jumps: Vec<(String, Rc<RefCell<AstNode>>)>,
 }
 
 impl CFGBuilder {
@@ -55,9 +56,10 @@ impl CFGBuilder {
         let mut instance = Self {
             entry: AstNode::unit(0..0),
             preds: HashMap::new(),
+            succs: HashMap::new(),
             previous: vec![],
         };
-        instance.previous.push(Rc::downgrade(&instance.entry));
+        instance.previous.push(instance.entry.as_ptr() as usize);
         instance
     }
 
@@ -67,13 +69,18 @@ impl CFGBuilder {
         self.previous.clear();
         match stmt.borrow().node {
             AstNodeType::Return(_) => {}
-            _ => self.previous.push(Rc::downgrade(&stmt)),
+            _ => self.previous.push(stmt.as_ptr() as usize),
         }
     }
 
-    fn finish(self) -> HashMap<usize, Vec<Weak<RefCell<AstNode>>>> {
+    fn finish(mut self) -> Self {
         // todo: link jumps
-        self.preds
+        self.preds.iter().for_each(|(k, v)| {
+            v.iter().for_each(|p| {
+                self.succs.entry(*p).or_default().push(*k);
+            })
+        });
+        self
     }
 }
 
@@ -86,11 +93,9 @@ impl AstRewriteVisitor for CFGBuilder {
     ) -> Option<Rc<RefCell<AstNode>>> {
         self.rewrite(_cond.clone());
         let common_preds = self.previous.clone();
-        self.mark(_then.clone());
         self.rewrite(_then.clone());
         let branch1_preds = self.previous.clone();
         self.previous = common_preds;
-        self.mark(_els.clone());
         self.rewrite(_els.clone());
         let branch2_preds = self.previous.clone();
         self.previous = branch1_preds
@@ -107,106 +112,64 @@ impl AstRewriteVisitor for CFGBuilder {
     ) -> Option<Rc<RefCell<AstNode>>> {
         let common_preds = self.previous.clone();
         self.rewrite(_cond.clone());
-        self.mark(_body.clone());
         self.rewrite(_body.clone());
         let branch1_preds = self.previous.clone();
-        self.previous = common_preds
-            .into_iter()
-            .chain(branch1_preds.into_iter())
-            .collect();
+        // while (true)
+        if !matches!(_cond.borrow().node, AstNodeType::I1Number(true)) {
+            self.previous = common_preds
+                .into_iter()
+                .chain(branch1_preds.into_iter())
+                .collect();
+        } else {
+            self.previous.clear();
+        }
         None
     }
 
-    fn visit_block(&mut self, _stmts: Vec<Rc<RefCell<AstNode>>>) -> Option<Rc<RefCell<AstNode>>> {
-        for stmt in _stmts {
-            self.mark(stmt.clone());
-            self.rewrite(stmt.clone())
-        }
+    fn before_statement(&mut self, _stmt: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> {
+        self.mark(_stmt.clone());
         None
     }
 }
 
 struct DeadCodeRemovalCFG {
-    pub cfg: HashMap<usize, Vec<Weak<RefCell<AstNode>>>>,
-    pub unreachable: Vec<Rc<RefCell<AstNode>>>,
-    pub dead: HashSet<usize>,
+    pub cfg: CFGBuilder,
+    pub liveset: HashSet<usize>,
 }
 
 impl DeadCodeRemovalCFG {
-    pub fn new(cfg: HashMap<usize, Vec<Weak<RefCell<AstNode>>>>) -> Self {
+    pub fn new(cfg: CFGBuilder) -> Self {
         Self {
             cfg,
-            unreachable: vec![],
-            dead: HashSet::new(),
+            liveset: HashSet::new(),
         }
     }
 
-    pub fn is_unreachable(&self, node: Rc<RefCell<AstNode>>) -> bool {
-        // does node have predecessors?
-        if let Some(preds) = self.cfg.get(&(node.as_ptr() as usize)) {
-            // are all predecessors unreachable?
-            preds
-                .iter()
-                .all(|p| self.dead.contains(&(p.as_ptr() as usize)))
-        } else {
-            // no predecessors, so it's unreachable
-            true
-        }
-    }
-
-    pub fn mark_unreachable(&mut self, node: Rc<RefCell<AstNode>>) {
-        if self.dead.insert(node.as_ptr() as usize) {
-            self.unreachable.push(node);
-        }
-    }
-
-    pub fn parse(&mut self, node: Rc<RefCell<AstNode>>) {
-        self.rewrite(node.clone());
-        let mut count = self.dead.len();
-        loop {
-            self.rewrite(node.clone());
-            if count == self.dead.len() {
-                break;
+    pub fn parse(mut self) -> Self {
+        let mut queue = VecDeque::new();
+        queue.push_back(self.cfg.entry.as_ptr() as usize);
+        while let Some(stmt) = queue.pop_front() {
+            if self.liveset.contains(&stmt) {
+                continue;
             }
-            count = self.dead.len();
+            self.liveset.insert(stmt);
+            if let Some(succs) = self.cfg.succs.get(&stmt) {
+                for succ in succs {
+                    queue.push_back(*succ);
+                }
+            }
         }
-        for node in self.unreachable.clone() {
-            node.borrow_mut().node = AstNodeType::Unit;
-        }
+        self
     }
 }
 
 impl AstRewriteVisitor for DeadCodeRemovalCFG {
-    fn visit_if(&mut self, _cond: Rc<RefCell<AstNode>>, _then: Rc<RefCell<AstNode>>, _els: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> {
-        self.rewrite(_cond.clone());
-        self.rewrite(_then.clone());
-        if self.is_unreachable(_then.clone()) {
-            self.mark_unreachable(_then.clone());
+    fn before_statement(&mut self, _stmt: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> {
+        if !self.liveset.contains(&(_stmt.as_ptr() as usize)) {
+            AstNode::unit(0..0).into()
+        } else {
+            None
         }
-        self.rewrite(_els.clone());
-        if self.is_unreachable(_els.clone()) {
-            self.mark_unreachable(_els.clone());
-        }
-        None
-    }
-
-    fn visit_while(&mut self, _cond: Rc<RefCell<AstNode>>, _body: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> {
-        self.rewrite(_cond.clone());
-        self.rewrite(_body.clone());
-        if self.is_unreachable(_body.clone()) {
-            self.mark_unreachable(_body.clone());
-        }
-        None
-    }
-
-    fn visit_block(&mut self, _stmts: Vec<Rc<RefCell<AstNode>>>) -> Option<Rc<RefCell<AstNode>>> {
-        for stmt in _stmts {
-            self.rewrite(stmt.clone());
-            if self.is_unreachable(stmt.clone()) {
-                self.mark_unreachable(stmt.clone());
-            }
-        }
-        None
     }
 }
 
@@ -235,9 +198,9 @@ impl AstTransformPass for DeadCodeRemovalPass {
         let mut cfg = CFGBuilder::new();
         cfg.rewrite(tree.clone());
         let cfg = cfg.finish();
-        println!("{:#?}", cfg);
-        let mut dead_code_removal = DeadCodeRemovalCFG::new(cfg);
-        dead_code_removal.parse(tree.clone());
+        // println!("{:#?}", cfg);
+        let mut dce_cfg = DeadCodeRemovalCFG::new(cfg).parse();
+        dce_cfg.rewrite(tree.clone());
         DeadCodeRemoval.rewrite(tree);
     }
 }

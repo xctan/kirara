@@ -23,6 +23,12 @@ pub fn leave_scope() {
     }
 }
 
+pub fn gen_unique_name(prefix: &str) -> String {
+    unsafe {
+        CTX.as_mut().unwrap().gen_unique_name(prefix)
+    }
+}
+
 pub fn new_local_var_with_token(id: TokenSpan, ty: Weak<Type>) -> ObjectId {
     let instance = unsafe {
         CTX.as_mut().unwrap()

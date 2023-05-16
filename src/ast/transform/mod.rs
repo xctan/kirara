@@ -67,8 +67,28 @@ pub trait AstRewriteVisitor {
         self.rewrite(_body);
         None
     }
+    fn visit_label(&mut self, _label: String, _stmt: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> {
+        self.rewrite(_stmt);
+        None
+    }
+    fn visit_goto(&mut self, _label: String) -> Option<Rc<RefCell<AstNode>>> { None }
+
+    fn before_statement(&mut self, _stmt: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> { None }
 
     fn rewrite(&mut self, tree: Rc<RefCell<AstNode>>) {
+        let new_node = match tree.borrow().node.clone() {
+            crate::ast::AstNodeType::ExprStmt(_) |
+            crate::ast::AstNodeType::Block(_) |
+            crate::ast::AstNodeType::IfStmt(_) |
+            crate::ast::AstNodeType::WhileStmt(_) |
+            crate::ast::AstNodeType::LabelStmt(_) |
+            crate::ast::AstNodeType::GotoStmt(_) |
+            crate::ast::AstNodeType::Return(_) => self.before_statement(tree.clone()),
+            _ => None
+        };
+        if let Some(new_node) = new_node {
+            tree.rewrite(new_node);
+        }
         let new_node = match tree.borrow().node.clone() {
             crate::ast::AstNodeType::I1Number(num) => self.visit_i1_number(num),
             crate::ast::AstNodeType::I32Number(num) => self.visit_i32_number(num),
@@ -83,6 +103,8 @@ pub trait AstRewriteVisitor {
             crate::ast::AstNodeType::Block(stmts) => self.visit_block(stmts),
             crate::ast::AstNodeType::IfStmt(r#if) => self.visit_if(r#if.cond, r#if.then, r#if.els),
             crate::ast::AstNodeType::WhileStmt(r#while) => self.visit_while(r#while.cond, r#while.body),
+            crate::ast::AstNodeType::LabelStmt(label) => self.visit_label(label.label, label.body),
+            crate::ast::AstNodeType::GotoStmt(goto) => self.visit_goto(goto.label),
         };
         if let Some(new_node) = new_node {
             tree.rewrite(new_node);

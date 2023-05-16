@@ -392,6 +392,8 @@ fn statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
         return_statement,
         if_statement,
         while_statement,
+        goto_statement,
+        label_statement,
         compound_statement,
         expression_statement,
     ))(cursor)
@@ -451,6 +453,35 @@ fn while_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>
         |(k_while, _, exp, _, stmt)| {
             let token = range_between(&k_while.as_range(), &stmt.borrow().token);
             AstNode::r#while(exp, stmt, token)
+        }
+    )(cursor)
+}
+
+fn label_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // identifier ":" statement
+    map(
+        tuple((
+            ttag!(I),
+            ttag!(P(":")),
+            statement)),
+        |(id, _, stmt)| {
+            let token = range_between(&id.as_range(), &stmt.borrow().token);
+            AstNode::label(id.as_str().into(), stmt, token)
+        }
+    )(cursor)
+}
+
+fn goto_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // todo: computed goto(indirected jump)
+    // "goto" identifier ";"
+    map(
+        tuple((
+            ttag!(K("goto")),
+            ttag!(I),
+            ttag!(P(";")))),
+        |(k_goto, id, _)| {
+            let token = range_between(&k_goto.as_range(), &id.as_range());
+            AstNode::r#goto(id.as_str().into(), token)
         }
     )(cursor)
 }

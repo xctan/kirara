@@ -47,6 +47,8 @@ pub enum AstNodeType {
     Return(Rc<RefCell<AstNode>>),
     IfStmt(IfStmt),
     WhileStmt(WhileStmt),
+    LabelStmt(LabelStmt),
+    GotoStmt(GotoStmt),
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +62,17 @@ pub struct IfStmt {
 pub struct WhileStmt {
     pub cond: Rc<RefCell<AstNode>>,
     pub body: Rc<RefCell<AstNode>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LabelStmt {
+    pub label: String,
+    pub body: Rc<RefCell<AstNode>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GotoStmt {
+    pub label: String,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +159,16 @@ impl AstNode {
         let node = Self::new(AstNodeType::WhileStmt(WhileStmt { cond, body }), token);
         Rc::new(RefCell::new(node))
     }
+
+    pub fn label(label: String, body: Rc<RefCell<Self>>, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::LabelStmt(LabelStmt { label, body }), token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn goto(label: String, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::GotoStmt(GotoStmt { label }), token);
+        Rc::new(RefCell::new(node))
+    }
 }
 
 pub trait AstNodeRewrite {
@@ -214,8 +237,11 @@ pub struct Scope {
 pub struct AstContext {
     pub objects: Arena<AstObject>,
     pub globals: Vec<ObjectId>,
+
     pub locals: Vec<ObjectId>,
     pub scopes: Vec<Scope>,
+    pub labels: Vec<String>,
+    counter: usize,
 }
 
 impl AstContext {
@@ -227,6 +253,8 @@ impl AstContext {
             scopes: vec![Scope {
                 vars: HashMap::new(),
             }],
+            labels: Vec::new(),
+            counter: 0,
         }
     }
 
@@ -238,6 +266,12 @@ impl AstContext {
 
     pub fn leave_scope(&mut self) {
         self.scopes.pop();
+    }
+
+    pub fn gen_unique_name(&mut self, prefix: &str) -> String {
+        let name = format!("{}{}", prefix, self.counter);
+        self.counter += 1;
+        name
     }
 
     pub fn find_var(&self, name: &str) -> Option<ScopeVar> {

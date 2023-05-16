@@ -64,12 +64,18 @@ impl EmitIr for AstNode {
             AstNodeType::WhileStmt(whiles) => {
                 let (root, test) = unit.start_new_bb();
                 unit.jump(test).push_to(root);
-                let (tl, fl) = whiles.cond.emit_ir_logical(unit, ctx);
-                tl.iter().for_each(|item| item.backpatch(unit, unit.cur_bb));
-                whiles.body.emit_ir(unit, ctx);
-                let (body_last, fail) = unit.start_new_bb();
-                fl.iter().for_each(|item| item.backpatch(unit, fail));
-                unit.jump(test).push_to(body_last);
+                if !matches!(whiles.cond.borrow().node, AstNodeType::I1Number(true)) {
+                    let (tl, fl) = whiles.cond.emit_ir_logical(unit, ctx);
+                    tl.iter().for_each(|item| item.backpatch(unit, unit.cur_bb));
+                    whiles.body.emit_ir(unit, ctx);
+                    let (body_last, fail) = unit.start_new_bb();
+                    fl.iter().for_each(|item| item.backpatch(unit, fail));
+                    unit.jump(test).push_to(body_last);
+                } else {
+                    whiles.body.emit_ir(unit, ctx);
+                    let (body_last, _escape) = unit.start_new_bb();
+                    unit.jump(test).push_to(body_last);
+                }
             }
             _ => unimplemented!(),
         }
