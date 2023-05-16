@@ -393,6 +393,8 @@ fn statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
         if_statement,
         while_statement,
         goto_statement,
+        break_statement,
+        continue_statement,
         label_statement,
         compound_statement,
         expression_statement,
@@ -446,13 +448,52 @@ fn while_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>
     map(
         tuple((
             ttag!(K("while")),
+            map(success(()), |_| {
+                let brk = gen_unique_name("brk.");
+                let cont = gen_unique_name("cont.");
+                push_loop(cont, brk);
+            }),
             ttag!(P("(")),
             expression,
             ttag!(P(")")),
             statement)),
-        |(k_while, _, exp, _, stmt)| {
+        |(k_while, _, _, exp, _, stmt)| {
             let token = range_between(&k_while.as_range(), &stmt.borrow().token);
-            AstNode::r#while(exp, stmt, token)
+            let (cont, brk) = pop_loop().unwrap();
+            let stmt_token = stmt.borrow().token.clone();
+            let cont = AstNode::label(cont, AstNode::unit(0..0), stmt_token.clone());
+            let stmt = AstNode::block(vec![stmt, cont], stmt_token);
+            let wh = AstNode::r#while(exp, stmt, token.clone());
+            let brk = AstNode::label(brk, AstNode::unit(0..0), token.clone());
+            AstNode::block(vec![wh, brk], token)
+        }
+    )(cursor)
+}
+
+fn break_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // "break" ";"
+    map(
+        tuple((
+            ttag!(K("break")),
+            ttag!(P(";")))),
+        |(k_break, p)| {
+            let token = range_between(&k_break.as_range(), &p.as_range());
+            let brk = get_loop_labels().expect("stray break").1.clone();
+            AstNode::goto(brk, token)
+        }
+    )(cursor)
+}
+
+fn continue_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // "continue" ";"
+    map(
+        tuple((
+            ttag!(K("continue")),
+            ttag!(P(";")))),
+        |(k_continue, p)| {
+            let token = range_between(&k_continue.as_range(), &p.as_range());
+            let cont = get_loop_labels().expect("stray continue").0.clone();
+            AstNode::goto(cont, token)
         }
     )(cursor)
 }

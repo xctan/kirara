@@ -85,6 +85,8 @@ fn keyword(input: &str) -> IResult<&str, Token> {
                 tag("else"),
                 tag("while"),
                 tag("goto"),
+                tag("break"),
+                tag("continue"),
             )),
             not(
                 alt((

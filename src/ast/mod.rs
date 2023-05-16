@@ -242,6 +242,7 @@ pub struct AstContext {
     pub scopes: Vec<Scope>,
     pub labels: HashSet<String>,
     pub gotos: Vec<String>,
+    pub loop_stack: Vec<(String, String)>,
     counter: usize,
 }
 
@@ -256,6 +257,7 @@ impl AstContext {
             }],
             labels: HashSet::new(),
             gotos: Vec::new(),
+            loop_stack: Vec::new(),
             counter: 0,
         }
     }
@@ -282,6 +284,18 @@ impl AstContext {
 
     pub fn register_goto(&mut self, name: String) {
         self.gotos.push(name);
+    }
+
+    pub fn push_loop(&mut self, cont: String, brk: String) {
+        self.loop_stack.push((cont, brk));
+    }
+
+    pub fn get_loop_labels(&self) -> Option<&(String, String)> {
+        self.loop_stack.last()
+    }
+
+    pub fn pop_loop(&mut self) -> Option<(String, String)> {
+        self.loop_stack.pop()
     }
 
     pub fn validate_gotos(&self) -> bool {

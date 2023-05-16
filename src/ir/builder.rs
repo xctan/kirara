@@ -56,16 +56,13 @@ impl TransUnit {
     }
 
     /// start a new bb and return old and new bb
-    pub fn start_new_bb(&mut self) -> Option<(BlockId, BlockId)> {
+    pub fn start_new_bb(&mut self) -> (BlockId, BlockId) {
         let old = self.cur_bb;
-        if self.blocks.get(old).unwrap().insts_end.is_none() {
-            return None;
-        }
         let name = format!("{}", self.count());
         let bb = self.blocks.alloc(BasicBlock::new(name));
         self.bbs.push(bb);
         self.cur_bb = bb;
-        Some((old, bb))
+        (old, bb)
     }
 
     /// insert at end of bb

@@ -47,6 +47,24 @@ pub fn validate_gotos() -> bool {
     }
 }
 
+pub fn push_loop(cont: String, brk: String) {
+    unsafe {
+        CTX.as_mut().unwrap().push_loop(cont, brk);
+    }
+}
+
+pub fn get_loop_labels() -> Option<&'static (String, String)> {
+    unsafe {
+        CTX.as_mut().unwrap().get_loop_labels()
+    }
+}
+
+pub fn pop_loop() -> Option<(String, String)> {
+    unsafe {
+        CTX.as_mut().unwrap().pop_loop()
+    }
+}
+
 pub fn new_local_var_with_token(id: TokenSpan, ty: Weak<Type>) -> ObjectId {
     let instance = unsafe {
         CTX.as_mut().unwrap()
