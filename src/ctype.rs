@@ -1,4 +1,4 @@
-use std::{fmt::{Display, Debug}, rc::{Rc, Weak}, cell::RefCell};
+use std::{fmt::{Display, Debug}, rc::{Rc, Weak}, cell::RefCell, unimplemented};
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -7,6 +7,7 @@ pub enum Type {
     I32,
     I64,
     Ptr(Weak<Type>),
+    Func(Func),
 }
 
 thread_local! {
@@ -26,6 +27,7 @@ impl Type {
             Type::I32 => 4,
             Type::I64 => 8,
             Type::Ptr(_) => 8,
+            Type::Func(_) => 1,
         }
     }
 
@@ -36,6 +38,7 @@ impl Type {
             Type::I32 => 4,
             Type::I64 => 8,
             Type::Ptr(_) => 8,
+            Type::Func(_) => 1,
         }
     }
 
@@ -48,6 +51,10 @@ impl Type {
 
     pub fn is_ptr(&self) -> bool {
         matches!(self, Type::Ptr(_))
+    }
+
+    pub fn is_function(&self) -> bool {
+        matches!(self, Type::Func(_))
     }
 
     pub fn void_type() -> Weak<Type> {
@@ -69,6 +76,12 @@ impl Type {
     #[allow(unused)]
     pub fn ptr_to(ty: Weak<Type>) -> Weak<Type> {
         let ty = Rc::new(Type::Ptr(ty));
+        TYPES.with(|t| t.borrow_mut().push(ty.clone()));
+        Rc::downgrade(&ty)
+    }
+
+    pub fn func_type(ret_type: Weak<Type>, params: Vec<(String, Weak<Type>)>) -> Weak<Type> {
+        let ty = Rc::new(Type::Func(Func { ret_type, params }));
         TYPES.with(|t| t.borrow_mut().push(ty.clone()));
         Rc::downgrade(&ty)
     }
@@ -112,6 +125,7 @@ impl Display for Type {
                 write!(f, "{}", p.get().base_type().get())?;
                 "*"
             },
+            Type::Func(func) => unimplemented!(),
         };
         write!(f, "{}", s)
     }
@@ -119,11 +133,16 @@ impl Display for Type {
 
 pub trait TypePtrHelper {
     fn get(&self) -> Rc<Type>;
+    fn is_function(&self) -> bool;
 }
 
 impl TypePtrHelper for Weak<Type> {
     fn get(&self) -> Rc<Type> {
         self.upgrade().unwrap()
+    }
+
+    fn is_function(&self) -> bool {
+        self.get().is_function()
     }
 }
 
@@ -144,6 +163,12 @@ impl TypePtrCompare for Weak<Type> {
             )
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Func {
+    pub ret_type: Weak<Type>,
+    pub params: Vec<(String, Weak<Type>)>,
 }
 
 #[derive(Debug, Clone, Copy)]

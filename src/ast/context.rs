@@ -11,6 +11,12 @@ use super::{AstContext, ObjectId, AstObject, ScopeVar};
 
 static mut CTX: Option<AstContext> = None;
 
+pub fn reset_func_data() {
+    unsafe {
+        CTX.as_mut().unwrap().reset_func_data();
+    }
+}
+
 pub fn enter_scope() {
     unsafe {
         CTX.as_mut().unwrap().enter_scope();
@@ -75,6 +81,13 @@ pub fn new_local_var_with_token(id: TokenSpan, ty: Weak<Type>) -> ObjectId {
     obj_id
 }
 
+pub fn new_local_var(id: &str, ty: Weak<Type>) -> ObjectId {
+    let instance = unsafe {
+        CTX.as_mut().unwrap()
+    };
+    instance.new_local_var(id, ty)
+}
+
 pub fn new_global_var(id: &str, ty: Weak<Type>) -> ObjectId {
     let instance = unsafe {
         CTX.as_mut().unwrap()
@@ -97,6 +110,12 @@ pub fn get_object_mut(id: ObjectId) -> Option<&'static mut AstObject> {
 pub fn find_var(id: &str) -> Option<ScopeVar> {
     unsafe {
         CTX.as_mut().unwrap().find_var(id)
+    }
+}
+
+pub fn find_func(id: &str) -> Option<ObjectId> {
+    unsafe {
+        CTX.as_mut().unwrap().find_func(id)
     }
 }
 

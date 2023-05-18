@@ -11,6 +11,7 @@ pub trait AstTransformPass {
 mod type_check;
 mod const_fold;
 mod dead_code;
+mod multi_return;
 
 pub struct AstPassManager;
 

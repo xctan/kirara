@@ -209,9 +209,12 @@ impl AstObject {
 
 #[derive(Debug, Clone)]
 pub struct AstFuncData {
-    pub params: Vec<ObjectId>,
     pub locals: Vec<ObjectId>,
     pub body: Rc<RefCell<AstNode>>,
+    pub ret_var: Option<ObjectId>,
+    // is_definition
+    // is_static
+    // is_inline
 }
 
 #[derive(Debug, Clone)]
@@ -237,9 +240,9 @@ pub struct Scope {
 pub struct AstContext {
     pub objects: Arena<AstObject>,
     pub globals: Vec<ObjectId>,
+    pub scopes: Vec<Scope>,
 
     pub locals: Vec<ObjectId>,
-    pub scopes: Vec<Scope>,
     pub labels: HashSet<String>,
     pub gotos: Vec<String>,
     pub loop_stack: Vec<(String, String)>,
@@ -260,6 +263,14 @@ impl AstContext {
             loop_stack: Vec::new(),
             counter: 0,
         }
+    }
+
+    pub fn reset_func_data(&mut self) {
+        self.locals.clear();
+        self.labels.clear();
+        self.gotos.clear();
+        self.loop_stack.clear();
+        self.counter = 0;
     }
 
     pub fn enter_scope(&mut self) {
@@ -310,6 +321,19 @@ impl AstContext {
             }
         }
         None
+    }
+
+    pub fn find_func(&self, name: &str) -> Option<ObjectId> {
+        return if let Some(ScopeVar::Var(id)) = self.scopes.first().unwrap().vars.get(name) {
+            let obj = self.objects.get(*id).unwrap();
+            if let AstObjectType::Func(_) = obj.data {
+                Some(*id)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     pub fn new_local_var(&mut self, name: &str, ty: Weak<Type>) -> ObjectId {

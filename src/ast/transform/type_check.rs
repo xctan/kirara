@@ -13,7 +13,7 @@ impl AstTransformPass for TypeCheckPass {
 }
 
 // type check and fix
-fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
+pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
     let tree0 = tree.borrow();
     let new_type: Weak<Type> = match tree0.node.clone() {
         AstNodeType::I1Number(_) => Type::i1_type(),

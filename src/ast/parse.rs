@@ -1,8 +1,8 @@
 use nom::{
     IResult,
     combinator::{map, opt, success},
-    sequence::tuple,
-    multi::{many0, many1, many0_count},
+    sequence::{tuple, delimited},
+    multi::{many0, many1, many0_count, separated_list1},
     branch::alt,
 };
 
@@ -11,8 +11,10 @@ use std::{rc::{Rc, Weak}, cell::RefCell, convert::TryInto, mem::swap};
 use crate::{
     token::{TokenSpan, Token, range_between},
     ast::*,
-    ctype::{BinaryOpType, Type},
+    ctype::{BinaryOpType, Type, TypePtrHelper},
 };
+
+use super::transform::AstPassManager;
 
 macro_rules! ttag {
     (IntCn) => {
@@ -335,9 +337,60 @@ fn declarator((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, (Weak
         todo!()
     } else {
         let (cursor, id) = ttag!(I)(left)?;
-        // let (cursor, _) = type_suffix(cursor)?;
+        let (cursor, ty) = type_suffix((cursor, ty))?;
         Ok((cursor, (ty, id)))
     }
+}
+
+fn type_suffix((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak<Type>> {
+    // func_params | array_dimensions | empty
+    if let Ok((cursor, ty)) = func_params((cursor.clone(), ty.clone())) {
+        return Ok((cursor, ty));
+    }
+
+    // if let Ok((cursor, ty)) = array_dimensions((cursor.clone(), ty.clone())) {
+    //     return Ok((cursor, ty));
+    // }
+
+    Ok((cursor, ty))
+}
+
+fn array_dimensions((_cursor, _ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak<Type>> {
+    // C: "[" ("static" | "restrict")* const_expr? "]" type_suffix
+    // "[" const_expr? "]" type_suffix
+    todo!()
+}
+
+fn func_params((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak<Type>> {
+    // C: "(" ("void" | param ("," param)* ("," "...")?)? ")"
+    // "(" ("void" | param ("," param)*)? ")"
+    // param = declspec declarator
+    delimited(
+        ttag!(P("(")),
+        alt((
+            map(
+                ttag!(K("void")),
+                |_| Type::func_type(ty.clone(), vec![]),
+            ),
+            map(
+                separated_list1(ttag!(P(",")), param),
+                |params| Type::func_type(ty.clone(), params)
+            ),
+            map(
+                success(()),
+                // todo: func w/o params is variadic
+                |_| Type::func_type(ty.clone(), vec![]),
+            )
+        )),
+        ttag!(P(")")),
+    )(cursor)
+}
+
+fn param(cursor: TokenSpan) -> IResult<TokenSpan, (String, Weak<Type>)> {
+    // declspec declarator
+    let base_ty = declspec(cursor)?;
+    let (cursor, (ty, id)) = declarator(base_ty)?;
+    Ok((cursor, (id.as_str().to_string(), ty)))
 }
 
 fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
@@ -531,28 +584,80 @@ fn goto_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>>
     )(cursor)
 }
 
+fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
+    // function_def = declspec declarator (compound_statement | ";")
+    let (cursor, (ty, name)) = declarator((cursor.clone(), ty))?;
+    let name = name.as_str().to_string();
+    if name.is_empty() {
+        panic!("function name omitted");
+    }
+
+    let obj = if let Some(id) = find_func(&name) {
+        todo!()
+    } else {
+        let id = new_global_var(&name, ty);
+        get_object_mut(id).unwrap()
+    };
+
+    if let Ok((cursor, _)) = ttag!(P(";"))(cursor) {
+        return Ok((cursor, ()));
+    }
+    let params = match &*obj.ty.get() {
+        Type::Func(func) => func.params.clone(),
+        _ => unreachable!(),
+    };
+    for param in params {
+        new_local_var(&param.0, param.1.clone());
+    }
+
+    let (cursor, body) = compound_statement(cursor)?;
+    if !validate_gotos() {
+        panic!("goto undefined label");
+    }
+    AstPassManager.apply_passes(body.clone());
+
+    let mut l = vec![];
+    swap(&mut l, get_context_locals_mut());
+    let func = AstFuncData {
+        body,
+        ret_var: None,
+        locals: l,
+    };
+    obj.data = AstObjectType::Func(func);
+
+    reset_func_data();
+
+    return Ok((cursor, ()));
+}
+
+fn is_function(cursor: TokenSpan) -> bool {
+    if let Ok(_) = ttag!(P(";"))(cursor) {
+        return false;
+    }
+
+    if let Ok((_, (ty, _))) = declarator((cursor.clone(), Type::void_type())) {
+        return ty.is_function();
+    } else {
+        // ????
+        return false;
+    }
+}
+
 pub fn parse<'a>(curosr: &'a Vec<Token>) -> Result<AstContext, nom::Err<nom::error::Error<TokenSpan<'a>>>>
 {
     init_context();
 
-    let (_, body) = compound_statement(curosr.into())
-        .map(|(rest, node)| {
-            transform::AstPassManager.apply_passes(node.clone());
-            (rest, node)
-        })?;
-    if !validate_gotos() {
-        panic!("goto undefined label");
+    let mut cur = TokenSpan::from(curosr.as_slice());
+    while cur.0.len() > 0 {
+        let (cursor, base_ty) = declspec(cur)?;
+
+        if is_function(cursor) {
+            cur = function((cursor, base_ty))?.0;
+            continue;
+        }
+
+        unimplemented!("global variable")
     }
-    let mut l = vec![];
-    swap(&mut l, get_context_locals_mut());
-    let function = AstFuncData {
-        params: vec![],
-        locals: l,
-        body,
-    };
-    let id = new_global_var("main", Type::void_type());
-    let obj = get_object_mut(id).unwrap();
-    obj.data = AstObjectType::Func(function);
     
     Ok(take_context())
 }
