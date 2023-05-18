@@ -1,4 +1,4 @@
-use std::io::stdin;
+use std::io::{stdin, Read};
 
 mod token;
 mod lex;
@@ -12,7 +12,7 @@ use crate::{
 
 fn main() {
     let mut input = String::new();
-    stdin().read_line(&mut input).unwrap();
+    stdin().read_to_string(&mut input).unwrap();
 
     let tokens = tokenize(input.as_str()).unwrap().1;
 
