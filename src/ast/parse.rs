@@ -473,6 +473,24 @@ fn compound_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNod
     )(cursor)
 }
 
+/// specialized version of compound_statement
+/// we need to enter scope before parameters are declared
+fn function_body(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // "{" (declaration | statement)* "}"
+    map(
+        tuple((
+            ttag!(P("{")),
+            many0(alt((
+                declaration,
+                statement))),
+            ttag!(P("}")))),
+        |(l, v, r)| {
+            let token = range_between(&l.as_range(), &r.as_range());
+            AstNode::block(v, token)
+        }
+    )(cursor)
+}
+
 fn if_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     // "if" "(" expression ")" statement ("else" statement)?
     map(
@@ -593,25 +611,30 @@ fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
         panic!("function name omitted");
     }
 
-    let obj = if let Some(_id) = find_func(&name) {
+    let obj_id = if let Some(_id) = find_func(&name) {
         todo!()
     } else {
-        let id = new_global_var(&name, ty);
-        get_object_mut(id).unwrap()
+        new_global_var(&name, ty)
     };
 
     if let Ok((cursor, _)) = ttag!(P(";"))(cursor) {
         return Ok((cursor, ()));
     }
+
+    let obj = get_object(obj_id).unwrap();
     let params = match &*obj.ty.get() {
         Type::Func(func) => func.params.clone(),
         _ => unreachable!(),
     };
+    drop(obj);
+
+    enter_scope();
     let params: Vec<_> = params.into_iter()
         .map(|(name, ty)| new_local_var(&name, ty))
         .collect();
 
-    let (cursor, body) = compound_statement(cursor)?;
+    let (cursor, body) = function_body(cursor)?;
+    leave_scope();
     if !validate_gotos() {
         panic!("goto undefined label");
     }
@@ -626,6 +649,7 @@ fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
     };
     AstPassManager.apply_passes(&mut func);
 
+    let obj = get_object_mut(obj_id).unwrap();
     obj.data = AstObjectType::Func(func);
 
     reset_func_data();
