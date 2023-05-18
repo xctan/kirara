@@ -93,13 +93,23 @@ pub enum ValueType {
     Global(GlobalValue),
     Instruction(InstructionValue),
     Constant(ConstantValue),
+    Parameter(ParameterValue),
 }
 
 impl_value_trait!{ValueType{
     Global,
     Instruction,
     Constant,
+    Parameter,
 }}
+
+#[derive(Debug, Clone)]
+pub struct ParameterValue {
+    pub name: String,
+    pub ty: Weak<Type>,
+}
+
+impl_value_trait!(ParameterValue);
 
 #[derive(Debug, Clone)]
 pub struct GlobalValue {

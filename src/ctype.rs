@@ -125,7 +125,7 @@ impl Display for Type {
                 write!(f, "{}", p.get().base_type().get())?;
                 "*"
             },
-            Type::Func(func) => unimplemented!(),
+            Type::Func(_func) => unimplemented!(),
         };
         write!(f, "{}", s)
     }

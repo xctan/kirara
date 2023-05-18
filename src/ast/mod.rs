@@ -210,6 +210,7 @@ impl AstObject {
 #[derive(Debug, Clone)]
 pub struct AstFuncData {
     pub locals: Vec<ObjectId>,
+    pub params: Vec<ObjectId>,
     pub body: Rc<RefCell<AstNode>>,
     pub ret_var: Option<ObjectId>,
     // is_definition

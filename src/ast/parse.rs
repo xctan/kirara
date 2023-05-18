@@ -355,6 +355,7 @@ fn type_suffix((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak
     Ok((cursor, ty))
 }
 
+#[allow(unused)]
 fn array_dimensions((_cursor, _ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak<Type>> {
     // C: "[" ("static" | "restrict")* const_expr? "]" type_suffix
     // "[" const_expr? "]" type_suffix
@@ -592,7 +593,7 @@ fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
         panic!("function name omitted");
     }
 
-    let obj = if let Some(id) = find_func(&name) {
+    let obj = if let Some(_id) = find_func(&name) {
         todo!()
     } else {
         let id = new_global_var(&name, ty);
@@ -606,9 +607,12 @@ fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
         Type::Func(func) => func.params.clone(),
         _ => unreachable!(),
     };
-    for param in params {
-        new_local_var(&param.0, param.1.clone());
-    }
+    // for param in params {
+    //     new_local_var(&param.0, param.1.clone());
+    // }
+    let params: Vec<_> = params.into_iter()
+        .map(|(name, ty)| new_local_var(&name, ty))
+        .collect();
 
     let (cursor, body) = compound_statement(cursor)?;
     if !validate_gotos() {
@@ -622,6 +626,7 @@ fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
         body,
         ret_var: None,
         locals: l,
+        params,
     };
     obj.data = AstObjectType::Func(func);
 

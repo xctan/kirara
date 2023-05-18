@@ -1,14 +1,33 @@
-use crate::ctype::TypePtrHelper;
+use crate::ctype::{TypePtrHelper, Type};
 
 use super::{
     value::{ValueType, ValueId, ConstantValue, InstructionValue, ValueTrait},
-    builder::TransUnit
+    builder::{TransUnit, IrFunc}
 };
 
 impl TransUnit {
     pub fn print(&self) {
+        for (name, func) in &self.funcs {
+            self.print_func(name, func);
+        }
+    }
+
+    pub fn print_func(&self, name: &str, func: &IrFunc) {
+        if let Type::Func(func) = &*func.ty.get() {
+            print!("define {} @{}(", func.ret_type.get(), name);
+            for (idx, (_, argty)) in func.params.iter().enumerate() {
+                if idx != 0 {
+                    print!(", ");
+                }
+                print!("{} %{}", argty.get(), idx);
+            }
+            println!(") {{");
+        } else {
+            unreachable!();
+        }
+
         let arena = &self.values;
-        for bb in &self.bbs {
+        for bb in &func.bbs {
             let bb = *bb;
             let bb0 = self.blocks.get(bb).unwrap();
             print!("{}:", bb0.name);
@@ -27,7 +46,7 @@ impl TransUnit {
                 let inst = arena.get(inst).unwrap();
                 insts = inst.next;
                 match inst.value {
-                    ValueType::Global(_) => unimplemented!(),
+                    ValueType::Global(_) | ValueType::Parameter(_) => unreachable!(),
                     ValueType::Instruction(ref insn) => {
                         match *insn {
                             InstructionValue::Binary(ref insn) => {
@@ -102,6 +121,8 @@ impl TransUnit {
                 }
             }
         }
+
+        println!("}}");
     }
 
     pub fn print_value(&self, id: ValueId) {
@@ -117,6 +138,9 @@ impl TransUnit {
             }
             ValueType::Instruction(ref insn) => {
                 print!("{}", insn.name());
+            }
+            ValueType::Parameter(ref p) => {
+                print!("{}", p.name());
             }
         }
     }

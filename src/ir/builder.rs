@@ -7,43 +7,27 @@ use crate::ctype::{Type, BinaryOpType};
 use super::value::*;
 
 #[derive(Debug)]
-pub struct TransUnit {
-    /// global value allocator
-    pub values: Arena<Value>,
-    pub blocks: Arena<BasicBlock>,
-    pub inst_bb: HashMap<ValueId, BlockId>,
-    // global variable defs
-    // funcs
-
-    // todo: move to function
+pub struct IrFunc {
     pub bbs: Vec<BlockId>,
-    // temporary usage
-    pub cur_bb: BlockId,
     pub entry_bb: BlockId,
-    pub labels: HashMap<String, BlockId>,
-    pub jumps: Vec<(BackPatchItem, String)>,
-
-    counter: usize,
+    pub ty: Weak<Type>,
+    pub params: Vec<ValueId>,
 }
 
-impl TransUnit {
-    pub fn new() -> Self {
-        let mut bb_arena = Arena::new();
-        let entry_bb = 
-            bb_arena.alloc(BasicBlock::new("0".into()));
-        Self {
-            values: Arena::new(),
-            blocks: bb_arena,
-            inst_bb: HashMap::new(),
-            cur_bb: entry_bb,
-            entry_bb,
-            bbs: vec![entry_bb],
-            labels: HashMap::new(),
-            jumps: vec![],
-            counter: 1,
-        }
-    }
+#[derive(Debug)]
+pub struct IrFuncBuilder<'a> {
+    pub bbs: Vec<BlockId>,
+    entry_bb: Option<BlockId>,
+    cur_bb: Option<BlockId>,
+    pub labels: HashMap<String, BlockId>,
+    pub jumps: Vec<(BackPatchItem, String)>,
+    counter: usize,
+    pub unit: &'a mut TransUnit,
+    pub ty: Weak<Type>,
+    pub params: Vec<ValueId>,
+}
 
+impl IrFuncBuilder<'_> {
     pub fn count(&mut self) -> usize {
         let c = self.counter;
         self.counter += 1;
@@ -55,13 +39,39 @@ impl TransUnit {
         name
     }
 
+    pub fn cur_bb(&self) -> BlockId {
+        self.cur_bb.unwrap()
+    }
+
+    #[allow(unused)]
+    pub fn entry_bb(&self) -> BlockId {
+        self.entry_bb.unwrap()
+    }
+
+    pub fn start(&mut self) {
+        let name = format!("{}", self.count());
+        let bb = self.unit.blocks.alloc(BasicBlock::new(name));
+        self.bbs.push(bb);
+        self.entry_bb = Some(bb);
+        self.cur_bb = Some(bb);
+    }
+
+    pub fn finish(self) -> IrFunc {
+        IrFunc {
+            bbs: self.bbs,
+            entry_bb: self.entry_bb.unwrap(),
+            ty: self.ty,
+            params: self.params,
+        }
+    }
+
     /// start a new bb and return old and new bb
     pub fn start_new_bb(&mut self) -> (BlockId, BlockId) {
-        let old = self.cur_bb;
+        let old = self.cur_bb();
         let name = format!("{}", self.count());
-        let bb = self.blocks.alloc(BasicBlock::new(name));
+        let bb = self.unit.blocks.alloc(BasicBlock::new(name));
         self.bbs.push(bb);
-        self.cur_bb = bb;
+        self.cur_bb = Some(bb);
         (old, bb)
     }
 
@@ -69,7 +79,7 @@ impl TransUnit {
     pub fn push_at(&mut self, bb: BlockId, value: ValueId, track: bool) {
         // track preds of bb
         if track {
-            let val = self.values.get(value).unwrap().clone();
+            let val = self.unit.values.get(value).unwrap().clone();
             match val.value {
                 ValueType::Instruction(InstructionValue::Branch(ref br)) => {
                     self.add_predecessor(br.succ, bb);
@@ -82,17 +92,17 @@ impl TransUnit {
             }
         }
 
-        self.inst_bb.insert(value, bb);
-        let bb = self.blocks.get_mut(bb).unwrap();
+        self.unit.inst_bb.insert(value, bb);
+        let bb = self.unit.blocks.get_mut(bb).unwrap();
         match (bb.insts_start, bb.insts_end) {
             (None, None) => {
                 bb.insts_start = Some(value);
                 bb.insts_end = Some(value);
             }
             (Some(_), Some(end)) => {
-                let mut this = self.values.get_mut(value).unwrap();
+                let mut this = self.unit.values.get_mut(value).unwrap();
                 this.prev = Some(end);
-                let mut end = self.values.get_mut(end).unwrap();
+                let mut end = self.unit.values.get_mut(end).unwrap();
                 end.next = Some(value);
                 bb.insts_end = Some(value);
             }
@@ -102,39 +112,39 @@ impl TransUnit {
 
     // insert before some inst in bb
     pub fn insert_at(&mut self, bb: BlockId, value: ValueId, before: ValueId) {
-        self.inst_bb.insert(value, bb);
-        let that = self.values.get(before).unwrap();
+        self.unit.inst_bb.insert(value, bb);
+        let that = self.unit.values.get(before).unwrap();
         let prev = that.prev;
-        let this = self.values.get_mut(value).unwrap();
+        let this = self.unit.values.get_mut(value).unwrap();
         this.prev = prev;
         this.next = Some(before);
-        let that = self.values.get_mut(before).unwrap();
+        let that = self.unit.values.get_mut(before).unwrap();
         that.prev = Some(value);
         if let Some(prev) = prev {
-            let mut prev = self.values.get_mut(prev).unwrap();
+            let mut prev = self.unit.values.get_mut(prev).unwrap();
             prev.next = Some(value);
         } else {
-            let bb = self.blocks.get_mut(bb).unwrap();
+            let bb = self.unit.blocks.get_mut(bb).unwrap();
             bb.insts_start = Some(value);
         }
     }
 
     pub fn push(&mut self, value: ValueId) {
-        self.push_at(self.cur_bb, value, true);
+        self.push_at(self.cur_bb(), value, true);
     }
 
     #[allow(unused)]
     pub fn insert(&mut self, value: ValueId, before: ValueId) {
-        self.insert_at(self.cur_bb, value, before);
+        self.insert_at(self.cur_bb(), value, before);
     }
 
     pub fn add_used_by(&mut self, value: ValueId, user: ValueId) {
-        let value = self.values.get_mut(value).unwrap();
+        let value = self.unit.values.get_mut(value).unwrap();
         value.used_by.insert(user);
     }
 
     pub fn add_predecessor(&mut self, bb: BlockId, pred: BlockId) {
-        let bb = self.blocks.get_mut(bb).unwrap();
+        let bb = self.unit.blocks.get_mut(bb).unwrap();
         bb.preds.push(pred);
     }
 
@@ -143,14 +153,26 @@ impl TransUnit {
         let val = ConstantValue::I32(val);
         let val = ValueType::Constant(val);
         let val = Value::new(val);
-        self.values.alloc(val)
+        self.unit.values.alloc(val)
     }
 
     pub fn const_i1(&mut self, val: bool) -> ValueId {
         let val = ConstantValue::I1(val);
         let val = ValueType::Constant(val);
         let val = Value::new(val);
-        self.values.alloc(val)
+        self.unit.values.alloc(val)
+    }
+
+    pub fn param(&mut self, ty: Weak<Type>) -> ValueId {
+        let var = ParameterValue {
+            name: self.gen_local_name(),
+            ty,
+        };
+        let val = ValueType::Parameter(var);
+        let val = Value::new(val);
+        let id = self.unit.values.alloc(val);
+        self.params.push(id);
+        id
     }
 
     // local inst builders
@@ -161,7 +183,7 @@ impl TransUnit {
         };
         let val = ValueType::Instruction(InstructionValue::Alloca(inst));
         let val = Value::new(val);
-        let id = self.values.alloc(val);
+        let id = self.unit.values.alloc(val);
         (self, id)
     }
 
@@ -171,7 +193,7 @@ impl TransUnit {
         };
         let val = ValueType::Instruction(InstructionValue::Return(inst));
         let val = Value::new(val);
-        let id = self.values.alloc(val);
+        let id = self.unit.values.alloc(val);
         if let Some(value) = value {
             self.add_used_by(value, id);
         }
@@ -185,13 +207,13 @@ impl TransUnit {
         };
         let val = ValueType::Instruction(InstructionValue::Store(inst));
         let val = Value::new(val);
-        let id = self.values.alloc(val);
+        let id = self.unit.values.alloc(val);
         self.add_used_by(value, id);
         (self, id)
     }
 
     pub fn load(&mut self, ptr: ValueId) -> (&mut Self, ValueId) {
-        let ptr_val = self.values.get(ptr).unwrap();
+        let ptr_val = self.unit.values.get(ptr).unwrap();
         let ty = ptr_val.ty();
         let inst = LoadInst {
             name: self.gen_local_name(),
@@ -200,7 +222,7 @@ impl TransUnit {
         };
         let val = ValueType::Instruction(InstructionValue::Load(inst));
         let val = Value::new(val);
-        let id = self.values.alloc(val);
+        let id = self.unit.values.alloc(val);
         self.add_used_by(ptr, id);
         (self, id)
     }
@@ -213,7 +235,7 @@ impl TransUnit {
             BinaryOpType::Div |
             BinaryOpType::Mod |
             BinaryOpType::Assign => {
-                let lhs = self.values.get(lhs).unwrap();
+                let lhs = self.unit.values.get(lhs).unwrap();
                 lhs.ty()
             },
             BinaryOpType::Ne |
@@ -234,7 +256,7 @@ impl TransUnit {
         };
         let val = ValueType::Instruction(InstructionValue::Binary(inst));
         let val = Value::new(val);
-        let id = self.values.alloc(val);
+        let id = self.unit.values.alloc(val);
         self.add_used_by(lhs, id);
         self.add_used_by(rhs, id);
         (self, id)
@@ -248,7 +270,7 @@ impl TransUnit {
         };
         let val = ValueType::Instruction(InstructionValue::Branch(inst));
         let val = Value::new(val);
-        let id = self.values.alloc(val);
+        let id = self.unit.values.alloc(val);
         self.add_used_by(cond, id);
         (self, id)
     }
@@ -259,12 +281,12 @@ impl TransUnit {
         };
         let val = ValueType::Instruction(InstructionValue::Jump(inst));
         let val = Value::new(val);
-        let id = self.values.alloc(val);
+        let id = self.unit.values.alloc(val);
         (self, id)
     }
 
     pub fn zext(&mut self, value: ValueId, ty: Weak<Type>) -> (&mut Self, ValueId) {
-        let from = self.values.get(value).unwrap().ty();
+        let from = self.unit.values.get(value).unwrap().ty();
         let inst = ZextInst {
             name: self.gen_local_name(),
             value,
@@ -273,14 +295,14 @@ impl TransUnit {
         };
         let val = ValueType::Instruction(InstructionValue::Zext(inst));
         let val = Value::new(val);
-        let id = self.values.alloc(val);
+        let id = self.unit.values.alloc(val);
        self.add_used_by(value, id);
         (self, id)
     }
 
     pub fn phi(&mut self, args: Vec<(ValueId, BlockId)>) -> (&mut Self, ValueId) {
         assert!(!args.is_empty()); // used to infer type
-        let ty = self.values.get(args[0].0).unwrap().ty();
+        let ty = self.unit.values.get(args[0].0).unwrap().ty();
         let inst = PhiInst {
             name: self.gen_local_name(),
             ty,
@@ -288,11 +310,48 @@ impl TransUnit {
         };
         let val = ValueType::Instruction(InstructionValue::Phi(inst));
         let val = Value::new(val);
-        let id = self.values.alloc(val);
+        let id = self.unit.values.alloc(val);
         for (value, _) in args {
             self.add_used_by(value, id);
         }
         (self, id)
+    }
+}
+
+#[derive(Debug)]
+pub struct TransUnit {
+    /// global value allocator
+    pub values: Arena<Value>,
+    pub blocks: Arena<BasicBlock>,
+    pub inst_bb: HashMap<ValueId, BlockId>,
+    // global variable defs
+
+    // funcs
+    pub funcs: HashMap<String, IrFunc>,
+}
+
+impl TransUnit {
+    pub fn new() -> Self {
+        Self {
+            values: Arena::new(),
+            blocks: Arena::new(),
+            inst_bb: HashMap::new(),
+            funcs: HashMap::new(),
+        }
+    }
+
+    pub fn builder<'a>(&'a mut self, ty: Weak<Type>) -> IrFuncBuilder<'a> {
+        IrFuncBuilder {
+            unit: self,
+            cur_bb: None,
+            bbs: Vec::new(),
+            entry_bb: None,
+            counter: 0,
+            labels: HashMap::new(),
+            jumps: Vec::new(),
+            ty,
+            params: Vec::new(),
+        }
     }
 }
 
@@ -304,7 +363,7 @@ pub trait LocalInstExt {
     fn push_to(self, at: BlockId) -> ValueId;
 }
 
-impl LocalInstExt for (&mut TransUnit, ValueId) {
+impl LocalInstExt for (&mut IrFuncBuilder<'_>, ValueId) {
     fn push(self) -> ValueId {
         let (unit, value) = self;
         unit.push(value);
@@ -313,7 +372,7 @@ impl LocalInstExt for (&mut TransUnit, ValueId) {
 
     fn push_only(self) -> ValueId {
         let (unit, value) = self;
-        unit.push_at(unit.cur_bb, value, false);
+        unit.push_at(unit.cur_bb(), value, false);
         value
     }
 
@@ -369,10 +428,10 @@ pub enum BackPatchType {
 }
 
 impl BackPatchItem {
-    pub fn backpatch(&self, unit: &mut TransUnit, bb: BlockId) {
+    pub fn backpatch(&self, builder: &mut IrFuncBuilder<'_>, bb: BlockId) {
         match self.slot {
             BackPatchType::BranchSuccess => {
-                let inst = unit.values.get_mut(self.branch).unwrap();
+                let inst = builder.unit.values.get_mut(self.branch).unwrap();
                 match &mut inst.value {
                     ValueType::Instruction(InstructionValue::Branch(ref mut insn)) => {
                         insn.succ = bb;
@@ -381,7 +440,7 @@ impl BackPatchItem {
                 }
             },
             BackPatchType::BranchFail => {
-                let inst = unit.values.get_mut(self.branch).unwrap();
+                let inst = builder.unit.values.get_mut(self.branch).unwrap();
                 match &mut inst.value {
                     ValueType::Instruction(InstructionValue::Branch(ref mut insn)) => {
                         insn.fail = bb;
@@ -390,7 +449,7 @@ impl BackPatchItem {
                 }
             },
             BackPatchType::Jump => {
-                let inst = unit.values.get_mut(self.branch).unwrap();
+                let inst = builder.unit.values.get_mut(self.branch).unwrap();
                 match &mut inst.value {
                     ValueType::Instruction(InstructionValue::Jump(ref mut insn)) => {
                         insn.succ = bb;
@@ -399,7 +458,7 @@ impl BackPatchItem {
                 }
             },
         }
-        let inst_bb = unit.inst_bb.get(&self.branch).unwrap();
-        unit.add_predecessor(bb, *inst_bb);
+        let inst_bb = builder.unit.inst_bb.get(&self.branch).unwrap();
+        builder.add_predecessor(bb, *inst_bb);
     }
 }
