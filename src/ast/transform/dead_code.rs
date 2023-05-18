@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::ast::{AstNode, AstNodeType};
+use crate::ast::{AstNode, AstNodeType, AstFuncData};
 
 use super::{AstRewriteVisitor, AstTransformPass};
 
@@ -229,15 +229,15 @@ impl AstRewriteVisitor for DeadCodeRemoval {
 pub struct DeadCodeRemovalPass;
 
 impl AstTransformPass for DeadCodeRemovalPass {
-    fn apply(self, tree: Rc<RefCell<AstNode>>) {
-        DeadCodeRemovalHeuristic.rewrite(tree.clone());
+    fn apply(self, tree: &mut AstFuncData) {
+        DeadCodeRemovalHeuristic.rewrite(tree.body.clone());
         // println!("{:#?}", tree);
         let mut cfg = CFGBuilder::new();
-        cfg.rewrite(tree.clone());
+        cfg.rewrite(tree.body.clone());
         let cfg = cfg.finish();
         // println!("{:#?}", cfg);
         let mut dce_cfg = DeadCodeRemovalCFG::new(cfg).parse();
-        dce_cfg.rewrite(tree.clone());
-        DeadCodeRemoval.rewrite(tree);
+        dce_cfg.rewrite(tree.body.clone());
+        DeadCodeRemoval.rewrite(tree.body.clone());
     }
 }

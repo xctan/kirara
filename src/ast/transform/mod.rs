@@ -2,10 +2,10 @@ use std::{cell::RefCell, rc::{Rc, Weak}};
 
 use crate::ctype::{Type, BinaryOpType};
 
-use super::{AstNode, ObjectId, AstNodeRewrite};
+use super::{AstNode, ObjectId, AstNodeRewrite, AstFuncData};
 
 pub trait AstTransformPass {
-    fn apply(self, tree: Rc<RefCell<AstNode>>);
+    fn apply(self, tree: &mut AstFuncData);
 }
 
 mod type_check;
@@ -16,10 +16,10 @@ mod multi_return;
 pub struct AstPassManager;
 
 impl AstPassManager {
-    pub fn apply_passes(self, tree: Rc<RefCell<AstNode>>) {
-        type_check::TypeCheckPass.apply(tree.clone());
-        const_fold::ConstFoldPass.apply(tree.clone());
-        dead_code::DeadCodeRemovalPass.apply(tree.clone());
+    pub fn apply_passes(self, tree: &mut AstFuncData) {
+        type_check::TypeCheckPass.apply(tree);
+        const_fold::ConstFoldPass.apply(tree);
+        dead_code::DeadCodeRemovalPass.apply(tree);
         type_check::TypeCheckPass.apply(tree);
     }
 }

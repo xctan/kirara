@@ -607,9 +607,6 @@ fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
         Type::Func(func) => func.params.clone(),
         _ => unreachable!(),
     };
-    // for param in params {
-    //     new_local_var(&param.0, param.1.clone());
-    // }
     let params: Vec<_> = params.into_iter()
         .map(|(name, ty)| new_local_var(&name, ty))
         .collect();
@@ -618,16 +615,17 @@ fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
     if !validate_gotos() {
         panic!("goto undefined label");
     }
-    AstPassManager.apply_passes(body.clone());
 
     let mut l = vec![];
     swap(&mut l, get_context_locals_mut());
-    let func = AstFuncData {
+    let mut func = AstFuncData {
         body,
         ret_var: None,
         locals: l,
         params,
     };
+    AstPassManager.apply_passes(&mut func);
+
     obj.data = AstObjectType::Func(func);
 
     reset_func_data();

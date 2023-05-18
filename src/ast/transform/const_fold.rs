@@ -7,8 +7,8 @@ use super::AstTransformPass;
 pub struct ConstFoldPass;
 
 impl AstTransformPass for ConstFoldPass {
-    fn apply(self, tree: Rc<RefCell<AstNode>>) {
-        ast_const_fold(tree);
+    fn apply(self, tree: &mut AstFuncData) {
+        ast_const_fold(tree.body.clone());
     }
 }
 

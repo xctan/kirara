@@ -7,8 +7,8 @@ use super::AstTransformPass;
 pub struct TypeCheckPass;
 
 impl AstTransformPass for TypeCheckPass {
-    fn apply(self, tree: Rc<RefCell<AstNode>>) {
-        ast_type_check(tree);
+    fn apply(self, tree: &mut AstFuncData) {
+        ast_type_check(tree.body.clone());
     }
 }
 
