@@ -614,7 +614,7 @@ fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
     let obj_id = if let Some(_id) = find_func(&name) {
         todo!()
     } else {
-        new_global_var(&name, ty)
+        new_global_var(&name, ty.clone())
     };
 
     if let Ok((cursor, _)) = ttag!(P(";"))(cursor) {
@@ -634,20 +634,20 @@ fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
         .collect();
 
     let (cursor, body) = function_body(cursor)?;
-    leave_scope();
     if !validate_gotos() {
         panic!("goto undefined label");
     }
-
-    let mut l = vec![];
-    swap(&mut l, get_context_locals_mut());
+    
     let mut func = AstFuncData {
         body,
         ret_var: None,
-        locals: l,
+        locals: vec![],
         params,
+        func_ty: ty,
     };
     AstPassManager.apply_passes(&mut func);
+    swap(&mut func.locals, get_context_locals_mut());
+    leave_scope();
 
     let obj = get_object_mut(obj_id).unwrap();
     obj.data = AstObjectType::Func(func);

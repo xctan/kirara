@@ -20,6 +20,7 @@ impl AstPassManager {
         type_check::TypeCheckPass.apply(tree);
         const_fold::ConstFoldPass.apply(tree);
         dead_code::DeadCodeRemovalPass.apply(tree);
+        multi_return::MergeMultiReturnPass.apply(tree);
         type_check::TypeCheckPass.apply(tree);
     }
 }

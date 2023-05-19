@@ -213,6 +213,7 @@ pub struct AstFuncData {
     pub params: Vec<ObjectId>,
     pub body: Rc<RefCell<AstNode>>,
     pub ret_var: Option<ObjectId>,
+    pub func_ty: Weak<Type>,
     // is_definition
     // is_static
     // is_inline

@@ -55,6 +55,18 @@ impl AstContext {
                         j.backpatch(&mut builder, label);
                     });
 
+                    // return value
+                    match func.ret_var {
+                        Some(ret) => {
+                            let obj = self.get_object(ret).unwrap();
+                            let id = builder.load(obj.ir_value.unwrap()).push();
+                            builder.ret(Some(id)).push();
+                        }
+                        None => {
+                            builder.ret(None).push();
+                        }
+                    }
+
                     let func = builder.finish();
                     unit.funcs.insert(name, func);
                 }
