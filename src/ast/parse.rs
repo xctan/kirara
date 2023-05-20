@@ -235,12 +235,16 @@ fn logical_or(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     )(cursor)
 }
 
+fn conditional(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // stub impl
+    logical_or(cursor)
+}
+
 fn assignment(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     // conditional ( '=' assignment )?
-    // use logical_or as conditional temporarily
     map(
         tuple((
-            logical_or,
+            conditional,
             opt(tuple((
                 ttag!(P("=")),
                 assignment))))),
@@ -299,17 +303,21 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Weak<Type>> {
     map(
         many1(alt((
             ttag!(K("int")),
+            ttag!(K("void")),
+            ttag!(K("const")),
         ))),
         |decl: Vec<TokenSpan>| {
             const VOID: i32 = 1 << 0;
             const INT: i32 = 1 << 8;
             let mut ty = Type::i32_type();
             let mut counter = 0;
+            let mut is_const = false;
 
             for d in decl {
                 match d.as_str() {
                     "void" => counter += VOID,
                     "int" => counter += INT,
+                    "const" => is_const = true,
                     _ => unreachable!(),
                 }
 
@@ -320,7 +328,11 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Weak<Type>> {
                 }
             }
             
-            ty
+            if !is_const {
+                ty
+            } else {
+                Type::const_of(ty)
+            }
         }
     )(cursor)
 }
@@ -348,18 +360,32 @@ fn type_suffix((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak
         return Ok((cursor, ty));
     }
 
-    // if let Ok((cursor, ty)) = array_dimensions((cursor.clone(), ty.clone())) {
-    //     return Ok((cursor, ty));
-    // }
+    if let Ok((cursor, ty)) = array_dimensions((cursor.clone(), ty.clone())) {
+        return Ok((cursor, ty));
+    }
 
     Ok((cursor, ty))
 }
 
-#[allow(unused)]
-fn array_dimensions((_cursor, _ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak<Type>> {
+fn array_dimensions((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak<Type>> {
     // C: "[" ("static" | "restrict")* const_expr? "]" type_suffix
     // "[" const_expr? "]" type_suffix
-    todo!()
+    let (cursor, dim) = delimited(
+        ttag!(P("[")),
+        opt(conditional),
+        ttag!(P("]")),
+    )(cursor)?;
+
+    if let Some(dim) = dim {
+        if let Some(dim) = transform::eval(dim) {
+            let (cursor, ty) = type_suffix((cursor, ty))?;
+            Ok((cursor, Type::array_of(ty, dim.try_into().unwrap())))
+        } else {
+            unimplemented!("variable length array");
+        }
+    } else {
+        Ok((cursor, Type::array_of(ty, -1)))
+    }
 }
 
 fn func_params((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak<Type>> {
@@ -622,10 +648,7 @@ fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
     }
 
     let obj = get_object(obj_id).unwrap();
-    let params = match &*obj.ty.get() {
-        Type::Func(func) => func.params.clone(),
-        _ => unreachable!(),
-    };
+    let params = obj.ty.get().as_function().params;
     drop(obj);
 
     enter_scope();

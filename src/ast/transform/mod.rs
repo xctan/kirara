@@ -13,6 +13,8 @@ mod const_fold;
 mod dead_code;
 mod multi_return;
 
+pub use const_fold::eval;
+
 pub struct AstPassManager;
 
 impl AstPassManager {

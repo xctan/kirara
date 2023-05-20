@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     ast::*,
-    ctype::{BinaryOpType, Type, TypePtrHelper},
+    ctype::{BinaryOpType, Type, TypePtrHelper, TypeKind},
 };
 
 pub trait EmitIr {
@@ -23,11 +23,7 @@ impl AstContext {
                     let mut builder = unit.builder(var.ty.clone());
 
                     let ty = var.ty.get();
-                    let func_ty = if let Type::Func(func) = &*ty {
-                        func
-                    } else {
-                        unreachable!()
-                    };
+                    let func_ty = ty.as_function();
                     let params: Vec<_> = func_ty.params
                         .iter()
                         .map(|(_, ty)| builder.param(ty.clone()))
@@ -162,12 +158,12 @@ impl EmitIrExpr for AstNodeType {
             AstNodeType::Convert(Convert { from, to }) => {
                 let from_id = from.emit_ir_expr(builder, ctx);
                 let to = to.upgrade().unwrap();
-                match ((*from.borrow().ty.get()).clone(), (*to).clone()) {
-                    (Type::I32, Type::I1) => {
+                match (&from.borrow().ty.get().kind, &to.kind) {
+                    (TypeKind::I32, TypeKind::I1) => {
                         let zero = builder.const_i32(0);
                         builder.binary(BinaryOpType::Ne, from_id, zero).push()
                     }
-                    (Type::I1, Type::I32) => builder.zext(from_id, Type::i32_type()).push(),
+                    (TypeKind::I1, TypeKind::I32) => builder.zext(from_id, Type::i32_type()).push(),
                     _ => unimplemented!(),
                 }
             }

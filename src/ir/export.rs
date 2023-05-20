@@ -1,4 +1,4 @@
-use crate::ctype::{TypePtrHelper, Type};
+use crate::ctype::TypePtrHelper;
 
 use super::{
     value::{ValueType, ValueId, ConstantValue, InstructionValue, ValueTrait},
@@ -13,18 +13,15 @@ impl TransUnit {
     }
 
     pub fn print_func(&self, name: &str, func: &IrFunc) {
-        if let Type::Func(func) = &*func.ty.get() {
-            print!("define {} @{}(", func.ret_type.get(), name);
-            for (idx, (_, argty)) in func.params.iter().enumerate() {
-                if idx != 0 {
-                    print!(", ");
-                }
-                print!("{} %{}", argty.get(), idx);
+        let ty = func.ty.get().as_function();
+        print!("define {} @{}(", ty.ret_type.get(), name);
+        for (idx, (_, argty)) in ty.params.iter().enumerate() {
+            if idx != 0 {
+                print!(", ");
             }
-            println!(") {{");
-        } else {
-            unreachable!();
+            print!("{} %{}", argty.get(), idx);
         }
+        println!(") {{");
 
         let arena = &self.values;
         for bb in &func.bbs {

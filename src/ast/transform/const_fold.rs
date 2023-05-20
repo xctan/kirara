@@ -1,6 +1,6 @@
 use std::{rc::Rc, cell::RefCell};
 
-use crate::{ast::*, ctype::{Type, TypePtrHelper}};
+use crate::{ast::*, ctype::{TypeKind, TypePtrHelper}};
 
 use super::AstTransformPass;
 
@@ -13,7 +13,7 @@ impl AstTransformPass for ConstFoldPass {
 }
 
 /// do constant folding on AST
-pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
+fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
     let tree0 = tree.borrow();
     let new_node: Option<AstNodeType> = match tree0.node.clone() {
         AstNodeType::I1Number(_) => None,
@@ -23,11 +23,11 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::Convert(Convert{from, ref to}) => {
             assert!(tree.as_ptr() != from.as_ptr());
             ast_const_fold(from.clone());
-            match (from.borrow().node.clone(), (*to.get()).clone()) {
-                (AstNodeType::I1Number(num), Type::I32) => Some(AstNodeType::I32Number(num as i32)),
-                (AstNodeType::I32Number(num), Type::I32) => Some(AstNodeType::I32Number(num)),
-                (AstNodeType::I32Number(num), Type::I1) => Some(AstNodeType::I1Number(num != 0)),
-                (AstNodeType::I1Number(num), Type::I1) => Some(AstNodeType::I1Number(num)),
+            match (from.borrow().node.clone(), &to.get().kind) {
+                (AstNodeType::I1Number(num), &TypeKind::I32) => Some(AstNodeType::I32Number(num as i32)),
+                (AstNodeType::I32Number(num), &TypeKind::I32) => Some(AstNodeType::I32Number(num)),
+                (AstNodeType::I32Number(num), &TypeKind::I1) => Some(AstNodeType::I1Number(num != 0)),
+                (AstNodeType::I1Number(num), &TypeKind::I1) => Some(AstNodeType::I1Number(num)),
                 _ => None,
             }
         }
@@ -105,5 +105,44 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
 
     if let Some(new_node) = new_node {
         (*tree).borrow_mut().node = new_node;
+    }
+}
+
+pub fn eval(tree: Rc<RefCell<AstNode>>) -> Option<usize> {
+    let tree0 = tree.borrow();
+    match tree0.node.clone() {
+        AstNodeType::I1Number(num) => Some(num as usize),
+        AstNodeType::I32Number(num) => Some(num as usize),
+        AstNodeType::I64Number(num) => Some(num as usize),
+        AstNodeType::Variable(_var) => {
+            // todo: 
+            None
+        },
+        AstNodeType::Convert(Convert{from, ..}) => {
+            assert!(tree.as_ptr() != from.as_ptr());
+            eval(from.clone())
+        },
+        AstNodeType::BinaryOp(BinaryOp{lhs, rhs, op}) => {
+            let lhs = eval(lhs.clone())?;
+            let rhs = eval(rhs.clone())?;
+            let num = match op {
+                BinaryOpType::Add => lhs + rhs,
+                BinaryOpType::Sub => lhs - rhs,
+                BinaryOpType::Mul => lhs * rhs,
+                BinaryOpType::Div => lhs / rhs,
+                BinaryOpType::Mod => lhs % rhs,
+                BinaryOpType::Ne => (lhs != rhs) as usize,
+                BinaryOpType::Eq => (lhs == rhs) as usize,
+                BinaryOpType::Lt => (lhs < rhs) as usize,
+                BinaryOpType::Le => (lhs <= rhs) as usize,
+                BinaryOpType::Gt => (lhs > rhs) as usize,
+                BinaryOpType::Ge => (lhs >= rhs) as usize,
+                BinaryOpType::LogAnd => (lhs != 0 && rhs != 0) as usize,
+                BinaryOpType::LogOr => (lhs != 0 || rhs != 0) as usize,
+                _ => unreachable!(),
+            };
+            Some(num)
+        },
+        _ => None
     }
 }

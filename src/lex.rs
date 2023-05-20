@@ -88,6 +88,7 @@ fn keyword(input: &str) -> IResult<&str, Token> {
                 tag("goto"),
                 tag("break"),
                 tag("continue"),
+                tag("const"),
             )),
             not(
                 alt((
@@ -116,27 +117,32 @@ fn word(input: &str) -> IResult<&str, Token> {
 fn punctuation(input: &str) -> IResult<&str, Token> {
     map(
         alt((
-            tag("<="),
-            tag(">="),
-            tag("=="),
-            tag("!="),
-            tag("||"),
-            tag("&&"),
-            tag("<"),
-            tag(">"),
-            tag(";"),
-            tag(","),
-            tag("+"),
-            tag("-"),
-            tag("*"),
-            tag("/"),
-            tag("%"),
-            tag("="),
-            tag("{"),
-            tag("}"),
-            tag("("),
-            tag(")"),
-            tag(":"),
+            alt((
+                tag("<="),
+                tag(">="),
+                tag("=="),
+                tag("!="),
+                tag("||"),
+                tag("&&"),
+                tag("<"),
+                tag(">"),
+                tag(";"),
+                tag(","),
+                tag("+"),
+                tag("-"),
+                tag("*"),
+                tag("/"),
+                tag("%"),
+                tag("="))),
+            alt((
+                tag("{"),
+                tag("}"),
+                tag("("),
+                tag(")"),
+                tag("["),
+                tag("]"),
+                tag(":"),
+            ))
         )),
         |s| Token(s, TokenType::Punctuation)
     )(input)

@@ -2,7 +2,7 @@ use std::{rc::Rc, cell::RefCell};
 
 use crate::{
     ast::{ObjectId, AstNode, AstNodeType, AstFuncData, context::new_local_var},
-    ctype::{TypePtrHelper, Type, BinaryOpType},
+    ctype::{TypePtrHelper, BinaryOpType, TypeKind},
 };
 
 use super::{AstRewriteVisitor, AstTransformPass};
@@ -91,14 +91,9 @@ impl AstTransformPass for MergeMultiReturnPass {
                 ReturnGotoRewriter.rewrite(tree.body.clone());
             },
             None => {
-                let ret_type = match &*tree.func_ty.get() {
-                    &Type::Func(ref f) => {
-                        f.ret_type.clone()
-                    }
-                    _ => unreachable!(),
-                };
-                match &*ret_type.clone().get() {
-                    &Type::Void => {
+                let ret_type = tree.func_ty.get().as_function().ret_type;
+                match &ret_type.get().kind {
+                    &TypeKind::Void => {
                         ReturnGotoRewriter.rewrite(tree.body.clone());
                     },
                     _ => {
