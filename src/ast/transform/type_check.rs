@@ -1,6 +1,6 @@
 use std::{rc::{Rc, Weak}, cell::RefCell};
 
-use crate::{ast::*, ctype::{Type, TypePtrCompare}};
+use crate::{ast::*, ctype::{Type, TypePtrCompare, TypePtrHelper}};
 
 use super::AstTransformPass;
 
@@ -24,6 +24,11 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             ast_type_check(from);
             to
         },
+        AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op: BinaryOpType::Index }) => {
+            ast_type_check(lhs.clone());
+            ast_type_check(rhs.clone());
+            lhs.borrow().ty.get().base_type()
+        }
         AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op }) => {
             ast_type_check(lhs.clone());
             ast_type_check(rhs.clone());
@@ -65,6 +70,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
                 },
                 BinaryOpType::LogAnd => Type::i1_type(),
                 BinaryOpType::LogOr => Type::i1_type(),
+                _ => unreachable!(),
             }
         },
         AstNodeType::Return(expr) => {

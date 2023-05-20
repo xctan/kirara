@@ -173,6 +173,11 @@ impl EmitIrExpr for AstNodeType {
                     let rhs = rhs.emit_ir_expr(builder, ctx);
                     builder.store(rhs, lhs).push();
                     rhs
+                } else if matches!(op, &BinaryOpType::Index) {
+                    let lhs = lhs.emit_ir_lvalue(builder, ctx);
+                    let rhs = rhs.emit_ir_expr(builder, ctx);
+                    let addr = builder.gep(lhs, rhs).push();
+                    builder.load(addr).push()
                 } else if matches!(op, &BinaryOpType::LogAnd | &BinaryOpType::LogOr) {
                     self.emit_ir_logical_as_value(builder, ctx)
                 } else {
@@ -202,8 +207,13 @@ trait EmitIrLValue {
 }
 
 impl EmitIrLValue for AstNodeType {
-    fn emit_ir_lvalue(&self, _builder: &mut IrFuncBuilder, ctx: &mut AstContext) -> ValueId {
+    fn emit_ir_lvalue(&self, builder: &mut IrFuncBuilder, ctx: &mut AstContext) -> ValueId {
         match self {
+            AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op: BinaryOpType::Index }) => {
+                let lhs = lhs.emit_ir_lvalue(builder, ctx);
+                let rhs = rhs.emit_ir_expr(builder, ctx);
+                builder.gep(lhs, rhs).push()
+            }
             AstNodeType::Variable(var) => {
                 let var = ctx.get_object(*var).unwrap();
                 var.ir_value.unwrap()

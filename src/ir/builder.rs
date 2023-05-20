@@ -2,7 +2,7 @@ use std::{rc::Weak, collections::HashMap};
 
 use id_arena::{Arena, Id};
 
-use crate::ctype::{Type, BinaryOpType};
+use crate::ctype::{Type, BinaryOpType, TypePtrHelper};
 
 use super::value::*;
 
@@ -246,6 +246,7 @@ impl IrFuncBuilder<'_> {
             BinaryOpType::Ge |
             BinaryOpType::LogAnd |
             BinaryOpType::LogOr => Type::i1_type(),
+            _ => unimplemented!(),
         };
         let inst = BinaryInst {
             lhs,
@@ -314,6 +315,24 @@ impl IrFuncBuilder<'_> {
         for (value, _) in args {
             self.add_used_by(value, id);
         }
+        (self, id)
+    }
+
+    pub fn gep(&mut self, ptr: ValueId, idx: ValueId) -> (&mut Self, ValueId) {
+        let ptr_val = self.unit.values.get(ptr).unwrap().clone();
+        let ty = ptr_val.ty().get().base_type();
+        let inst = GetElemPtrInst {
+            name: self.gen_local_name(),
+            ty,
+            aggregate_ty: ptr_val.ty(),
+            ptr,
+            index: idx,
+        };
+        let val = ValueType::Instruction(InstructionValue::GetElemPtr(inst));
+        let val = Value::new(val);
+        let id = self.unit.values.alloc(val);
+        self.add_used_by(ptr, id);
+        self.add_used_by(idx, id);
         (self, id)
     }
 }

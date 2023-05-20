@@ -72,7 +72,7 @@ fn identifier(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
 }
 
 fn primary(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
-    // identifier | number_constant
+    // identifier | number_constant | '(' expression ')'
     alt((
         map(
             tuple((ttag!(P("(")), expression, ttag!(P(")")))),
@@ -86,15 +86,39 @@ fn primary(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     ))(cursor)
 }
 
+fn postfix(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // C: compound_literal | primary ( '[' expression ']' | '(' argument_expression_list? ')' | '.' identifier | '->' identifier | '++' | '--' )*
+
+    let (mut cursor, mut node) = primary(cursor)?;
+
+    loop {
+        if let Ok((cursor1, (_, expr, r))) = tuple((
+            ttag!(P("[")),
+            expression,
+            ttag!(P("]")),
+        ))(cursor) {
+            let token = range_between(&node.borrow().token, &r.as_range());
+            node = AstNode::binary(node, expr, BinaryOpType::Index, token);
+            cursor = cursor1;
+            continue;
+        }
+
+        // todo: function call
+
+        return Ok((cursor, node));
+    }
+}
+
 fn multiplication(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
-    // primary ( ('*' | '/' | '%') primary )*
+    // cast ( ('*' | '/' | '%') cast )*
+    // use postfix as cast temporarily
     map(
         tuple((
-            primary,
+            postfix,
             many0(
                 tuple((
                     alt((ttag!(P("*")), ttag!(P("/")), ttag!(P("%")))),
-                    primary))))),
+                    postfix))))),
         |(first, others)| {
             let mut node = first;
             for (sign, other) in others {

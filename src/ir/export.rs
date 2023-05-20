@@ -112,6 +112,14 @@ impl TransUnit {
                                 }
                                 println!();
                             }
+                            InstructionValue::GetElemPtr(ref gep) => {
+                                print!("{} = getelementptr inbounds {}, ptr ", gep.name, gep.aggregate_ty.get());
+                                self.print_value(gep.ptr);
+                                let idx_val = arena.get(gep.index).unwrap();
+                                print!(", i64 0, {} ", idx_val.ty().get());
+                                self.print_value(gep.index);
+                                println!();
+                            }
                         }
                     }
                     ValueType::Constant(_) => unimplemented!(),

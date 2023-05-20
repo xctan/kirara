@@ -145,6 +145,7 @@ pub enum InstructionValue {
     Jump(JumpInst),
     Zext(ZextInst),
     Phi(PhiInst),
+    GetElemPtr(GetElemPtrInst),
 }
 
 impl_value_trait!{InstructionValue{
@@ -157,6 +158,7 @@ impl_value_trait!{InstructionValue{
     Jump,
     Zext,
     Phi,
+    GetElemPtr,
 }}
 
 #[derive(Debug, Clone)]
@@ -236,3 +238,15 @@ pub struct PhiInst {
 }
 
 impl_value_trait!(PhiInst);
+
+#[derive(Debug, Clone)]
+pub struct GetElemPtrInst {
+    pub ptr: ValueId,
+    // pub indices: Vec<ValueId>,
+    pub index: ValueId,
+    pub name: String,
+    pub ty: Weak<Type>,
+    pub aggregate_ty: Weak<Type>,
+}
+
+impl_value_trait!(GetElemPtrInst);
