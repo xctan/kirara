@@ -346,6 +346,7 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Weak<Type>> {
                 }
 
                 match counter {
+                    0 => continue,
                     VOID => ty = Type::void_type(),
                     INT => ty = Type::i32_type(),
                     _ => panic!("invalid type"),

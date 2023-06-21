@@ -405,6 +405,8 @@ impl LocalInstExt for (&mut IrFuncBuilder<'_>, ValueId) {
 #[derive(Debug)]
 pub struct BasicBlock {
     pub name: String,
+    
+    pub is_labeled: bool,
 
     pub preds: Vec<BlockId>,
     // idom
@@ -419,6 +421,7 @@ impl BasicBlock {
     pub fn new(name: String) -> Self {
         Self {
             name,
+            is_labeled: false,
             preds: Vec::new(),
             insts_start: None,
             insts_end: None,

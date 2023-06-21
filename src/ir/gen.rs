@@ -95,34 +95,79 @@ impl EmitIr for AstNode {
                 let (tl, fl) = ifs.cond.emit_ir_logical(builder, ctx);
                 tl.iter().for_each(|item| item.backpatch(builder, builder.cur_bb()));
                 ifs.then.emit_ir(builder, ctx);
-                let (succ_last, fail) = builder.start_new_bb();
+                let cur_bb = &builder.unit.blocks[builder.cur_bb()];
+                let (succ_last, fail) =
+                    if !cur_bb.is_empty() || cur_bb.is_labeled {
+                        let (a, b) = builder.start_new_bb();
+                        (Some(a), b)
+                    } else {
+                        (None, builder.cur_bb())
+                    };
                 fl.iter().for_each(|item| item.backpatch(builder, fail));
                 ifs.els.emit_ir(builder, ctx);
-                let (fail_last, finally) = builder.start_new_bb();
-                builder.jump(finally).push_to(succ_last);
-                builder.jump(finally).push_to(fail_last);
+                let cur_bb = &builder.unit.blocks[builder.cur_bb()];
+                let (fail_last, finally) =
+                    if !cur_bb.is_empty() || cur_bb.is_labeled {
+                        let (a, b) = builder.start_new_bb();
+                        (Some(a), b)
+                    } else {
+                        (None, builder.cur_bb())
+                    };
+                if let Some(succ_last) = succ_last {
+                    builder.jump(finally).push_to(succ_last);
+                }
+                if let Some(fail_last) = fail_last {
+                    builder.jump(finally).push_to(fail_last);
+                }
             }
             AstNodeType::WhileStmt(whiles) => {
-                let (root, test) = builder.start_new_bb();
-                builder.jump(test).push_to(root);
+                let cur_bb = &builder.unit.blocks[builder.cur_bb()];
+                let test = if cur_bb.is_empty() {
+                    builder.cur_bb()
+                } else {
+                    let (a, b) = builder.start_new_bb();
+                    builder.jump(b).push_to(a);
+                    b
+                };
                 if !matches!(whiles.cond.borrow().node, AstNodeType::I1Number(true)) {
                     let (tl, fl) = whiles.cond.emit_ir_logical(builder, ctx);
                     tl.iter().for_each(|item| item.backpatch(builder, builder.cur_bb()));
                     whiles.body.emit_ir(builder, ctx);
-                    let (body_last, fail) = builder.start_new_bb();
-                    builder.jump(test).push_to(body_last);
+                    let cur_bb = &builder.unit.blocks[builder.cur_bb()];
+                    let fail =
+                        if !cur_bb.is_empty() || cur_bb.is_labeled {
+                            let (a, b) = builder.start_new_bb();
+                            builder.jump(test).push_to(a);
+                            b
+                        } else {
+                            builder.cur_bb()
+                        };
                     fl.iter().for_each(|item| item.backpatch(builder, fail));
                 } else {
                     whiles.body.emit_ir(builder, ctx);
-                    let (body_last, _) = builder.start_new_bb();
-                    builder.jump(test).push_to(body_last);
+                    let cur_bb = &builder.unit.blocks[builder.cur_bb()];
+                    if !cur_bb.is_empty() || cur_bb.is_labeled {
+                        let (a, _) = builder.start_new_bb();
+                        builder.jump(test).push_to(a);
+                    }
                 }
             }
             AstNodeType::LabelStmt(labeled) => {
-                let (old, new) = builder.start_new_bb();
-                builder.jump(new).push_to(old);
-                labeled.body.emit_ir(builder, ctx);
-                builder.labels.insert(labeled.label.clone(), new);
+                let cur_bb = &builder.unit.blocks[builder.cur_bb()];
+                let labeled_bb = if cur_bb.is_empty() {
+                    let bb = builder.cur_bb();
+                    builder.labels.insert(labeled.label.clone(), bb);
+                    labeled.body.emit_ir(builder, ctx);
+                    bb
+                } else {
+                    let (old, new) = builder.start_new_bb();
+                    builder.jump(new).push_to(old);
+                    labeled.body.emit_ir(builder, ctx);
+                    builder.labels.insert(labeled.label.clone(), new);
+                    new
+                };
+                let labeled_bb = &mut builder.unit.blocks[labeled_bb];
+                labeled_bb.is_labeled = true;
             }
             AstNodeType::GotoStmt(goto) => {
                 let j = builder.jump(builder.cur_bb()).push_only();
