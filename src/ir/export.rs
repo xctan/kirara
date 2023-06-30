@@ -2,7 +2,7 @@ use crate::ctype::TypePtrHelper;
 
 use super::{
     value::{ValueType, ValueId, ConstantValue, InstructionValue, ValueTrait},
-    builder::{TransUnit, IrFunc}
+    builder::TransUnit, structure::IrFunc
 };
 
 impl TransUnit {

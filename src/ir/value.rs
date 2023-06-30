@@ -4,7 +4,7 @@ use id_arena::Id;
 
 use crate::ctype::{Type, BinaryOpType as BinaryOp};
 
-use super::builder::BlockId;
+use super::structure::BlockId;
 
 pub type ValueId = Id<Value>;
 
@@ -102,6 +102,22 @@ impl_value_trait!{ValueType{
     Constant,
     Parameter,
 }}
+
+impl ValueType {
+    pub fn as_inst(&self) -> &InstructionValue {
+        match self {
+            ValueType::Instruction(v) => v,
+            _ => panic!("not an instruction"),
+        }
+    }
+
+    pub fn as_inst_mut(&mut self) -> &mut InstructionValue {
+        match self {
+            ValueType::Instruction(v) => v,
+            _ => panic!("not an instruction"),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ParameterValue {

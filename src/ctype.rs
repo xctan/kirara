@@ -185,6 +185,21 @@ impl TypePtrCompare for Weak<Type> {
     }
 }
 
+impl TypePtrCompare for Rc<Type> {
+    fn is_same_as(&self, other: &Self) -> bool {
+        if self.is_ptr() && other.is_ptr() {
+            self.base_type().is_same_as(&other.base_type())
+        } else {
+            matches!(
+                (&self.kind, &other.kind), 
+                (&TypeKind::Void, &TypeKind::Void) | 
+                (&TypeKind::I1, &TypeKind::I1) | 
+                (&TypeKind::I32, &TypeKind::I32)
+            )
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Func {
     pub ret_type: Weak<Type>,

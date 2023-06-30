@@ -8,6 +8,7 @@ mod ctype;
 use crate::{
     lex::tokenize,
     ast::parse,
+    ir::IrPass,
 };
 
 fn main() {
@@ -25,5 +26,8 @@ fn main() {
 
     let mut unit = ir::builder::TransUnit::new();
     ast.emit_ir(&mut unit);
+    // unit.print();
+
+    ir::opt::mem2reg::Mem2Reg::run(&mut unit);
     unit.print();
 }
