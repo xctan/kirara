@@ -14,8 +14,7 @@ pub struct Mem2Reg;
 
 impl IrPass for Mem2Reg {
     fn run(unit: &mut TransUnit) {
-        let funcs = unit.funcs.clone();
-        for k in funcs.keys() {
+        for k in unit.funcs() {
             mem2reg(unit, k.as_str());
         }
     }

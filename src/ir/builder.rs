@@ -185,6 +185,10 @@ impl TransUnit {
         }
     }
 
+    pub fn funcs(&self) -> Vec<String> {
+        self.funcs.keys().map(|id| id.clone()).collect()
+    }
+
     pub fn count(&mut self) -> usize {
         let ret = self.counter;
         self.counter += 1;

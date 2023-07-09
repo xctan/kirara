@@ -4,6 +4,7 @@ mod token;
 mod lex;
 mod ast;
 mod ir;
+mod asm;
 mod ctype;
 use crate::{
     lex::tokenize,
