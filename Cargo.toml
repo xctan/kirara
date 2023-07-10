@@ -7,5 +7,4 @@ edition = "2021"
 
 [dependencies]
 nom = "7"
-id-arena = "2.2.1"
 lazy_static = "1.4.0"
