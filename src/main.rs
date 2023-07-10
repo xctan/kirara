@@ -1,5 +1,6 @@
 use std::io::{stdin, Read};
 
+mod alloc;
 mod token;
 mod lex;
 mod ast;
