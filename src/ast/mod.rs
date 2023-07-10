@@ -4,7 +4,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use id_arena::{Arena, Id};
+use crate::alloc::{Arena, Id};
 
 pub(in crate::ast) mod context;
 pub mod parse;

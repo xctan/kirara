@@ -1,6 +1,6 @@
 use std::{rc::Weak, collections::HashSet};
 
-use id_arena::Id;
+use crate::alloc::Id;
 
 use crate::ctype::{Type, BinaryOpType as BinaryOp};
 

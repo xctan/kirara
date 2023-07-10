@@ -1,6 +1,6 @@
 use std::rc::Weak;
 
-use id_arena::Id;
+use crate::alloc::Id;
 
 use crate::ctype::Type;
 

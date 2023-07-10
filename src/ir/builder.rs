@@ -1,6 +1,6 @@
 use std::{rc::Weak, collections::HashMap};
 
-use id_arena::Arena;
+use crate::alloc::Arena;
 
 use crate::ctype::{Type, BinaryOpType, TypePtrHelper};
 
@@ -271,6 +271,7 @@ impl TransUnit {
                 bb.insts_end = this.prev;
             }
         }
+        self.values.remove(value);
     }
 
     /// replace all occurrences of old inst value with new
