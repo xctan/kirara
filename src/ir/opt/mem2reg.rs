@@ -1,3 +1,6 @@
+//! Memory to register promotion.
+//! 
+
 use std::{collections::{HashMap, HashSet}, rc::Rc};
 
 use crate::{

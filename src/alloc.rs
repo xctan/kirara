@@ -31,6 +31,7 @@ impl<T> Index<T> {
         Self { index, generation, _ty: PhantomData }
     }
 
+    #[allow(unused)]
     pub fn into_raw_parts(self) -> (usize, usize) {
         (self.index, self.generation)
     }

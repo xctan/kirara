@@ -31,5 +31,6 @@ fn main() {
     // unit.print();
 
     ir::opt::mem2reg::Mem2Reg::run(&mut unit);
+    ir::opt::canonicalize::Canonicalize::run(&mut unit);
     unit.print();
 }

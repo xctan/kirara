@@ -192,9 +192,19 @@ pub struct MachineBB {
 pub struct MachineFunc {
     pub func: String,
 
+    pub entry: Rc<MachineBB>,
+
     pub virtual_max: u32,
 
     pub stack_size: u32,
 
     pub saved_regs: HashSet<RVReg>,
+
+    // use_lr?
+
+    // sp_arg_fixup?
+}
+
+pub struct MachineProg {
+    
 }
