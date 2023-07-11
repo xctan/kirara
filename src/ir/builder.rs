@@ -1,10 +1,13 @@
-use std::{rc::Weak, collections::HashMap};
+use std::{collections::HashMap, rc::Weak};
 
 use crate::alloc::Arena;
 
-use crate::ctype::{Type, BinaryOpType, TypePtrHelper};
+use crate::ctype::{BinaryOpType, Type, TypePtrHelper};
 
-use super::{value::*, structure::{BlockId, BasicBlock, IrFunc}};
+use super::{
+    structure::{BasicBlock, BlockId, IrFunc},
+    value::*,
+};
 
 /// A builder for constructing IR functions, with various helper methods for control flow manipulation.
 #[derive(Debug)]
@@ -78,10 +81,10 @@ impl IrFuncBuilder<'_> {
                 ValueType::Instruction(InstructionValue::Branch(ref br)) => {
                     self.add_predecessor(br.succ, bb);
                     self.add_predecessor(br.fail, bb);
-                },
+                }
                 ValueType::Instruction(InstructionValue::Jump(ref jmp)) => {
                     self.add_predecessor(jmp.succ, bb);
-                },
+                }
                 _ => (),
             }
         }
@@ -304,16 +307,20 @@ impl TransUnit {
                         unreachable!()
                     }
                 }
-                InstructionValue::Store(this) => rep!(this, Store, StoreInst{ptr, value}),
-                InstructionValue::Load(li) => rep!(li, Load, LoadInst{ptr}),
-                InstructionValue::Binary(bin) => rep!(bin, Binary, BinaryInst{lhs, rhs}),
-                InstructionValue::Branch(br) => rep!(br, Branch, BranchInst{cond}),
+                InstructionValue::Store(this) => rep!(this, Store, StoreInst { ptr, value }),
+                InstructionValue::Load(li) => rep!(li, Load, LoadInst { ptr }),
+                InstructionValue::Binary(bin) => rep!(bin, Binary, BinaryInst { lhs, rhs }),
+                InstructionValue::Branch(br) => rep!(br, Branch, BranchInst { cond }),
                 InstructionValue::Jump(_) => unreachable!(),
-                InstructionValue::Zext(ze) => rep!(ze, Zext, ZextInst{value}),
-                InstructionValue::GetElemPtr(gep) => rep!(gep, GetElemPtr, GetElemPtrInst{ptr, index}),
+                InstructionValue::Zext(ze) => rep!(ze, Zext, ZextInst { value }),
+                InstructionValue::GetElemPtr(gep) => {
+                    rep!(gep, GetElemPtr, GetElemPtrInst { ptr, index })
+                }
                 InstructionValue::Phi(phi) => {
                     let mut new_phi = phi.clone();
-                    new_phi.args.iter_mut()
+                    new_phi
+                        .args
+                        .iter_mut()
                         .filter(|arg| arg.0 == old)
                         .for_each(|arg| arg.0 = new);
                     InstructionValue::Phi(new_phi)
@@ -332,13 +339,13 @@ impl TransUnit {
         match last.value.as_inst() {
             &InstructionValue::Branch(ref insn) => {
                 vec![insn.succ, insn.fail]
-            },
+            }
             &InstructionValue::Jump(ref insn) => {
                 vec![insn.succ]
-            },
+            }
             &InstructionValue::Return(_) => {
                 vec![]
-            },
+            }
             _ => panic!("Invalid terminator instruction"),
         }
     }
@@ -371,9 +378,7 @@ impl TransUnit {
     }
 
     pub fn ret(&mut self, value: Option<ValueId>) -> ValueId {
-        let inst = ReturnInst {
-            value,
-        };
+        let inst = ReturnInst { value };
         let val = ValueType::Instruction(InstructionValue::Return(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
@@ -384,10 +389,7 @@ impl TransUnit {
     }
 
     pub fn store(&mut self, value: ValueId, ptr: ValueId) -> ValueId {
-        let inst = StoreInst {
-            value,
-            ptr,
-        };
+        let inst = StoreInst { value, ptr };
         let val = ValueType::Instruction(InstructionValue::Store(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
@@ -412,23 +414,23 @@ impl TransUnit {
 
     pub fn binary(&mut self, op: BinaryOpType, lhs: ValueId, rhs: ValueId) -> ValueId {
         let ty = match op {
-            BinaryOpType::Add |
-            BinaryOpType::Sub |
-            BinaryOpType::Mul |
-            BinaryOpType::Div |
-            BinaryOpType::Mod |
-            BinaryOpType::Assign => {
+            BinaryOpType::Add
+            | BinaryOpType::Sub
+            | BinaryOpType::Mul
+            | BinaryOpType::Div
+            | BinaryOpType::Mod
+            | BinaryOpType::Assign => {
                 let lhs = self.values.get(lhs).unwrap();
                 lhs.ty()
-            },
-            BinaryOpType::Ne |
-            BinaryOpType::Eq |
-            BinaryOpType::Lt |
-            BinaryOpType::Le |
-            BinaryOpType::Gt |
-            BinaryOpType::Ge |
-            BinaryOpType::LogAnd |
-            BinaryOpType::LogOr => Type::i1_type(),
+            }
+            BinaryOpType::Ne
+            | BinaryOpType::Eq
+            | BinaryOpType::Lt
+            | BinaryOpType::Le
+            | BinaryOpType::Gt
+            | BinaryOpType::Ge
+            | BinaryOpType::LogAnd
+            | BinaryOpType::LogOr => Type::i1_type(),
             _ => unimplemented!(),
         };
         let inst = BinaryInst {
@@ -447,11 +449,7 @@ impl TransUnit {
     }
 
     pub fn branch(&mut self, cond: ValueId, succ: BlockId, fail: BlockId) -> ValueId {
-        let inst = BranchInst {
-            cond,
-            succ,
-            fail,
-        };
+        let inst = BranchInst { cond, succ, fail };
         let val = ValueType::Instruction(InstructionValue::Branch(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
@@ -460,9 +458,7 @@ impl TransUnit {
     }
 
     pub fn jump(&mut self, succ: BlockId) -> ValueId {
-        let inst = JumpInst {
-            succ,
-        };
+        let inst = JumpInst { succ };
         let val = ValueType::Instruction(InstructionValue::Jump(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
@@ -572,7 +568,7 @@ impl BackPatchItem {
                     }
                     _ => unreachable!(),
                 }
-            },
+            }
             BackPatchType::BranchFail => {
                 let inst = builder.unit.values.get_mut(self.branch).unwrap();
                 match &mut inst.value {
@@ -581,7 +577,7 @@ impl BackPatchItem {
                     }
                     _ => unreachable!(),
                 }
-            },
+            }
             BackPatchType::Jump => {
                 let inst = builder.unit.values.get_mut(self.branch).unwrap();
                 match &mut inst.value {
@@ -590,7 +586,7 @@ impl BackPatchItem {
                     }
                     _ => unreachable!(),
                 }
-            },
+            }
         }
         let inst_bb = builder.unit.inst_bb.get(&self.branch).unwrap();
         builder.add_predecessor(bb, *inst_bb);

@@ -1,7 +1,10 @@
-use std::{rc::Rc, collections::HashSet};
+use std::{rc::Rc, collections::{HashSet, HashMap}, fmt::Debug};
 
-use crate::ir::structure::BlockId;
+use crate::{ir::structure::BlockId, alloc::{Id, Arena}};
 
+pub mod codegen;
+
+#[derive(Clone, Copy)]
 pub enum RVReg {
     X0, // always zero
     X1,
@@ -74,114 +77,314 @@ macro_rules! reg {
     (t6) => { RVReg::X31 };
 }
 
-pub enum MachineOperand {
-    Allocated(RVReg),
-    Virtual(u32),
+impl RVReg {
+    pub fn a(i: usize) -> Self {
+        match i {
+            0 => RVReg::X10,
+            1 => RVReg::X11,
+            2 => RVReg::X12,
+            3 => RVReg::X13,
+            4 => RVReg::X14,
+            5 => RVReg::X15,
+            6 => RVReg::X16,
+            7 => RVReg::X17,
+            _ => panic!("invalid A register index"),
+        }
+    }
+
+    pub fn sp() -> Self {
+        RVReg::X2
+    }
+
+    pub fn fp() -> Self {
+        RVReg::X8
+    }
+
+    pub fn zero() -> Self {
+        RVReg::X0
+    }
+
+    pub fn s(i: usize) -> Self {
+        match i {
+            0 => RVReg::X8,
+            1 => RVReg::X9,
+            2 => RVReg::X18,
+            3 => RVReg::X19,
+            4 => RVReg::X20,
+            5 => RVReg::X21,
+            6 => RVReg::X22,
+            7 => RVReg::X23,
+            8 => RVReg::X24,
+            9 => RVReg::X25,
+            10 => RVReg::X26,
+            11 => RVReg::X27,
+            _ => panic!("invalid S register index"),
+        }
+    }
+
+    pub fn t(i: usize) -> Self {
+        match i {
+            0 => RVReg::X5,
+            1 => RVReg::X6,
+            2 => RVReg::X7,
+            3 => RVReg::X28,
+            4 => RVReg::X29,
+            5 => RVReg::X30,
+            6 => RVReg::X31,
+            _ => panic!("invalid T register index"),
+        }
+    }
 }
 
+impl Debug for RVReg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // use abi names
+            RVReg::X0 => write!(f, "zero"),
+            RVReg::X1 => write!(f, "ra"),
+            RVReg::X2 => write!(f, "sp"),
+            RVReg::X3 => write!(f, "gp"),
+            RVReg::X4 => write!(f, "tp"),
+            RVReg::X5 => write!(f, "t0"),
+            RVReg::X6 => write!(f, "t1"),
+            RVReg::X7 => write!(f, "t2"),
+            RVReg::X8 => write!(f, "s0"),
+            RVReg::X9 => write!(f, "s1"),
+            RVReg::X10 => write!(f, "a0"),
+            RVReg::X11 => write!(f, "a1"),
+            RVReg::X12 => write!(f, "a2"),
+            RVReg::X13 => write!(f, "a3"),
+            RVReg::X14 => write!(f, "a4"),
+            RVReg::X15 => write!(f, "a5"),
+            RVReg::X16 => write!(f, "a6"),
+            RVReg::X17 => write!(f, "a7"),
+            RVReg::X18 => write!(f, "s2"),
+            RVReg::X19 => write!(f, "s3"),
+            RVReg::X20 => write!(f, "s4"),
+            RVReg::X21 => write!(f, "s5"),
+            RVReg::X22 => write!(f, "s6"),
+            RVReg::X23 => write!(f, "s7"),
+            RVReg::X24 => write!(f, "s8"),
+            RVReg::X25 => write!(f, "s9"),
+            RVReg::X26 => write!(f, "s10"),
+            RVReg::X27 => write!(f, "s11"),
+            RVReg::X28 => write!(f, "t3"),
+            RVReg::X29 => write!(f, "t4"),
+            RVReg::X30 => write!(f, "t5"),
+            RVReg::X31 => write!(f, "t6"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum MachineOperand {
+    Virtual(u32),
+    Allocated(RVReg),
+    PreColored(RVReg),
+}
+
+#[derive(Debug, Clone)]
+#[allow(unused)]
 pub enum RV64Instruction {
     // RV32I
 
     // U-type: rd, imm
-    LUI(MachineOperand, i32),
-    AUIPC(MachineOperand, i32),
+    LUI { rd: MachineOperand, imm: i32 },
+    AUIPC { rd: MachineOperand, imm: i32 },
     // J-type: rd, imm
-    JAL(MachineOperand, i32),
+    JAL { rd: MachineOperand, imm: i32 },
     // I-type: rd, rs1, imm
-    JALR(MachineOperand, MachineOperand, i32),
+    JALR { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
     // B-type: rs1, rs2, imm
-    BEQ(MachineOperand, MachineOperand, i32),
-    BNE(MachineOperand, MachineOperand, i32),
-    BLT(MachineOperand, MachineOperand, i32),
-    BGE(MachineOperand, MachineOperand, i32),
-    BLTU(MachineOperand, MachineOperand, i32),
-    BGEU(MachineOperand, MachineOperand, i32),
+    BEQ { rs1: MachineOperand, rs2: MachineOperand, imm: i32 },
+    BNE { rs1: MachineOperand, rs2: MachineOperand, imm: i32 },
+    BLT { rs1: MachineOperand, rs2: MachineOperand, imm: i32 },
+    BGE { rs1: MachineOperand, rs2: MachineOperand, imm: i32 },
+    BLTU { rs1: MachineOperand, rs2: MachineOperand, imm: i32 },
+    BGEU { rs1: MachineOperand, rs2: MachineOperand, imm: i32 },
     // I-type: rd, rs1, imm
-    LB(MachineOperand, MachineOperand, i32),
-    LH(MachineOperand, MachineOperand, i32),
-    LW(MachineOperand, MachineOperand, i32),
-    LBU(MachineOperand, MachineOperand, i32),
-    LHU(MachineOperand, MachineOperand, i32),
+    LB { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    LH { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    LW { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    LBU { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    LHU { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
     // S-type: rs1, rs2, imm
-    SB(MachineOperand, MachineOperand, i32),
-    SH(MachineOperand, MachineOperand, i32),
-    SW(MachineOperand, MachineOperand, i32),
+    SB { rs1: MachineOperand, rs2: MachineOperand, imm: i32 },
+    SH { rs1: MachineOperand, rs2: MachineOperand, imm: i32 },
+    SW { rs1: MachineOperand, rs2: MachineOperand, imm: i32 },
     // I-type: rd, rs1, imm
-    ADDI(MachineOperand, MachineOperand, i32),
-    SLTI(MachineOperand, MachineOperand, i32),
-    SLTIU(MachineOperand, MachineOperand, i32),
-    XORI(MachineOperand, MachineOperand, i32),
-    ORI(MachineOperand, MachineOperand, i32),
-    ANDI(MachineOperand, MachineOperand, i32),
-    SLLI(MachineOperand, MachineOperand, i32),
-    SRLI(MachineOperand, MachineOperand, i32),
-    SRAI(MachineOperand, MachineOperand, i32),
+    ADDI { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    SLTI { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    SLTIU { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    XORI { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    ORI { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    ANDI { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    SLLI { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    SRLI { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    SRAI { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
     // R-type: rd, rs1, rs2
-    ADD(MachineOperand, MachineOperand, MachineOperand),
-    SUB(MachineOperand, MachineOperand, MachineOperand),
-    SLL(MachineOperand, MachineOperand, MachineOperand),
-    SLT(MachineOperand, MachineOperand, MachineOperand),
-    SLTU(MachineOperand, MachineOperand, MachineOperand),
-    XOR(MachineOperand, MachineOperand, MachineOperand),
-    SRL(MachineOperand, MachineOperand, MachineOperand),
-    SRA(MachineOperand, MachineOperand, MachineOperand),
-    OR(MachineOperand, MachineOperand, MachineOperand),
-    AND(MachineOperand, MachineOperand, MachineOperand),
+    ADD { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SUB { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SLL { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SLT { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SLTU { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    XOR { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SRL { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SRA { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    OR { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    AND { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
 
     // RV64I additions
 
     // I-type: rd, rs1, imm
-    LWU(MachineOperand, MachineOperand, i32),
-    LD(MachineOperand, MachineOperand, i32),
+    LWU { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    LD { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
     // S-type: rs1, rs2, imm
-    SD(MachineOperand, MachineOperand, i32),
+    SD { rs1: MachineOperand, rs2: MachineOperand, imm: i32 },
     // I-type: rd, rs1, imm
-    ADDIW(MachineOperand, MachineOperand, i32),
-    SLLIW(MachineOperand, MachineOperand, i32),
-    SRLIW(MachineOperand, MachineOperand, i32),
-    SRAIW(MachineOperand, MachineOperand, i32),
+    ADDIW { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    SLLIW { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    SRLIW { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
+    SRAIW { rd: MachineOperand, rs1: MachineOperand, imm: i32 },
     // R-type: rd, rs1, rs2
-    ADDW(MachineOperand, MachineOperand, MachineOperand),
-    SUBW(MachineOperand, MachineOperand, MachineOperand),
-    SLLW(MachineOperand, MachineOperand, MachineOperand),
-    SRLW(MachineOperand, MachineOperand, MachineOperand),
-    SRAW(MachineOperand, MachineOperand, MachineOperand),
+    ADDW { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SUBW { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SLLW { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SRLW { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SRAW { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
 
     // RV32M
     // R-type: rd, rs1, rs2
-    MUL(MachineOperand, MachineOperand, MachineOperand),
-    MULH(MachineOperand, MachineOperand, MachineOperand),
-    MULHSU(MachineOperand, MachineOperand, MachineOperand),
-    MULHU(MachineOperand, MachineOperand, MachineOperand),
-    DIV(MachineOperand, MachineOperand, MachineOperand),
-    DIVU(MachineOperand, MachineOperand, MachineOperand),
-    REM(MachineOperand, MachineOperand, MachineOperand),
-    REMU(MachineOperand, MachineOperand, MachineOperand),
+    MUL { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    MULH { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    MULHSU { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    MULHU { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    DIV { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    DIVU { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    REM { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    REMU { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
 
     // RV64M
     // R-type: rd, rs1, rs2
-    MULW(MachineOperand, MachineOperand, MachineOperand),
-    DIVW(MachineOperand, MachineOperand, MachineOperand),
-    DIVUW(MachineOperand, MachineOperand, MachineOperand),
-    REMW(MachineOperand, MachineOperand, MachineOperand),
-    REMUW(MachineOperand, MachineOperand, MachineOperand),
+    MULW { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    DIVW { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    DIVUW { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    REMW { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    REMUW { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
 
     // todo: RV32F
+
+    // pseudo instructions
+    CALL { callee: String },
+    PBEQ { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    PBNE { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    PBLT { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    PBGE { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    PBLTU { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    PBGEU { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    JUMP { target: Id<MachineBB> },
+}
+
+macro_rules! builder_impl_rv64 {
+    (r ; $mnemonic:ident) => {
+        #[allow(non_snake_case)]
+        #[allow(unused)]
+        pub fn $mnemonic(rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand) -> RV64Instruction {
+            RV64Instruction::$mnemonic { rd, rs1, rs2 }
+        }
+    };
+    (i ; $mnemonic:ident) => {
+        #[allow(non_snake_case)]
+        #[allow(unused)]
+        pub fn $mnemonic(rd: MachineOperand, rs1: MachineOperand, imm: i32) -> Result<RV64Instruction, ()> {
+            // check if imm is a 12-bit signed integer
+            if imm < 4096 && imm >= -4096 {
+                Ok(RV64Instruction::$mnemonic { rd, rs1, imm })
+            } else {
+                Err(())
+            }
+        }
+    };
+    (s; $mnemonic:ident) => {
+        #[allow(non_snake_case)]
+        #[allow(unused)]
+        pub fn $mnemonic(rs1: MachineOperand, rs2: MachineOperand, imm: i32) -> Result<RV64Instruction, ()> {
+            // check if imm is a 12-bit signed integer
+            if imm < 4096 && imm >= -4096 {
+                Ok(RV64Instruction::$mnemonic { rs1, rs2, imm })
+            } else {
+                Err(())
+            }
+        }
+    };
+}
+
+pub struct RV64InstBuilder;
+
+impl RV64InstBuilder {
+    #[allow(non_snake_case)]
+    pub fn LUI(rd: MachineOperand, imm: i32) -> Result<RV64Instruction, ()> {
+        // check if imm is a 20-bit signed integer
+        if imm < 1048576 && imm >= -1048576 {
+            Ok(RV64Instruction::LUI { rd, imm })
+        } else {
+            Err(())
+        }
+    }
+
+    builder_impl_rv64!(i; LB);
+    builder_impl_rv64!(i; LH);
+    builder_impl_rv64!(i; LW);
+    builder_impl_rv64!(i; LBU);
+    builder_impl_rv64!(i; LHU);
+    builder_impl_rv64!(s; SB);
+    builder_impl_rv64!(s; SH);
+    builder_impl_rv64!(s; SW);
+
+    builder_impl_rv64!(i; ADDI);
+    builder_impl_rv64!(i; SLTI);
+    builder_impl_rv64!(i; SLTIU);
+    builder_impl_rv64!(i; XORI);
+    builder_impl_rv64!(i; ORI);
+    builder_impl_rv64!(i; ANDI);
+    builder_impl_rv64!(i; SLLI);
+    builder_impl_rv64!(i; SRLI);
+    builder_impl_rv64!(i; SRAI);
+
+    builder_impl_rv64!(r; ADD);
+    builder_impl_rv64!(r; SUB);
+    builder_impl_rv64!(r; SLL);
+    builder_impl_rv64!(r; SLT);
+    builder_impl_rv64!(r; SLTU);
+    builder_impl_rv64!(r; XOR);
+    builder_impl_rv64!(r; SRL);
+    builder_impl_rv64!(r; SRA);
+    builder_impl_rv64!(r; OR);
+    builder_impl_rv64!(r; AND);
+
+    builder_impl_rv64!(i; LWU);
+    builder_impl_rv64!(i; LD);
+    builder_impl_rv64!(s; SD);
+
+    builder_impl_rv64!(i; ADDIW);
+    builder_impl_rv64!(i; SLLIW);
+    builder_impl_rv64!(i; SRLIW);
+    builder_impl_rv64!(i; SRAIW);
 }
 
 pub struct MachineInst {
     pub inst: RV64Instruction,
-    pub bb: Rc<MachineBB>,
-    pub prev: Option<Rc<MachineInst>>,
-    pub next: Option<Rc<MachineInst>>,
+    pub bb: Id<MachineBB>,
+    pub prev: Option<Id<MachineInst>>,
+    pub next: Option<Id<MachineInst>>,
 }
 
 pub struct MachineBB {
     pub bb: BlockId,
-    pub insts_head: Option<Rc<MachineInst>>,
-    pub insts_tail: Option<Rc<MachineInst>>,
-    pub preds: Vec<Rc<MachineBB>>,
-    pub succs: Vec<Rc<MachineBB>>,
+    pub insts_head: Option<Id<MachineInst>>,
+    pub insts_tail: Option<Id<MachineInst>>,
+    pub preds: Vec<Id<MachineBB>>,
+    pub succs: Vec<Id<MachineBB>>,
 
     pub liveuse: HashSet<MachineOperand>,
     pub livedef: HashSet<MachineOperand>,
@@ -189,10 +392,28 @@ pub struct MachineBB {
     pub liveout: HashSet<MachineOperand>,
 }
 
+impl MachineBB {
+    pub fn new(bb: BlockId) -> Self {
+        Self {
+            bb,
+            insts_head: None,
+            insts_tail: None,
+            preds: Vec::new(),
+            succs: Vec::new(),
+            liveuse: HashSet::new(),
+            livedef: HashSet::new(),
+            livein: HashSet::new(),
+            liveout: HashSet::new(),
+        }
+    }
+}
+
 pub struct MachineFunc {
     pub func: String,
 
-    pub entry: Rc<MachineBB>,
+    pub entry: Option<Id<MachineBB>>,
+
+    pub bbs: Vec<Id<MachineBB>>,
 
     pub virtual_max: u32,
 
@@ -202,9 +423,94 @@ pub struct MachineFunc {
 
     // use_lr?
 
-    // sp_arg_fixup?
+    // todo: omit_fp_fixup, for sp-relative addressing
 }
 
-pub struct MachineProg {
-    
+impl MachineFunc {
+    pub fn new(func: String) -> Self {
+        Self {
+            func,
+            entry: None,
+            bbs: Vec::new(),
+            virtual_max: 0,
+            stack_size: 0,
+            saved_regs: HashSet::new(),
+        }
+    }
+}
+
+pub struct MachineProgram {
+    pub funcs: Vec<MachineFunc>,
+
+    // global_decl
+
+    pub blocks: Arena<MachineBB>,
+    pub insts: Arena<MachineInst>,
+    // mbb to mfunc map
+    pub block_map: HashMap<Id<MachineBB>, usize>,
+}
+
+impl MachineProgram {
+    pub fn new() -> Self {
+        Self {
+            funcs: Vec::new(),
+            blocks: Arena::new(),
+            insts: Arena::new(),
+            block_map: HashMap::new(),
+        }
+    }
+
+    pub fn alloc_block(&mut self, idx: usize, mbb: MachineBB) -> Id<MachineBB> {
+        let mbb_id = self.blocks.alloc(mbb);
+        self.block_map.insert(mbb_id, idx);
+        mbb_id
+    }
+
+    pub fn push_to_end(&mut self, mbb: Id<MachineBB>, inst: RV64Instruction) {
+        let mblock_tail = self.blocks[mbb].insts_tail;
+        let minst = MachineInst {
+            inst,
+            bb: mbb,
+            prev: mblock_tail,
+            next: None,
+        };
+        let minst_id = self.insts.alloc(minst);
+        let mblock = &mut self.blocks[mbb];
+        mblock.insts_tail = Some(minst_id);
+    }
+
+    pub fn push_to_begin(&mut self, mbb: Id<MachineBB>, inst: RV64Instruction) {
+        let mblock_head = self.blocks[mbb].insts_head;
+        let minst = MachineInst {
+            inst,
+            bb: mbb,
+            prev: None,
+            next: mblock_head,
+        };
+        let minst_id = self.insts.alloc(minst);
+        let mblock = &mut self.blocks[mbb];
+        if let Some(head) = mblock_head {
+            self.insts[head].prev = Some(minst_id);
+        } else {
+            mblock.insts_tail = Some(minst_id);
+        }
+        self.blocks[mbb].insts_head = Some(minst_id);
+    }
+
+    pub fn insert_before(&mut self, before: Id<MachineInst>, inst: RV64Instruction) {
+        let minst = MachineInst {
+            inst,
+            bb: self.insts[before].bb,
+            prev: self.insts[before].prev,
+            next: Some(before),
+        };
+        let minst_id = self.insts.alloc(minst);
+        let mblock = &mut self.blocks[self.insts[before].bb];
+        if let Some(prev) = mblock.insts_head {
+            self.insts[prev].next = Some(minst_id);
+        } else {
+            mblock.insts_head = Some(minst_id);
+        }
+        self.insts[before].prev = Some(minst_id);
+    }
 }

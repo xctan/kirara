@@ -14,7 +14,8 @@ pub trait EmitIr {
 }
 
 impl AstContext {
-    pub fn emit_ir(&mut self, unit: &mut TransUnit) {
+    pub fn emit_ir(&mut self) -> TransUnit {
+        let mut unit = TransUnit::new();
         for var in self.globals.clone() {
             let var = self.get_object(var).unwrap();
             match var.data.clone() {
@@ -71,6 +72,7 @@ impl AstContext {
                 }
             }
         }
+        unit
     }
 }
 

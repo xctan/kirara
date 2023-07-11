@@ -2,25 +2,26 @@ use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::hash::{Hash, Hasher};
 use std::fmt::Debug;
+use std::num::NonZeroUsize;
 use std::{ops, mem};
 
 #[derive(Clone, Debug)]
 pub struct Arena<T> {
     items: Vec<Entry<T>>,
-    generation: usize,
+    generation: NonZeroUsize,
     free_list_head: Option<usize>,
     len: usize,
 }
 
 #[derive(Clone, Debug)]
 enum Entry<T> {
-    Occupied { value: T, generation: usize },
+    Occupied { value: T, generation: NonZeroUsize },
     Vacant { next_free: Option<usize> },
 }
 
 pub struct Index<T> {
     index: usize,
-    generation: usize,
+    generation: NonZeroUsize,
     _ty: PhantomData<T>,
 }
 
@@ -28,12 +29,12 @@ pub use Index as Id;
 
 impl<T> Index<T> {
     pub fn from_raw_parts(index: usize, generation: usize) -> Self {
-        Self { index, generation, _ty: PhantomData }
+        Self { index, generation: NonZeroUsize::new(generation).unwrap(), _ty: PhantomData }
     }
 
     #[allow(unused)]
     pub fn into_raw_parts(self) -> (usize, usize) {
-        (self.index, self.generation)
+        (self.index, self.generation.into())
     }
 }
 
@@ -94,7 +95,7 @@ impl<T> Arena<T> {
     pub fn with_capacity(capacity: usize) -> Arena<T> {
         Arena {
             items: Vec::with_capacity(capacity),
-            generation: 0,
+            generation: NonZeroUsize::new(114514).unwrap(),
             free_list_head: None,
             len: 0,
         }
@@ -110,7 +111,7 @@ impl<T> Arena<T> {
             else { Entry::Vacant { next_free: Some(i + 1) } }
         ));
 
-        self.generation += 1;
+        self.generation.checked_add(1).expect("generation overflow");
         self.free_list_head = Some(0);
         self.len = 0;
     }
@@ -142,7 +143,7 @@ impl<T> Arena<T> {
                     Entry::Vacant { next_free } => {
                         self.free_list_head = next_free;
                         self.len += 1;
-                        Some(Index::from_raw_parts(index, self.generation))
+                        Some(Index::from_raw_parts(index, self.generation.into()))
                     }
                 }
             }
@@ -202,7 +203,7 @@ impl<T> Arena<T> {
                     Entry::Vacant { next_free: self.free_list_head },
                 );
                 self.free_list_head = Some(i.index);
-                self.generation += 1;
+                self.generation.checked_add(1).expect("generation overflow");
                 self.len -= 1;
 
                 match entry {

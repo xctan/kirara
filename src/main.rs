@@ -26,8 +26,7 @@ fn main() {
     let mut ast = parse(&tokens).unwrap();
     // println!("{:#?}", ast);
 
-    let mut unit = ir::builder::TransUnit::new();
-    ast.emit_ir(&mut unit);
+    let mut unit = ast.emit_ir();
     // unit.print();
 
     ir::opt::mem2reg::Mem2Reg::run(&mut unit);

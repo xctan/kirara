@@ -117,6 +117,17 @@ impl ValueType {
             _ => panic!("not an instruction"),
         }
     }
+
+    pub fn is_constant(&self) -> bool {
+        matches!(self, ValueType::Constant(_))
+    }
+
+    pub fn as_constant(&self) -> &ConstantValue {
+        match self {
+            ValueType::Constant(v) => v,
+            _ => panic!("not a constant"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
