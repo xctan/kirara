@@ -128,6 +128,8 @@ impl Type {
         
         a
     }
+
+    
 }
 
 impl Display for Type {

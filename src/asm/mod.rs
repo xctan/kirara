@@ -4,7 +4,7 @@ use crate::{ir::structure::BlockId, alloc::{Id, Arena}};
 
 pub mod codegen;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub enum RVReg {
     X0, // always zero
     X1,
@@ -176,7 +176,7 @@ impl Debug for RVReg {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum MachineOperand {
     Virtual(u32),
     Allocated(RVReg),
@@ -276,13 +276,16 @@ pub enum RV64Instruction {
 
     // pseudo instructions
     CALL { callee: String },
-    PBEQ { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
-    PBNE { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
-    PBLT { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
-    PBGE { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
-    PBLTU { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
-    PBGEU { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    RET,
+    JEQ { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    JNE { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    JLT { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    JGE { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    JLTU { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
+    JGEU { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
     JUMP { target: Id<MachineBB> },
+    LLABEL { rd: MachineOperand, label: String },
+    LIMM { rd: MachineOperand, imm: i32 },
 }
 
 macro_rules! builder_impl_rv64 {
@@ -296,25 +299,32 @@ macro_rules! builder_impl_rv64 {
     (i ; $mnemonic:ident) => {
         #[allow(non_snake_case)]
         #[allow(unused)]
-        pub fn $mnemonic(rd: MachineOperand, rs1: MachineOperand, imm: i32) -> Result<RV64Instruction, ()> {
+        pub fn $mnemonic(rd: MachineOperand, rs1: MachineOperand, imm: i32) -> RV64Instruction {
             // check if imm is a 12-bit signed integer
             if imm < 4096 && imm >= -4096 {
-                Ok(RV64Instruction::$mnemonic { rd, rs1, imm })
+                RV64Instruction::$mnemonic { rd, rs1, imm }
             } else {
-                Err(())
+                panic!("immediate value out of range");
             }
         }
     };
     (s; $mnemonic:ident) => {
         #[allow(non_snake_case)]
         #[allow(unused)]
-        pub fn $mnemonic(rs1: MachineOperand, rs2: MachineOperand, imm: i32) -> Result<RV64Instruction, ()> {
+        pub fn $mnemonic(rs1: MachineOperand, rs2: MachineOperand, imm: i32) -> RV64Instruction {
             // check if imm is a 12-bit signed integer
             if imm < 4096 && imm >= -4096 {
-                Ok(RV64Instruction::$mnemonic { rs1, rs2, imm })
+                RV64Instruction::$mnemonic { rs1, rs2, imm }
             } else {
-                Err(())
+                panic!("immediate value out of range")
             }
+        }
+    };
+    (cj; $mnemonic:ident) => {
+        #[allow(non_snake_case)]
+        #[allow(unused)]
+        pub fn $mnemonic(rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB>) -> RV64Instruction {
+            RV64Instruction::$mnemonic { rs1, rs2, succ, fail }
         }
     };
 }
@@ -323,12 +333,12 @@ pub struct RV64InstBuilder;
 
 impl RV64InstBuilder {
     #[allow(non_snake_case)]
-    pub fn LUI(rd: MachineOperand, imm: i32) -> Result<RV64Instruction, ()> {
+    pub fn LUI(rd: MachineOperand, imm: i32) -> RV64Instruction {
         // check if imm is a 20-bit signed integer
         if imm < 1048576 && imm >= -1048576 {
-            Ok(RV64Instruction::LUI { rd, imm })
+            RV64Instruction::LUI { rd, imm }
         } else {
-            Err(())
+            panic!("immediate value out of range")
         }
     }
 
@@ -370,11 +380,51 @@ impl RV64InstBuilder {
     builder_impl_rv64!(i; SLLIW);
     builder_impl_rv64!(i; SRLIW);
     builder_impl_rv64!(i; SRAIW);
+
+    builder_impl_rv64!(r; MUL);
+    builder_impl_rv64!(r; MULH);
+    builder_impl_rv64!(r; MULHSU);
+    builder_impl_rv64!(r; MULHU);
+    builder_impl_rv64!(r; DIV);
+    builder_impl_rv64!(r; DIVU);
+    builder_impl_rv64!(r; REM);
+    builder_impl_rv64!(r; REMU);
+    builder_impl_rv64!(r; MULW);
+    builder_impl_rv64!(r; DIVW);
+    builder_impl_rv64!(r; DIVUW);
+    builder_impl_rv64!(r; REMW);
+    builder_impl_rv64!(r; REMUW);
+
+    #[allow(non_snake_case)]
+    pub fn JUMP(target: Id<MachineBB>) -> RV64Instruction {
+        RV64Instruction::JUMP { target }
+    }
+    #[allow(non_snake_case)]
+    pub fn CALL(callee: String) -> RV64Instruction {
+        RV64Instruction::CALL { callee }
+    }
+    #[allow(non_snake_case)]
+    pub fn RET() -> RV64Instruction {
+        RV64Instruction::RET
+    }
+    builder_impl_rv64!(cj; JEQ);
+    builder_impl_rv64!(cj; JNE);
+    builder_impl_rv64!(cj; JLT);
+    builder_impl_rv64!(cj; JGE);
+    builder_impl_rv64!(cj; JLTU);
+    builder_impl_rv64!(cj; JGEU);
+    #[allow(non_snake_case)]
+    pub fn LIMM(rd: MachineOperand, imm: i32) -> RV64Instruction {
+        RV64Instruction::LIMM { rd, imm }
+    }
 }
 
+#[derive(Clone, Debug)]
 pub struct MachineInst {
     pub inst: RV64Instruction,
     pub bb: Id<MachineBB>,
+    /// identify whether this instruction is always inlined, e.g. addi
+    pub inlined: bool,
     pub prev: Option<Id<MachineInst>>,
     pub next: Option<Id<MachineInst>>,
 }
@@ -410,33 +460,15 @@ impl MachineBB {
 
 pub struct MachineFunc {
     pub func: String,
-
     pub entry: Option<Id<MachineBB>>,
-
     pub bbs: Vec<Id<MachineBB>>,
-
     pub virtual_max: u32,
-
     pub stack_size: u32,
-
     pub saved_regs: HashSet<RVReg>,
 
     // use_lr?
 
     // todo: omit_fp_fixup, for sp-relative addressing
-}
-
-impl MachineFunc {
-    pub fn new(func: String) -> Self {
-        Self {
-            func,
-            entry: None,
-            bbs: Vec::new(),
-            virtual_max: 0,
-            stack_size: 0,
-            saved_regs: HashSet::new(),
-        }
-    }
 }
 
 pub struct MachineProgram {
@@ -448,6 +480,9 @@ pub struct MachineProgram {
     pub insts: Arena<MachineInst>,
     // mbb to mfunc map
     pub block_map: HashMap<Id<MachineBB>, usize>,
+
+    /// record the final definition of each virtual register
+    pub vreg_def: HashMap<MachineOperand, Id<MachineInst>>,
 }
 
 impl MachineProgram {
@@ -457,6 +492,20 @@ impl MachineProgram {
             blocks: Arena::new(),
             insts: Arena::new(),
             block_map: HashMap::new(),
+
+            vreg_def: HashMap::new(),
+        }
+    }
+
+    pub fn new_func(&mut self, func: String) -> MachineFunc {
+        self.vreg_def.clear();
+        MachineFunc {
+            func,
+            entry: None,
+            bbs: Vec::new(),
+            virtual_max: 0,
+            stack_size: 0,
+            saved_regs: HashSet::new(),
         }
     }
 
@@ -471,10 +520,12 @@ impl MachineProgram {
         let minst = MachineInst {
             inst,
             bb: mbb,
+            inlined: false,
             prev: mblock_tail,
             next: None,
         };
         let minst_id = self.insts.alloc(minst);
+        self.mark_inline_inst(minst_id);
         let mblock = &mut self.blocks[mbb];
         mblock.insts_tail = Some(minst_id);
     }
@@ -484,10 +535,12 @@ impl MachineProgram {
         let minst = MachineInst {
             inst,
             bb: mbb,
+            inlined: false,
             prev: None,
             next: mblock_head,
         };
         let minst_id = self.insts.alloc(minst);
+        self.mark_inline_inst(minst_id);
         let mblock = &mut self.blocks[mbb];
         if let Some(head) = mblock_head {
             self.insts[head].prev = Some(minst_id);
@@ -501,10 +554,12 @@ impl MachineProgram {
         let minst = MachineInst {
             inst,
             bb: self.insts[before].bb,
+            inlined: false,
             prev: self.insts[before].prev,
             next: Some(before),
         };
         let minst_id = self.insts.alloc(minst);
+        self.mark_inline_inst(minst_id);
         let mblock = &mut self.blocks[self.insts[before].bb];
         if let Some(prev) = mblock.insts_head {
             self.insts[prev].next = Some(minst_id);
@@ -512,5 +567,21 @@ impl MachineProgram {
             mblock.insts_head = Some(minst_id);
         }
         self.insts[before].prev = Some(minst_id);
+    }
+
+    pub fn mark_inline(&mut self, inst: Id<MachineInst>, status: bool) {
+        self.insts[inst].inlined = status;
+    }
+
+    fn define_vreg(&mut self, vreg: MachineOperand, minst: Id<MachineInst>) {
+        if matches!(vreg, MachineOperand::Virtual(_)) {
+            self.vreg_def.insert(vreg, minst);
+        }
+    }
+
+    fn mark_inline_inst(&mut self, minst: Id<MachineInst>) {
+        if let RV64Instruction::ADDI { .. } = self.insts[minst].inst {
+            self.mark_inline(minst, true);
+        }
     }
 }
