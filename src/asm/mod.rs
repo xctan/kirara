@@ -6,6 +6,7 @@ pub mod codegen;
 pub mod export;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[allow(unused)]
 pub enum RVReg {
     X0, // always zero
     X1,
@@ -353,9 +354,9 @@ impl RV64Instruction {
             RV64Instruction::DIVUW { rd, .. } => Some(rd),
             RV64Instruction::REMW { rd, .. } => Some(rd),
             RV64Instruction::REMUW { rd, .. } => Some(rd),
-            RV64Instruction::MV { rd, rs } => Some(rd),
+            RV64Instruction::MV { rd, .. } => Some(rd),
             RV64Instruction::LIMM { rd, .. } => Some(rd),
-            RV64Instruction::LADDR { rd, label } => Some(rd),
+            RV64Instruction::LADDR { rd, .. } => Some(rd),
             RV64Instruction::SEQ { rd, .. } => Some(rd),
             RV64Instruction::SNE { rd, .. } => Some(rd),
             RV64Instruction::SGE { rd, .. } => Some(rd),
@@ -620,7 +621,7 @@ impl MachineProgram {
         };
         let minst_id = self.insts.alloc(minst);
         if let Some(rd) = inst.get_rd() {
-            self.vreg_def.insert(rd, minst_id);
+            self.define_vreg(rd, minst_id);
         }
         self.mark_inline_inst(minst_id);
         let mblock = &mut self.blocks[mbb];
@@ -643,7 +644,7 @@ impl MachineProgram {
         };
         let minst_id = self.insts.alloc(minst);
         if let Some(rd) = inst.get_rd() {
-            self.vreg_def.insert(rd, minst_id);
+            self.define_vreg(rd, minst_id);
         }
         self.mark_inline_inst(minst_id);
         let mblock = &mut self.blocks[mbb];
@@ -665,7 +666,7 @@ impl MachineProgram {
         };
         let minst_id = self.insts.alloc(minst);
         if let Some(rd) = inst.get_rd() {
-            self.vreg_def.insert(rd, minst_id);
+            self.define_vreg(rd, minst_id);
         }
         self.mark_inline_inst(minst_id);
         if let Some(prev) = self.insts[before].prev {

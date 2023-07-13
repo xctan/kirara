@@ -569,7 +569,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     res
                 }
             },
-            ValueType::Global(g) => todo!(),
+            ValueType::Global(_g) => todo!(),
         }
     }
 
@@ -587,22 +587,22 @@ impl<'a> AsmFuncBuilder<'a> {
         }
     }
 
-    fn load_imm32(reg: MachineOperand, imm: i32) -> Vec<RV64Instruction> {
-        let mut ret = Vec::with_capacity(2);
-        let hi20 = (imm + 0x800) >> 12 & 0xfffff;
-        let lo12 = imm & 0xfff;
+    // fn load_imm32(reg: MachineOperand, imm: i32) -> Vec<RV64Instruction> {
+    //     let mut ret = Vec::with_capacity(2);
+    //     let hi20 = (imm + 0x800) >> 12 & 0xfffff;
+    //     let lo12 = imm & 0xfff;
 
-        let mut src = MachineOperand::PreColored(RVReg::zero());
-        if hi20 != 0 {
-            ret.push(RV64InstBuilder::LUI(reg, hi20));
-            src = reg;
-        }
-        if lo12 != 0 || hi20 == 0 {
-            ret.push(RV64InstBuilder::ADDIW(reg, src, lo12));
-        }
+    //     let mut src = MachineOperand::PreColored(RVReg::zero());
+    //     if hi20 != 0 {
+    //         ret.push(RV64InstBuilder::LUI(reg, hi20));
+    //         src = reg;
+    //     }
+    //     if lo12 != 0 || hi20 == 0 {
+    //         ret.push(RV64InstBuilder::ADDIW(reg, src, lo12));
+    //     }
 
-        ret
-    }
+    //     ret
+    // }
 
     fn load_imm32_hi20(reg: MachineOperand, imm: i32) -> (Option<RV64Instruction>, i32) {
         let hi20 = (imm + 0x800) >> 12 & 0xfffff;
