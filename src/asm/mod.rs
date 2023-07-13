@@ -275,8 +275,10 @@ pub enum RV64Instruction {
     // todo: RV32F
 
     // pseudo instructions
+    COMMENT { comment: String },
     CALL { callee: String },
     RET,
+    MV { rd: MachineOperand, rs: MachineOperand },
     JEQ { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
     JNE { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
     JLT { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
@@ -284,8 +286,12 @@ pub enum RV64Instruction {
     JLTU { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
     JGEU { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
     JUMP { target: Id<MachineBB> },
-    LLABEL { rd: MachineOperand, label: String },
     LIMM { rd: MachineOperand, imm: i32 },
+    LADDR { rd: MachineOperand, label: String },
+    SEQ { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SNE { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SGE { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    SGEU { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
 }
 
 macro_rules! builder_impl_rv64 {
@@ -380,6 +386,11 @@ impl RV64InstBuilder {
     builder_impl_rv64!(i; SLLIW);
     builder_impl_rv64!(i; SRLIW);
     builder_impl_rv64!(i; SRAIW);
+    builder_impl_rv64!(r; ADDW);
+    builder_impl_rv64!(r; SUBW);
+    builder_impl_rv64!(r; SLLW);
+    builder_impl_rv64!(r; SRLW);
+    builder_impl_rv64!(r; SRAW);
 
     builder_impl_rv64!(r; MUL);
     builder_impl_rv64!(r; MULH);
@@ -396,6 +407,10 @@ impl RV64InstBuilder {
     builder_impl_rv64!(r; REMUW);
 
     #[allow(non_snake_case)]
+    pub fn COMMENT(comment: String) -> RV64Instruction {
+        RV64Instruction::COMMENT { comment }
+    }
+    #[allow(non_snake_case)]
     pub fn JUMP(target: Id<MachineBB>) -> RV64Instruction {
         RV64Instruction::JUMP { target }
     }
@@ -407,6 +422,10 @@ impl RV64InstBuilder {
     pub fn RET() -> RV64Instruction {
         RV64Instruction::RET
     }
+    #[allow(non_snake_case)]
+    pub fn MV(rd: MachineOperand, rs: MachineOperand) -> RV64Instruction {
+        RV64Instruction::MV { rd, rs }
+    }
     builder_impl_rv64!(cj; JEQ);
     builder_impl_rv64!(cj; JNE);
     builder_impl_rv64!(cj; JLT);
@@ -417,6 +436,10 @@ impl RV64InstBuilder {
     pub fn LIMM(rd: MachineOperand, imm: i32) -> RV64Instruction {
         RV64Instruction::LIMM { rd, imm }
     }
+    builder_impl_rv64!(r; SEQ);
+    builder_impl_rv64!(r; SNE);
+    builder_impl_rv64!(r; SGE);
+    builder_impl_rv64!(r; SGEU);
 }
 
 #[derive(Clone, Debug)]
@@ -580,8 +603,17 @@ impl MachineProgram {
     }
 
     fn mark_inline_inst(&mut self, minst: Id<MachineInst>) {
-        if let RV64Instruction::ADDI { .. } = self.insts[minst].inst {
-            self.mark_inline(minst, true);
+        match self.insts[minst].inst {
+            RV64Instruction::ADDI { .. } |
+            RV64Instruction::SEQ { .. } |
+            RV64Instruction::SNE { .. } |
+            RV64Instruction::SLT { .. } |
+            RV64Instruction::SGE { .. } |
+            RV64Instruction::SLTU { .. } |
+            RV64Instruction::SGEU { .. } => {
+                self.mark_inline(minst, true);
+            }
+            _ => {}
         }
     }
 }
