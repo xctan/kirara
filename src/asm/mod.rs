@@ -298,6 +298,73 @@ pub enum RV64Instruction {
     SGEU { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
 }
 
+impl RV64Instruction {
+    pub fn get_rd(&self) -> Option<MachineOperand> {
+        match self.clone() {
+            RV64Instruction::LUI { rd, .. } => Some(rd),
+            RV64Instruction::AUIPC { rd, .. } => Some(rd),
+            RV64Instruction::JAL { rd, .. } => Some(rd),
+            RV64Instruction::JALR { rd, .. } => Some(rd),
+            RV64Instruction::LB { rd, .. } => Some(rd),
+            RV64Instruction::LH { rd, .. } => Some(rd),
+            RV64Instruction::LW { rd, .. } => Some(rd),
+            RV64Instruction::LBU { rd, .. } => Some(rd),
+            RV64Instruction::LHU { rd, .. } => Some(rd),
+            RV64Instruction::ADDI { rd, .. } => Some(rd),
+            RV64Instruction::SLTI { rd, .. } => Some(rd),
+            RV64Instruction::SLTIU { rd, .. } => Some(rd),
+            RV64Instruction::XORI { rd, .. } => Some(rd),
+            RV64Instruction::ORI { rd, .. } => Some(rd),
+            RV64Instruction::ANDI { rd, .. } => Some(rd),
+            RV64Instruction::SLLI { rd, .. } => Some(rd),
+            RV64Instruction::SRLI { rd, .. } => Some(rd),
+            RV64Instruction::SRAI { rd, .. } => Some(rd),
+            RV64Instruction::ADD { rd, .. } => Some(rd),
+            RV64Instruction::SUB { rd, .. } => Some(rd),
+            RV64Instruction::SLL { rd, .. } => Some(rd),
+            RV64Instruction::SLT { rd, .. } => Some(rd),
+            RV64Instruction::SLTU { rd, .. } => Some(rd),
+            RV64Instruction::XOR { rd, .. } => Some(rd),
+            RV64Instruction::SRL { rd, .. } => Some(rd),
+            RV64Instruction::SRA { rd, .. } => Some(rd),
+            RV64Instruction::OR { rd, .. } => Some(rd),
+            RV64Instruction::AND { rd, .. } => Some(rd),
+            RV64Instruction::LWU { rd, .. } => Some(rd),
+            RV64Instruction::LD { rd, .. } => Some(rd),
+            RV64Instruction::ADDIW { rd, .. } => Some(rd),
+            RV64Instruction::SLLIW { rd, .. } => Some(rd),
+            RV64Instruction::SRLIW { rd, .. } => Some(rd),
+            RV64Instruction::SRAIW { rd, .. } => Some(rd),
+            RV64Instruction::ADDW { rd, .. } => Some(rd),
+            RV64Instruction::SUBW { rd, .. } => Some(rd),
+            RV64Instruction::SLLW { rd, .. } => Some(rd),
+            RV64Instruction::SRLW { rd, .. } => Some(rd),
+            RV64Instruction::SRAW { rd, .. } => Some(rd),
+            RV64Instruction::MUL { rd, .. } => Some(rd),
+            RV64Instruction::MULH { rd, .. } => Some(rd),
+            RV64Instruction::MULHSU { rd, .. } => Some(rd),
+            RV64Instruction::MULHU { rd, .. } => Some(rd),
+            RV64Instruction::DIV { rd, .. } => Some(rd),
+            RV64Instruction::DIVU { rd, .. } => Some(rd),
+            RV64Instruction::REM { rd, .. } => Some(rd),
+            RV64Instruction::REMU { rd, .. } => Some(rd),
+            RV64Instruction::MULW { rd, .. } => Some(rd),
+            RV64Instruction::DIVW { rd, .. } => Some(rd),
+            RV64Instruction::DIVUW { rd, .. } => Some(rd),
+            RV64Instruction::REMW { rd, .. } => Some(rd),
+            RV64Instruction::REMUW { rd, .. } => Some(rd),
+            RV64Instruction::MV { rd, rs } => Some(rd),
+            RV64Instruction::LIMM { rd, .. } => Some(rd),
+            RV64Instruction::LADDR { rd, label } => Some(rd),
+            RV64Instruction::SEQ { rd, .. } => Some(rd),
+            RV64Instruction::SNE { rd, .. } => Some(rd),
+            RV64Instruction::SGE { rd, .. } => Some(rd),
+            RV64Instruction::SGEU { rd, .. } => Some(rd),
+            _ => None,
+        }
+    }
+}
+
 macro_rules! builder_impl_rv64 {
     (r ; $mnemonic:ident) => {
         #[allow(non_snake_case)]
@@ -545,13 +612,16 @@ impl MachineProgram {
     pub fn push_to_end(&mut self, mbb: Id<MachineBB>, inst: RV64Instruction) {
         let mblock_tail = self.blocks[mbb].insts_tail;
         let minst = MachineInst {
-            inst,
+            inst: inst.clone(),
             bb: mbb,
             inlined: false,
             prev: mblock_tail,
             next: None,
         };
         let minst_id = self.insts.alloc(minst);
+        if let Some(rd) = inst.get_rd() {
+            self.vreg_def.insert(rd, minst_id);
+        }
         self.mark_inline_inst(minst_id);
         let mblock = &mut self.blocks[mbb];
         mblock.insts_tail = Some(minst_id);
@@ -565,13 +635,16 @@ impl MachineProgram {
     pub fn push_to_begin(&mut self, mbb: Id<MachineBB>, inst: RV64Instruction) {
         let mblock_head = self.blocks[mbb].insts_head;
         let minst = MachineInst {
-            inst,
+            inst: inst.clone(),
             bb: mbb,
             inlined: false,
             prev: None,
             next: mblock_head,
         };
         let minst_id = self.insts.alloc(minst);
+        if let Some(rd) = inst.get_rd() {
+            self.vreg_def.insert(rd, minst_id);
+        }
         self.mark_inline_inst(minst_id);
         let mblock = &mut self.blocks[mbb];
         if let Some(head) = mblock_head {
@@ -584,13 +657,16 @@ impl MachineProgram {
 
     pub fn insert_before(&mut self, before: Id<MachineInst>, inst: RV64Instruction) {
         let minst = MachineInst {
-            inst,
+            inst: inst.clone(),
             bb: self.insts[before].bb,
             inlined: false,
             prev: self.insts[before].prev,
             next: Some(before),
         };
         let minst_id = self.insts.alloc(minst);
+        if let Some(rd) = inst.get_rd() {
+            self.vreg_def.insert(rd, minst_id);
+        }
         self.mark_inline_inst(minst_id);
         if let Some(prev) = self.insts[before].prev {
             self.insts[prev].next = Some(minst_id);

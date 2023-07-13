@@ -83,10 +83,10 @@ impl<'a> AsmFuncBuilder<'a> {
             let block = &self.unit.blocks[*bb];
             macro_rules! emit {
                 ($mnemonic:ident $($operand:expr),*) => {
-                    self.prog.push_to_end(mbb, RV64InstBuilder::$mnemonic($($operand),*));
+                    self.prog.push_to_end(mbb, RV64InstBuilder::$mnemonic($($operand),*))
                 };
                 ($mnemonic:expr ; $($operand:expr),*) => {
-                    self.prog.push_to_end(mbb, $mnemonic($($operand),*));
+                    self.prog.push_to_end(mbb, $mnemonic($($operand),*))
                 };
             }
 
@@ -267,7 +267,17 @@ impl<'a> AsmFuncBuilder<'a> {
                         };
 
                         let ptr = self.resolve(s.ptr, mbb);
-                        let src = self.resolve(s.value, mbb);
+                        let value = self.unit.values[s.value].clone();
+                        let src = if value.value.is_constant() {
+                            let tmp = self.new_vreg();
+                            match *value.value.as_constant() {
+                                ConstantValue::I32(i) => emit!(LIMM tmp, i),
+                                _ => unimplemented!(),
+                            }
+                            tmp
+                        } else {
+                            self.resolve(s.value, mbb)
+                        };
                         if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
                             let ptr_inst = self.prog.insts[*ptr_id].inst.clone();
                             if let RV64Instruction::ADDI { rs1, imm, .. } = ptr_inst {
@@ -350,7 +360,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     InstructionValue::GetElemPtr(g) => {
                         let dst = self.resolve(inst, mbb);
                         let ptr = self.resolve(g.ptr, mbb);
-                        let elem_size = g.ty.get().base_type().get().size() as i32;
+                        let elem_size = g.ty.get().size() as i32;
                         if let Some(idx) = self.resolve_constant(g.index) {
                             let offset = idx * elem_size;
                             if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
@@ -381,10 +391,20 @@ impl<'a> AsmFuncBuilder<'a> {
                                 }
                             }
                         } else {
+                            if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
+                                self.prog.mark_inline(*ptr_id, false);
+                            }
                             let idx = self.resolve(g.index, mbb);
-                            emit!(LIMM dst, elem_size);
-                            emit!(MUL dst, idx, dst);
-                            emit!(ADD dst, ptr, dst);
+                            if elem_size.count_ones() == 1 {
+                                if  elem_size.trailing_zeros() > 0 {
+                                    emit!(SLLI dst, idx, elem_size.trailing_zeros() as i32);
+                                }
+                                emit!(ADD dst, ptr, dst);
+                            } else {
+                                emit!(LIMM dst, elem_size);
+                                emit!(MUL dst, idx, dst);
+                                emit!(ADD dst, ptr, dst);
+                            }
                         }
                     },
                 }
