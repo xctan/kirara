@@ -1,8 +1,9 @@
-use std::{rc::Rc, collections::{HashSet, HashMap}, fmt::Debug};
+use std::{collections::{HashSet, HashMap}, fmt::Debug};
 
 use crate::{ir::structure::BlockId, alloc::{Id, Arena}};
 
 pub mod codegen;
+pub mod export;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub enum RVReg {
@@ -40,42 +41,42 @@ pub enum RVReg {
     X31,
 }
 
-/// ABI names for registers
-macro_rules! reg {
-    (zero) => { RVReg::X0 };
-    (ra) => { RVReg::X1 };
-    (sp) => { RVReg::X2 };
-    (gp) => { RVReg::X3 };
-    (tp) => { RVReg::X4 };
-    (t0) => { RVReg::X5 };
-    (t1) => { RVReg::X6 };
-    (t2) => { RVReg::X7 };
-    (s0) => { RVReg::X8 };
-    (fp) => { RVReg::X8 };
-    (s1) => { RVReg::X9 };
-    (a0) => { RVReg::X10 };
-    (a1) => { RVReg::X11 };
-    (a2) => { RVReg::X12 };
-    (a3) => { RVReg::X13 };
-    (a4) => { RVReg::X14 };
-    (a5) => { RVReg::X15 };
-    (a6) => { RVReg::X16 };
-    (a7) => { RVReg::X17 };
-    (s2) => { RVReg::X18 };
-    (s3) => { RVReg::X19 };
-    (s4) => { RVReg::X20 };
-    (s5) => { RVReg::X21 };
-    (s6) => { RVReg::X22 };
-    (s7) => { RVReg::X23 };
-    (s8) => { RVReg::X24 };
-    (s9) => { RVReg::X25 };
-    (s10) => { RVReg::X26 };
-    (s11) => { RVReg::X27 };
-    (t3) => { RVReg::X28 };
-    (t4) => { RVReg::X29 };
-    (t5) => { RVReg::X30 };
-    (t6) => { RVReg::X31 };
-}
+// /// ABI names for registers
+// macro_rules! reg {
+//     (zero) => { RVReg::X0 };
+//     (ra) => { RVReg::X1 };
+//     (sp) => { RVReg::X2 };
+//     (gp) => { RVReg::X3 };
+//     (tp) => { RVReg::X4 };
+//     (t0) => { RVReg::X5 };
+//     (t1) => { RVReg::X6 };
+//     (t2) => { RVReg::X7 };
+//     (s0) => { RVReg::X8 };
+//     (fp) => { RVReg::X8 };
+//     (s1) => { RVReg::X9 };
+//     (a0) => { RVReg::X10 };
+//     (a1) => { RVReg::X11 };
+//     (a2) => { RVReg::X12 };
+//     (a3) => { RVReg::X13 };
+//     (a4) => { RVReg::X14 };
+//     (a5) => { RVReg::X15 };
+//     (a6) => { RVReg::X16 };
+//     (a7) => { RVReg::X17 };
+//     (s2) => { RVReg::X18 };
+//     (s3) => { RVReg::X19 };
+//     (s4) => { RVReg::X20 };
+//     (s5) => { RVReg::X21 };
+//     (s6) => { RVReg::X22 };
+//     (s7) => { RVReg::X23 };
+//     (s8) => { RVReg::X24 };
+//     (s9) => { RVReg::X25 };
+//     (s10) => { RVReg::X26 };
+//     (s11) => { RVReg::X27 };
+//     (t3) => { RVReg::X28 };
+//     (t4) => { RVReg::X29 };
+//     (t5) => { RVReg::X30 };
+//     (t6) => { RVReg::X31 };
+// }
 
 impl RVReg {
     pub fn a(i: usize) -> Self {
@@ -274,11 +275,13 @@ pub enum RV64Instruction {
 
     // todo: RV32F
 
-    // pseudo instructions
+    // pseudo instructions for convenience
     COMMENT { comment: String },
     CALL { callee: String },
     RET,
+    // alias for addi
     MV { rd: MachineOperand, rs: MachineOperand },
+    // fused branch instructions with logical targets
     JEQ { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
     JNE { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
     JLT { rs1: MachineOperand, rs2: MachineOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
@@ -288,6 +291,7 @@ pub enum RV64Instruction {
     JUMP { target: Id<MachineBB> },
     LIMM { rd: MachineOperand, imm: i32 },
     LADDR { rd: MachineOperand, label: String },
+    // fused compare instructions for inlining
     SEQ { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
     SNE { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
     SGE { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
@@ -317,7 +321,7 @@ macro_rules! builder_impl_rv64 {
     (s; $mnemonic:ident) => {
         #[allow(non_snake_case)]
         #[allow(unused)]
-        pub fn $mnemonic(rs1: MachineOperand, rs2: MachineOperand, imm: i32) -> RV64Instruction {
+        pub fn $mnemonic(rs2: MachineOperand, rs1: MachineOperand, imm: i32) -> RV64Instruction {
             // check if imm is a 12-bit signed integer
             if imm < 4096 && imm >= -4096 {
                 RV64Instruction::$mnemonic { rs1, rs2, imm }
@@ -551,6 +555,11 @@ impl MachineProgram {
         self.mark_inline_inst(minst_id);
         let mblock = &mut self.blocks[mbb];
         mblock.insts_tail = Some(minst_id);
+        if mblock.insts_head.is_none() {
+            mblock.insts_head = Some(minst_id);
+        } else {
+            self.insts[mblock_tail.unwrap()].next = Some(minst_id);
+        }
     }
 
     pub fn push_to_begin(&mut self, mbb: Id<MachineBB>, inst: RV64Instruction) {
@@ -583,11 +592,10 @@ impl MachineProgram {
         };
         let minst_id = self.insts.alloc(minst);
         self.mark_inline_inst(minst_id);
-        let mblock = &mut self.blocks[self.insts[before].bb];
-        if let Some(prev) = mblock.insts_head {
+        if let Some(prev) = self.insts[before].prev {
             self.insts[prev].next = Some(minst_id);
         } else {
-            mblock.insts_head = Some(minst_id);
+            self.blocks[self.insts[before].bb].insts_head = Some(minst_id);
         }
         self.insts[before].prev = Some(minst_id);
     }

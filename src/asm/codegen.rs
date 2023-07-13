@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     ir::{builder::TransUnit, structure::BasicBlock, value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue}},
-    alloc::Id, asm::{RV64InstBuilder, RVReg}, ctype::{TypePtrHelper, Type, TypeKind, BinaryOpType},
+    alloc::Id, asm::{RV64InstBuilder, RVReg}, ctype::{TypePtrHelper, TypeKind, BinaryOpType},
 };
 
 use super::{MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction};
@@ -172,14 +172,25 @@ impl<'a> AsmFuncBuilder<'a> {
                                 _ => unimplemented!(),
                             }
                         } else {
-                            let mo_rhs = self.resolve(b.rhs, mbb);
+                            let mo_rhs = if val_rhs.is_constant() {
+                                match *val_rhs.as_constant() {
+                                    ConstantValue::I32(i) => {
+                                        let reg = self.new_vreg();
+                                        emit!(LIMM reg, i);
+                                        reg
+                                    }
+                                    _ => unimplemented!(),
+                                }
+                            } else {
+                                self.resolve(b.rhs, mbb)
+                            };
                             if let Some(minst_id) = self.prog.vreg_def.get(&mo_rhs) {
                                 self.prog.mark_inline(*minst_id, false);
                             }
                             match b.ty().get().kind {
                                 TypeKind::I32 => {
                                     match b.op {
-                                        BinaryOpType::Add => {;
+                                        BinaryOpType::Add => {
                                             emit!(ADDW dst, mo_lhs, mo_rhs);
                                         }
                                         BinaryOpType::Sub => {
@@ -194,6 +205,11 @@ impl<'a> AsmFuncBuilder<'a> {
                                         BinaryOpType::Mod => {
                                             emit!(REMW dst, mo_lhs, mo_rhs);
                                         }
+                                        _ => unimplemented!(),
+                                    }
+                                }
+                                TypeKind::I1 => {
+                                    match b.op {
                                         BinaryOpType::Ne => {
                                             emit!(SNE dst, mo_lhs, mo_rhs);
                                         }
@@ -281,9 +297,13 @@ impl<'a> AsmFuncBuilder<'a> {
                             let value = self.unit.values[val].clone();
                             match value.ty().get().kind {
                                 TypeKind::I32 => {
-                                    let src = self.resolve(val, mbb);
-                                    // avoid using addi directly here, because it shouldn't be inlined
-                                    emit!(MV pre!(a0), src);
+                                    if let Some(imm) = self.resolve_constant(val) {
+                                        emit!(LIMM pre!(a0), imm);
+                                    } else {
+                                        let src = self.resolve(val, mbb);
+                                        // avoid using addi directly here, because it shouldn't be inlined
+                                        emit!(MV pre!(a0), src);
+                                    }
                                 },
                                 _ => unimplemented!(),
                             }
@@ -326,7 +346,7 @@ impl<'a> AsmFuncBuilder<'a> {
                         emit!(JUMP self.bb_map[&j.succ]);
                     },
                     InstructionValue::Zext(_) => (),
-                    InstructionValue::Phi(_) => todo!(),
+                    InstructionValue::Phi(_) => (),
                     InstructionValue::GetElemPtr(g) => {
                         let dst = self.resolve(inst, mbb);
                         let ptr = self.resolve(g.ptr, mbb);
@@ -373,6 +393,97 @@ impl<'a> AsmFuncBuilder<'a> {
             }
         }
 
+        // 3. handle phi nodes
+        for bb in &irfunc.bbs {
+            let mbb = self.bb_map[bb];
+            let block = &self.unit.blocks[*bb];
+
+            // let mut incoming = Vec::new();
+            let mut outgoing = HashMap::new();
+            let mut outgoing_imm = HashMap::new();
+
+            let mut iter = block.insts_start;
+            while let Some(inst) = iter {
+                let insn = &self.unit.values[inst];
+                iter = insn.next;
+
+                if let InstructionValue::Phi(phi) = &insn.value.as_inst() {
+                    // for example: %dst = phi [%a, %b], [%c, %d]
+                    // incoming value are added to the beginning of this bb:
+                    // this:
+                    //     mv dst, vreg
+                    //     ...
+                    // outgoing value are added to the end of each predecessor (before final branches):
+                    // b:  ...
+                    //     mv vreg, a
+                    //     j ...
+                    // d:  ...
+                    //     mv vreg, c
+                    //     blt ...
+
+                    // let vreg = self.new_vreg();
+                    // incoming.push((self.resolve(inst, mbb), vreg));
+                    let vreg = self.resolve(inst, mbb);
+                    for (val, bb) in &phi.args {
+                        let value = self.unit.values[*val].clone();
+                        if value.value.is_constant() {
+                            outgoing_imm
+                                .entry(*bb)
+                                .or_insert(Vec::new())
+                                .push((vreg, value.value.as_constant().clone()));
+                        } else {
+                            outgoing
+                                .entry(*bb)
+                                .or_insert(Vec::new())
+                                .push((vreg, self.resolve(*val, mbb)));
+                        }
+                    }
+                } else {
+                    // end of phi nodes
+                    break;
+                }
+            }
+
+            // for (lhs, rhs) in incoming {
+            //     self.prog.push_to_begin(mbb, RV64InstBuilder::MV(lhs, rhs));
+            // }
+            for (pred, insts) in outgoing {
+                let mbb = self.bb_map[&pred];
+                if let Some(last) = self.prog.blocks[mbb].insts_tail {
+                    for (lhs, rhs) in insts {
+                        self.prog.insert_before(last, RV64InstBuilder::MV(lhs, rhs));
+                    }
+                } else {
+                    for (lhs, rhs) in insts {
+                        self.prog.push_to_end(mbb, RV64InstBuilder::MV(lhs, rhs));
+                    }
+                }
+            }
+            for (pred, insts) in outgoing_imm {
+                let mbb = self.bb_map[&pred];
+                if let Some(last) = self.prog.blocks[mbb].insts_tail {
+                    for (lhs, rhs) in insts {
+                        match rhs {
+                            ConstantValue::I32(imm) =>
+                                self.prog.insert_before(last, RV64InstBuilder::LIMM(lhs, imm)),
+                            ConstantValue::I1(imm) =>
+                                self.prog.insert_before(last, RV64InstBuilder::LIMM(lhs, imm as i32)),
+                        }
+                    }
+                } else {
+                    for (lhs, rhs) in insts {
+                        match rhs {
+                            ConstantValue::I32(imm) =>
+                                self.prog.push_to_end(mbb, RV64InstBuilder::LIMM(lhs, imm)),
+                            ConstantValue::I1(imm) =>
+                                self.prog.push_to_end(mbb, RV64InstBuilder::LIMM(lhs, imm as i32)),
+                        }
+                    }
+                }
+            }
+        }
+
+        mfunc.virtual_max = self.virtual_max;
         mfunc
     }
 
@@ -382,12 +493,12 @@ impl<'a> AsmFuncBuilder<'a> {
         MachineOperand::Virtual(old)
     }
 
-    fn resolve(&mut self, val: Id<Value>, mbb: Id<MachineBB>) -> MachineOperand {
+    fn resolve(&mut self, val: Id<Value>, _mbb: Id<MachineBB>) -> MachineOperand {
         let value = self.unit.values[val].clone();
         match value.value {
             ValueType::Constant(_c) => {
                 // should check if we can directly encode the immediate to the instruction!
-                unreachable!("")
+                panic!("")
             },
             ValueType::Instruction(_inst) => {
                 if self.val_map.contains_key(&val) {
@@ -406,7 +517,7 @@ impl<'a> AsmFuncBuilder<'a> {
 
                     let params = self.unit.funcs[self.name.as_str()].params.clone();
                     let idx = params.iter().position(|&x| x == val).unwrap();
-                    let entry = self.prog.funcs[self.prog.block_map[&mbb]].entry.unwrap();
+                    let entry = self.bb_map[&self.unit.funcs[self.name.as_str()].entry_bb];
                     if idx < 8 {
                         // first 8 params are passed in registers
                         self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, MachineOperand::PreColored(RVReg::a(idx))));
@@ -418,7 +529,7 @@ impl<'a> AsmFuncBuilder<'a> {
                             self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, MachineOperand::PreColored(RVReg::fp()), offset));
                         } else {
                             // try to use itself as scratch register; should it cause any problem?
-                            let (load_high, lo12) = AsmFuncBuilder::load_imm32_hi20(res, 8 * (idx - 8) as i32);
+                            let (load_high, lo12) = AsmFuncBuilder::load_imm32_hi20(res, offset);
                             
                             if let Some(minst) = load_high {
                                 // pushed in reverse order

@@ -32,4 +32,7 @@ fn main() {
     ir::opt::mem2reg::Mem2Reg::run(&mut unit);
     ir::opt::canonicalize::Canonicalize::run(&mut unit);
     unit.print();
+
+    let mut asm = unit.emit_asm();
+    asm.print();
 }
