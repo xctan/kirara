@@ -3,8 +3,9 @@ use std::{rc::Weak, collections::HashSet};
 use crate::alloc::Id;
 
 use crate::ctype::{Type, BinaryOpType as BinaryOp};
+use crate::for_each_bb_and_inst;
 
-use super::structure::BlockId;
+use super::structure::{BlockId, TransUnit};
 
 pub type ValueId = Id<Value>;
 
@@ -277,3 +278,65 @@ pub struct GetElemPtrInst {
 }
 
 impl_value_trait!(GetElemPtrInst);
+
+pub fn calculate_used_by(unit: &mut TransUnit, func: &str) {
+    let func = unit.funcs[func].clone();
+
+    for_each_bb_and_inst!{
+        unit, func(bb, block, inst, insn), {}, {
+            let inst_mut = unit.values.get_mut(inst).unwrap();
+            inst_mut.used_by.clear();
+        }
+    }
+
+    for_each_bb_and_inst!{
+        unit, func(bb, block, inst, insn), {}, {
+            match insn.value.as_inst() {
+                InstructionValue::Binary(b) => {
+                    let lhs_mut = unit.values.get_mut(b.lhs).unwrap();
+                    lhs_mut.used_by.insert(inst);
+                    let rhs_mut = unit.values.get_mut(b.rhs).unwrap();
+                    rhs_mut.used_by.insert(inst);
+                },
+                InstructionValue::Load(l) => {
+                    let ptr_mut = unit.values.get_mut(l.ptr).unwrap();
+                    ptr_mut.used_by.insert(inst);
+                },
+                InstructionValue::Store(s) => {
+                    let ptr_mut = unit.values.get_mut(s.ptr).unwrap();
+                    ptr_mut.used_by.insert(inst);
+                    let value_mut = unit.values.get_mut(s.value).unwrap();
+                    value_mut.used_by.insert(inst);
+                },
+                InstructionValue::Alloca(_) => (),
+                InstructionValue::Return(r) => {
+                    if let Some(value) = r.value {
+                        let value_mut = unit.values.get_mut(value).unwrap();
+                        value_mut.used_by.insert(inst);
+                    }
+                },
+                InstructionValue::Branch(b) => {
+                    let cond_mut = unit.values.get_mut(b.cond).unwrap();
+                    cond_mut.used_by.insert(inst);
+                },
+                InstructionValue::Jump(_) => (),
+                InstructionValue::Zext(z) => {
+                    let value_mut = unit.values.get_mut(z.value).unwrap();
+                    value_mut.used_by.insert(inst);
+                },
+                InstructionValue::Phi(p) => {
+                    for (value, _) in p.args.iter() {
+                        let value_mut = unit.values.get_mut(*value).unwrap();
+                        value_mut.used_by.insert(inst);
+                    }
+                },
+                InstructionValue::GetElemPtr(g) => {
+                    let ptr_mut = unit.values.get_mut(g.ptr).unwrap();
+                    ptr_mut.used_by.insert(inst);
+                    let index_mut = unit.values.get_mut(g.index).unwrap();
+                    index_mut.used_by.insert(inst);
+                },
+            }
+        }
+    }
+}

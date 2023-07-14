@@ -17,8 +17,8 @@ macro_rules! for_each_bb_and_inst {
             let mut iter = $block.insts_start;
             while let Some($vid) = iter {
                 let $value = $unit.values[$vid].clone();
-                $vaction
                 iter = $value.next;
+                $vaction
             }
         }
     };

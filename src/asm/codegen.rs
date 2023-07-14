@@ -2,14 +2,14 @@ use std::collections::HashMap;
 
 use crate::{
     ir::{structure::{BasicBlock, TransUnit},
-    value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue}},
+    value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue, calculate_used_by, BranchInst}},
     alloc::Id, asm::{RV64InstBuilder, RVReg}, ctype::{TypePtrHelper, TypeKind, BinaryOpType},
 };
 
 use super::{MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction};
 
 impl TransUnit {
-    pub fn emit_asm(&self) -> MachineProgram {
+    pub fn emit_asm(&mut self) -> MachineProgram {
         let mut program = MachineProgram::new();
 
         for func in self.funcs() {
@@ -24,7 +24,7 @@ impl TransUnit {
 struct AsmFuncBuilder<'a> {
     pub name: String,
     pub prog: &'a mut MachineProgram,
-    pub unit: &'a TransUnit,
+    pub unit: &'a mut TransUnit,
 
     pub bb_map: HashMap<Id<BasicBlock>, Id<MachineBB>>,
 
@@ -43,7 +43,7 @@ macro_rules! pre {
 }
 
 impl<'a> AsmFuncBuilder<'a> {
-    pub fn new(name: &str, prog: &'a mut MachineProgram, unit: &'a TransUnit) -> Self {
+    pub fn new(name: &str, prog: &'a mut MachineProgram, unit: &'a mut TransUnit) -> Self {
         Self {
             name: name.to_string(),
             prog,
@@ -56,9 +56,10 @@ impl<'a> AsmFuncBuilder<'a> {
 
     pub fn build(&mut self) -> MachineFunc {
         let mut mfunc = self.prog.new_func(self.name.clone());
+        calculate_used_by(self.unit, self.name.as_str());
 
         // 1. create machine bb as per ir bb
-        let irfunc = self.unit.funcs.get(self.name.as_str()).unwrap();
+        let irfunc = self.unit.funcs[self.name.as_str()].clone();
         for bb in &irfunc.bbs {
             let mbb = self.prog.blocks.alloc(MachineBB::new(*bb));
             self.bb_map.insert(*bb, mbb);
@@ -93,7 +94,7 @@ impl<'a> AsmFuncBuilder<'a> {
 
             let mut iter = block.insts_start;
             while let Some(inst) = iter {
-                let insn = &self.unit.values[inst];
+                let insn = &self.unit.values[inst].clone();
 
                 let iv = insn.value.as_inst().clone();
                 match iv {
@@ -121,29 +122,76 @@ impl<'a> AsmFuncBuilder<'a> {
                             self.prog.mark_inline(*minst_id, false);
                         }
 
-                        let val_rhs = self.unit.values[b.rhs].value.clone();
-                        if val_rhs.is_constant() && is_i_type(b.op) {
-                            match *val_rhs.as_constant() {
+                        let val_rhs = self.unit.values[b.rhs].clone();
+                        if val_rhs.value.is_constant() && is_i_type(b.op) {
+                            match *val_rhs.value.as_constant() {
                                 ConstantValue::I32(mut i) => {
                                     if matches!(b.op, BinaryOpType::Sub) {
                                         // use addi to sub
                                         i = -i;
                                     }
                                     if is_imm12(i) {
+                                        let eliminate_cmp = insn.used_by
+                                            .iter()
+                                            .all(|val_id| {
+                                                let value = &self.unit.values[*val_id];
+                                                matches!(
+                                                    value.value, 
+                                                    ValueType::Instruction(InstructionValue::Branch(_))
+                                                )
+                                            });
                                         match b.op {
                                             BinaryOpType::Add | BinaryOpType::Sub => {
                                                 emit!(ADDIW dst, mo_lhs, i);
                                             }
                                             BinaryOpType::Ne => {
-                                                emit!(XORI dst, mo_lhs, i);
-                                                emit!(SLTU dst, pre!(zero), dst);
+                                                if eliminate_cmp {
+                                                    let tmp = self.new_vreg();
+                                                    emit!(LIMM tmp, i);
+                                                    emit!(SNE dst, mo_lhs, tmp);
+                                                } else {
+                                                    emit!(XORI dst, mo_lhs, i);
+                                                    emit!(SLTU dst, pre!(zero), dst);
+                                                }
                                             }
                                             BinaryOpType::Eq => {
-                                                emit!(XORI dst, mo_lhs, i);
-                                                emit!(SLTIU dst, dst, 1);
+                                                if eliminate_cmp {
+                                                    let tmp = self.new_vreg();
+                                                    emit!(LIMM tmp, i);
+                                                    emit!(SEQ dst, mo_lhs, tmp);
+                                                } else {
+                                                    emit!(XORI dst, mo_lhs, i);
+                                                    emit!(SLTIU dst, dst, 1);
+                                                }
                                             }
                                             BinaryOpType::Lt => {
-                                                emit!(SLTI dst, mo_lhs, i);
+                                                if eliminate_cmp {
+                                                    let tmp = self.new_vreg();
+                                                    emit!(LIMM tmp, i);
+                                                    emit!(SLT dst, mo_lhs, tmp);
+                                                } else {
+                                                    emit!(SLTI dst, mo_lhs, i);
+                                                }
+                                            }
+                                            BinaryOpType::Le => {
+                                                let tmp = self.new_vreg();
+                                                emit!(LIMM tmp, i);
+                                                emit!(SGE dst, tmp, mo_lhs);
+                                            }
+                                            BinaryOpType::Gt => {
+                                                let tmp = self.new_vreg();
+                                                emit!(LIMM tmp, i);
+                                                emit!(SLT dst, tmp, mo_lhs);
+                                            }
+                                            BinaryOpType::Ge => {
+                                                if eliminate_cmp {
+                                                    let tmp = self.new_vreg();
+                                                    emit!(LIMM tmp, i);
+                                                    emit!(SGE dst, mo_lhs, tmp);
+                                                } else {
+                                                    emit!(SLTI dst, mo_lhs, i);
+                                                    emit!(XORI dst, dst, 1);
+                                                }
                                             }
                                             _ => unimplemented!(),
                                         }
@@ -156,15 +204,26 @@ impl<'a> AsmFuncBuilder<'a> {
                                                 emit!(ADDW dst, mo_lhs, tmp);
                                             }
                                             BinaryOpType::Ne => {
-                                                emit!(XOR dst, mo_lhs, tmp);
-                                                emit!(SLTU dst, pre!(zero), dst);
+                                                // emit!(XOR dst, mo_lhs, tmp);
+                                                // emit!(SLTU dst, pre!(zero), dst);
+                                                emit!(SNE dst, mo_lhs, tmp);
                                             }
                                             BinaryOpType::Eq => {
-                                                emit!(XOR dst, mo_lhs, tmp);
-                                                emit!(SLTIU dst, dst, 1);
+                                                // emit!(XOR dst, mo_lhs, tmp);
+                                                // emit!(SLTIU dst, dst, 1);
+                                                emit!(SEQ dst, mo_lhs, tmp);
                                             }
                                             BinaryOpType::Lt => {
                                                 emit!(SLT dst, mo_lhs, tmp);
+                                            }
+                                            BinaryOpType::Le => {
+                                                emit!(SGE dst, tmp, mo_lhs);
+                                            }
+                                            BinaryOpType::Gt => {
+                                                emit!(SLT dst, tmp, mo_lhs);
+                                            }
+                                            BinaryOpType::Ge => {
+                                                emit!(SGE dst, mo_lhs, tmp);
                                             }
                                             _ => unimplemented!(),
                                         }
@@ -173,8 +232,8 @@ impl<'a> AsmFuncBuilder<'a> {
                                 _ => unimplemented!(),
                             }
                         } else {
-                            let mo_rhs = if val_rhs.is_constant() {
-                                match *val_rhs.as_constant() {
+                            let mo_rhs = if val_rhs.value.is_constant() {
+                                match *val_rhs.value.as_constant() {
                                     ConstantValue::I32(i) => {
                                         let reg = self.new_vreg();
                                         emit!(LIMM reg, i);
@@ -425,7 +484,7 @@ impl<'a> AsmFuncBuilder<'a> {
 
             let mut iter = block.insts_start;
             while let Some(inst) = iter {
-                let insn = &self.unit.values[inst];
+                let insn = &self.unit.values[inst].clone();
                 iter = insn.next;
 
                 if let InstructionValue::Phi(phi) = &insn.value.as_inst() {
@@ -629,7 +688,10 @@ fn is_i_type(op: BinaryOpType) -> bool {
         BinaryOpType::Sub |
         BinaryOpType::Ne |
         BinaryOpType::Eq |
-        BinaryOpType::Lt => true,
+        BinaryOpType::Lt |
+        BinaryOpType::Le |
+        BinaryOpType::Gt |
+        BinaryOpType::Ge => true,
         _ => false,
     }
 }
