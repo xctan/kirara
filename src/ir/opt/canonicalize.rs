@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    ir::{value::ValueTrait, builder::TransUnit}, for_each_bb_and_inst,
+    ir::{value::ValueTrait, structure::TransUnit}, for_each_bb_and_inst,
 };
 
 use super::IrPass;

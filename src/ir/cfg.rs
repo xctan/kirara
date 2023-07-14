@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::{builder::TransUnit, structure::BlockId};
+use super::{structure::TransUnit, structure::BlockId};
 
 fn reverse_post_order(unit: &mut TransUnit, entry_bb: BlockId) -> Vec<BlockId> {
     let mut stack = Vec::new();

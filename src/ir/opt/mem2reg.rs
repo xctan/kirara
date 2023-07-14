@@ -5,7 +5,7 @@ use std::{collections::{HashMap, HashSet}, rc::Rc};
 
 use crate::{
     ir::{
-        builder::TransUnit, dom::compute_df,
+        structure::TransUnit, cfg::compute_df,
         value::{InstructionValue, AllocaInst, StoreInst, ValueId, LoadInst, PhiInst}
     },
     ctype::{TypeKind, Type, TypePtrCompare}

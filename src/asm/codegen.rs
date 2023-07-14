@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    ir::{builder::TransUnit, structure::BasicBlock, value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue}},
+    ir::{structure::{BasicBlock, TransUnit},
+    value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue}},
     alloc::Id, asm::{RV64InstBuilder, RVReg}, ctype::{TypePtrHelper, TypeKind, BinaryOpType},
 };
 

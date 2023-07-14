@@ -1,7 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
 use super::{
-    builder::{BackPatchItem, BackPatchType, LocalInstExt, TransUnit, IrFuncBuilder},
+    builder::{BackPatchItem, BackPatchType, LocalInstExt, IrFuncBuilder},
+    structure::TransUnit,
     value::ValueId,
 };
 use crate::{

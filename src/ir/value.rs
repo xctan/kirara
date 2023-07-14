@@ -66,7 +66,7 @@ pub struct Value {
     pub prev: Option<ValueId>,
     pub next: Option<ValueId>,
 
-    pub(in crate::ir) used_by: HashSet<ValueId>,
+    pub used_by: HashSet<ValueId>,
 }
 
 impl ValueTrait for Value {

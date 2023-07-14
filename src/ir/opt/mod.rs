@@ -1,4 +1,4 @@
-use super::builder::TransUnit;
+use super::structure::TransUnit;
 
 pub mod mem2reg;
 pub mod canonicalize;
