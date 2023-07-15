@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     ir::{structure::{BasicBlock, TransUnit},
-    value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue, calculate_used_by, BranchInst}},
+    value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue, calculate_used_by}},
     alloc::Id, asm::{RV64InstBuilder, RVReg}, ctype::{TypePtrHelper, TypeKind, BinaryOpType},
 };
 

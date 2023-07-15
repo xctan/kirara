@@ -29,8 +29,10 @@ pub struct BasicBlock {
     pub preds: Vec<BlockId>,
     /// reverse post order
     pub rpo: usize,
-    /// immediate dominator
+    /// immediate dominated by
     pub idom: Option<BlockId>,
+    /// dominated children
+    pub dom: Vec<BlockId>,
     /// dominance frontier
     pub df: Vec<BlockId>,
 
@@ -46,6 +48,7 @@ impl BasicBlock {
             preds: Vec::new(),
             rpo: 0,
             idom: None,
+            dom: Vec::new(),
             df: Vec::new(),
             insts_start: None,
             insts_end: None,
