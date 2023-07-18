@@ -4,10 +4,13 @@ use crate::{ir::structure::BlockId, alloc::{Id, Arena}};
 
 pub mod codegen;
 pub mod export;
+pub mod reg_alloc;
+pub mod simplify;
 
+/// Listing of physical registers
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-#[allow(unused)]
-pub enum RVReg {
+#[repr(u16)]
+pub enum RVGPR {
     X0, // always zero
     X1,
     X2,
@@ -42,138 +45,173 @@ pub enum RVReg {
     X31,
 }
 
-// /// ABI names for registers
-// macro_rules! reg {
-//     (zero) => { RVReg::X0 };
-//     (ra) => { RVReg::X1 };
-//     (sp) => { RVReg::X2 };
-//     (gp) => { RVReg::X3 };
-//     (tp) => { RVReg::X4 };
-//     (t0) => { RVReg::X5 };
-//     (t1) => { RVReg::X6 };
-//     (t2) => { RVReg::X7 };
-//     (s0) => { RVReg::X8 };
-//     (fp) => { RVReg::X8 };
-//     (s1) => { RVReg::X9 };
-//     (a0) => { RVReg::X10 };
-//     (a1) => { RVReg::X11 };
-//     (a2) => { RVReg::X12 };
-//     (a3) => { RVReg::X13 };
-//     (a4) => { RVReg::X14 };
-//     (a5) => { RVReg::X15 };
-//     (a6) => { RVReg::X16 };
-//     (a7) => { RVReg::X17 };
-//     (s2) => { RVReg::X18 };
-//     (s3) => { RVReg::X19 };
-//     (s4) => { RVReg::X20 };
-//     (s5) => { RVReg::X21 };
-//     (s6) => { RVReg::X22 };
-//     (s7) => { RVReg::X23 };
-//     (s8) => { RVReg::X24 };
-//     (s9) => { RVReg::X25 };
-//     (s10) => { RVReg::X26 };
-//     (s11) => { RVReg::X27 };
-//     (t3) => { RVReg::X28 };
-//     (t4) => { RVReg::X29 };
-//     (t5) => { RVReg::X30 };
-//     (t6) => { RVReg::X31 };
-// }
+impl PartialOrd for RVGPR {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        fn classify(reg_num: u16) -> i32 {
+            // a0-a7 are allocated first
+            if reg_num >= 10 && reg_num <= 17 {
+                return 1;
+            }
+            // s0-s11 are allocated next
+            if reg_num >= 8 && reg_num <= 9 || reg_num >= 18 && reg_num <= 27 {
+                return 2;
+            }
+            // t0-t6 are allocated last
+            if reg_num >= 5 && reg_num <= 7 || reg_num >= 28 && reg_num <= 31 {
+                return 3;
+            }
+            return 10000;
+        }
+        let self_reg = unsafe { std::mem::transmute::<_, u16>(*self) };
+        let self_class = classify(self_reg);
+        let other_reg = unsafe { std::mem::transmute::<_, u16>(*other) };
+        let other_class = classify(other_reg);
+        if self_class == other_class {
+            Some(self_reg.cmp(&other_reg))
+        } else {
+            Some(self_class.cmp(&other_class))
+        }
+    }
+}
 
-impl RVReg {
+impl Ord for RVGPR {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl RVGPR {
     pub fn a(i: usize) -> Self {
         match i {
-            0 => RVReg::X10,
-            1 => RVReg::X11,
-            2 => RVReg::X12,
-            3 => RVReg::X13,
-            4 => RVReg::X14,
-            5 => RVReg::X15,
-            6 => RVReg::X16,
-            7 => RVReg::X17,
+            0 => RVGPR::X10,
+            1 => RVGPR::X11,
+            2 => RVGPR::X12,
+            3 => RVGPR::X13,
+            4 => RVGPR::X14,
+            5 => RVGPR::X15,
+            6 => RVGPR::X16,
+            7 => RVGPR::X17,
             _ => panic!("invalid A register index"),
         }
     }
 
     pub fn sp() -> Self {
-        RVReg::X2
+        RVGPR::X2
     }
 
     pub fn fp() -> Self {
-        RVReg::X8
+        RVGPR::X8
     }
 
     pub fn zero() -> Self {
-        RVReg::X0
+        RVGPR::X0
     }
 
     pub fn s(i: usize) -> Self {
         match i {
-            0 => RVReg::X8,
-            1 => RVReg::X9,
-            2 => RVReg::X18,
-            3 => RVReg::X19,
-            4 => RVReg::X20,
-            5 => RVReg::X21,
-            6 => RVReg::X22,
-            7 => RVReg::X23,
-            8 => RVReg::X24,
-            9 => RVReg::X25,
-            10 => RVReg::X26,
-            11 => RVReg::X27,
+            0 => RVGPR::X8,
+            1 => RVGPR::X9,
+            2 => RVGPR::X18,
+            3 => RVGPR::X19,
+            4 => RVGPR::X20,
+            5 => RVGPR::X21,
+            6 => RVGPR::X22,
+            7 => RVGPR::X23,
+            8 => RVGPR::X24,
+            9 => RVGPR::X25,
+            10 => RVGPR::X26,
+            11 => RVGPR::X27,
             _ => panic!("invalid S register index"),
         }
     }
 
     pub fn t(i: usize) -> Self {
         match i {
-            0 => RVReg::X5,
-            1 => RVReg::X6,
-            2 => RVReg::X7,
-            3 => RVReg::X28,
-            4 => RVReg::X29,
-            5 => RVReg::X30,
-            6 => RVReg::X31,
+            0 => RVGPR::X5,
+            1 => RVGPR::X6,
+            2 => RVGPR::X7,
+            3 => RVGPR::X28,
+            4 => RVGPR::X29,
+            5 => RVGPR::X30,
+            6 => RVGPR::X31,
             _ => panic!("invalid T register index"),
+        }
+    }
+
+    pub fn x(i: usize) -> Self {
+        match i {
+            0 => RVGPR::X1,
+            1 => RVGPR::X2,
+            2 => RVGPR::X3,
+            3 => RVGPR::X4,
+            4 => RVGPR::X5,
+            5 => RVGPR::X6,
+            6 => RVGPR::X7,
+            7 => RVGPR::X8,
+            8 => RVGPR::X9,
+            9 => RVGPR::X10,
+            10 => RVGPR::X11,
+            11 => RVGPR::X12,
+            12 => RVGPR::X13,
+            13 => RVGPR::X14,
+            14 => RVGPR::X15,
+            15 => RVGPR::X16,
+            16 => RVGPR::X17,
+            17 => RVGPR::X18,
+            18 => RVGPR::X19,
+            19 => RVGPR::X20,
+            20 => RVGPR::X21,
+            21 => RVGPR::X22,
+            22 => RVGPR::X23,
+            23 => RVGPR::X24,
+            24 => RVGPR::X25,
+            25 => RVGPR::X26,
+            26 => RVGPR::X27,
+            27 => RVGPR::X28,
+            28 => RVGPR::X29,
+            29 => RVGPR::X30,
+            30 => RVGPR::X31,
+            _ => panic!("invalid X register index"),
         }
     }
 }
 
-impl Debug for RVReg {
+impl Debug for RVGPR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             // use abi names
-            RVReg::X0 => write!(f, "zero"),
-            RVReg::X1 => write!(f, "ra"),
-            RVReg::X2 => write!(f, "sp"),
-            RVReg::X3 => write!(f, "gp"),
-            RVReg::X4 => write!(f, "tp"),
-            RVReg::X5 => write!(f, "t0"),
-            RVReg::X6 => write!(f, "t1"),
-            RVReg::X7 => write!(f, "t2"),
-            RVReg::X8 => write!(f, "s0"),
-            RVReg::X9 => write!(f, "s1"),
-            RVReg::X10 => write!(f, "a0"),
-            RVReg::X11 => write!(f, "a1"),
-            RVReg::X12 => write!(f, "a2"),
-            RVReg::X13 => write!(f, "a3"),
-            RVReg::X14 => write!(f, "a4"),
-            RVReg::X15 => write!(f, "a5"),
-            RVReg::X16 => write!(f, "a6"),
-            RVReg::X17 => write!(f, "a7"),
-            RVReg::X18 => write!(f, "s2"),
-            RVReg::X19 => write!(f, "s3"),
-            RVReg::X20 => write!(f, "s4"),
-            RVReg::X21 => write!(f, "s5"),
-            RVReg::X22 => write!(f, "s6"),
-            RVReg::X23 => write!(f, "s7"),
-            RVReg::X24 => write!(f, "s8"),
-            RVReg::X25 => write!(f, "s9"),
-            RVReg::X26 => write!(f, "s10"),
-            RVReg::X27 => write!(f, "s11"),
-            RVReg::X28 => write!(f, "t3"),
-            RVReg::X29 => write!(f, "t4"),
-            RVReg::X30 => write!(f, "t5"),
-            RVReg::X31 => write!(f, "t6"),
+            RVGPR::X0 => write!(f, "zero"),
+            RVGPR::X1 => write!(f, "ra"),
+            RVGPR::X2 => write!(f, "sp"),
+            RVGPR::X3 => write!(f, "gp"),
+            RVGPR::X4 => write!(f, "tp"),
+            RVGPR::X5 => write!(f, "t0"),
+            RVGPR::X6 => write!(f, "t1"),
+            RVGPR::X7 => write!(f, "t2"),
+            RVGPR::X8 => write!(f, "s0"),
+            RVGPR::X9 => write!(f, "s1"),
+            RVGPR::X10 => write!(f, "a0"),
+            RVGPR::X11 => write!(f, "a1"),
+            RVGPR::X12 => write!(f, "a2"),
+            RVGPR::X13 => write!(f, "a3"),
+            RVGPR::X14 => write!(f, "a4"),
+            RVGPR::X15 => write!(f, "a5"),
+            RVGPR::X16 => write!(f, "a6"),
+            RVGPR::X17 => write!(f, "a7"),
+            RVGPR::X18 => write!(f, "s2"),
+            RVGPR::X19 => write!(f, "s3"),
+            RVGPR::X20 => write!(f, "s4"),
+            RVGPR::X21 => write!(f, "s5"),
+            RVGPR::X22 => write!(f, "s6"),
+            RVGPR::X23 => write!(f, "s7"),
+            RVGPR::X24 => write!(f, "s8"),
+            RVGPR::X25 => write!(f, "s9"),
+            RVGPR::X26 => write!(f, "s10"),
+            RVGPR::X27 => write!(f, "s11"),
+            RVGPR::X28 => write!(f, "t3"),
+            RVGPR::X29 => write!(f, "t4"),
+            RVGPR::X30 => write!(f, "t5"),
+            RVGPR::X31 => write!(f, "t6"),
         }
     }
 }
@@ -181,8 +219,26 @@ impl Debug for RVReg {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum MachineOperand {
     Virtual(u32),
-    Allocated(RVReg),
-    PreColored(RVReg),
+    Allocated(RVGPR),
+    PreColored(RVGPR),
+}
+
+impl MachineOperand {
+    pub fn needs_coloring(&self) -> bool {
+        matches!(self, MachineOperand::Virtual(_) | MachineOperand::PreColored(_))
+    }
+
+    pub fn is_precolored(&self) -> bool {
+        matches!(self, MachineOperand::PreColored(_))
+    }
+
+    pub fn color(&self) -> Option<RVGPR> {
+        match self {
+            MachineOperand::Virtual(_) => None,
+            MachineOperand::Allocated(r) => Some(*r),
+            MachineOperand::PreColored(r) => Some(*r),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -299,6 +355,80 @@ pub enum RV64Instruction {
     SGEU { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
 }
 
+macro_rules! implement_typed_instruction {
+    ($implementer:ident) => {
+        $implementer!(i; LB);
+        $implementer!(i; LH);
+        $implementer!(i; LW);
+        $implementer!(i; LBU);
+        $implementer!(i; LHU);
+        $implementer!(s; SB);
+        $implementer!(s; SH);
+        $implementer!(s; SW);
+
+        $implementer!(i; ADDI);
+        $implementer!(i; SLTI);
+        $implementer!(i; SLTIU);
+        $implementer!(i; XORI);
+        $implementer!(i; ORI);
+        $implementer!(i; ANDI);
+        $implementer!(i; SLLI);
+        $implementer!(i; SRLI);
+        $implementer!(i; SRAI);
+
+        $implementer!(r; ADD);
+        $implementer!(r; SUB);
+        $implementer!(r; SLL);
+        $implementer!(r; SLT);
+        $implementer!(r; SLTU);
+        $implementer!(r; XOR);
+        $implementer!(r; SRL);
+        $implementer!(r; SRA);
+        $implementer!(r; OR);
+        $implementer!(r; AND);
+
+        $implementer!(i; LWU);
+        $implementer!(i; LD);
+        $implementer!(s; SD);
+
+        $implementer!(i; ADDIW);
+        $implementer!(i; SLLIW);
+        $implementer!(i; SRLIW);
+        $implementer!(i; SRAIW);
+        $implementer!(r; ADDW);
+        $implementer!(r; SUBW);
+        $implementer!(r; SLLW);
+        $implementer!(r; SRLW);
+        $implementer!(r; SRAW);
+
+        $implementer!(r; MUL);
+        $implementer!(r; MULH);
+        $implementer!(r; MULHSU);
+        $implementer!(r; MULHU);
+        $implementer!(r; DIV);
+        $implementer!(r; DIVU);
+        $implementer!(r; REM);
+        $implementer!(r; REMU);
+        $implementer!(r; MULW);
+        $implementer!(r; DIVW);
+        $implementer!(r; DIVUW);
+        $implementer!(r; REMW);
+        $implementer!(r; REMUW);
+
+        $implementer!(cj; JEQ);
+        $implementer!(cj; JNE);
+        $implementer!(cj; JLT);
+        $implementer!(cj; JGE);
+        $implementer!(cj; JLTU);
+        $implementer!(cj; JGEU);
+
+        $implementer!(r; SEQ);
+        $implementer!(r; SNE);
+        $implementer!(r; SGE);
+        $implementer!(r; SGEU);
+    };
+}
+
 impl RV64Instruction {
     pub fn get_rd(&self) -> Option<MachineOperand> {
         match self.clone() {
@@ -364,6 +494,96 @@ impl RV64Instruction {
             _ => None,
         }
     }
+
+    pub fn get_def_use(&self) -> (Vec<MachineOperand>, Vec<MachineOperand>) {
+        macro_rules! extract {
+            (r ; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { rd, rs1, rs2 } = self {
+                    return (vec![*rd], vec![*rs1, *rs2])
+                }
+            };
+            (i ; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { rd, rs1, .. } = self {
+                    return (vec![*rd], vec![*rs1])
+                }
+            };
+            (s; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
+                    return (vec![], vec![*rs1, *rs2])
+                }
+            };
+            (cj; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
+                    return (vec![], vec![*rs1, *rs2])
+                }
+            };
+        }
+
+        implement_typed_instruction!(extract);
+        
+        if let RV64Instruction::LUI { rd, .. } = self {
+            return (vec![*rd], vec![])
+        }
+        if let RV64Instruction::MV { rd, rs } = self {
+            return (vec![*rd], vec![*rs])
+        }
+        if let RV64Instruction::LIMM { rd, .. } = self {
+            return (vec![*rd], vec![])
+        }
+        if let RV64Instruction::RET = self {
+            return (vec![], vec![MachineOperand::PreColored(RVGPR::a(0))]);
+        }
+        if let RV64Instruction::JUMP { .. } = self {
+            return (vec![], vec![]);
+        }
+
+        panic!("unimplemented: {:?}", self)
+    }
+
+    pub fn get_operands_mut(&mut self) -> Vec<&mut MachineOperand> {
+        macro_rules! extract {
+            (r ; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { rd, rs1, rs2 } = self {
+                    return vec![rd, rs1, rs2]
+                }
+            };
+            (i ; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { rd, rs1, .. } = self {
+                    return vec![rd, rs1]
+                }
+            };
+            (s; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
+                    return vec![rs1, rs2]
+                }
+            };
+            (cj; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
+                    return vec![rs1, rs2]
+                }
+            };
+        }
+
+        if let RV64Instruction::LUI { rd, .. } = self {
+            return vec![rd];
+        }
+        if let RV64Instruction::MV { rd, rs } = self {
+            return vec![rd, rs];
+        }
+        if let RV64Instruction::LIMM { rd, .. } = self {
+            return vec![rd];
+        }
+        if let RV64Instruction::RET = self {
+            return vec![];
+        }
+        if let RV64Instruction::JUMP { .. } = self {
+            return vec![];
+        }
+
+        implement_typed_instruction!(extract);
+
+        panic!("unimplemented: {:?}", self)
+    }
 }
 
 macro_rules! builder_impl_rv64 {
@@ -410,6 +630,8 @@ macro_rules! builder_impl_rv64 {
 pub struct RV64InstBuilder;
 
 impl RV64InstBuilder {
+    implement_typed_instruction!(builder_impl_rv64);
+
     #[allow(non_snake_case)]
     pub fn LUI(rd: MachineOperand, imm: i32) -> RV64Instruction {
         // check if imm is a 20-bit signed integer
@@ -419,64 +641,6 @@ impl RV64InstBuilder {
             panic!("immediate value out of range")
         }
     }
-
-    builder_impl_rv64!(i; LB);
-    builder_impl_rv64!(i; LH);
-    builder_impl_rv64!(i; LW);
-    builder_impl_rv64!(i; LBU);
-    builder_impl_rv64!(i; LHU);
-    builder_impl_rv64!(s; SB);
-    builder_impl_rv64!(s; SH);
-    builder_impl_rv64!(s; SW);
-
-    builder_impl_rv64!(i; ADDI);
-    builder_impl_rv64!(i; SLTI);
-    builder_impl_rv64!(i; SLTIU);
-    builder_impl_rv64!(i; XORI);
-    builder_impl_rv64!(i; ORI);
-    builder_impl_rv64!(i; ANDI);
-    builder_impl_rv64!(i; SLLI);
-    builder_impl_rv64!(i; SRLI);
-    builder_impl_rv64!(i; SRAI);
-
-    builder_impl_rv64!(r; ADD);
-    builder_impl_rv64!(r; SUB);
-    builder_impl_rv64!(r; SLL);
-    builder_impl_rv64!(r; SLT);
-    builder_impl_rv64!(r; SLTU);
-    builder_impl_rv64!(r; XOR);
-    builder_impl_rv64!(r; SRL);
-    builder_impl_rv64!(r; SRA);
-    builder_impl_rv64!(r; OR);
-    builder_impl_rv64!(r; AND);
-
-    builder_impl_rv64!(i; LWU);
-    builder_impl_rv64!(i; LD);
-    builder_impl_rv64!(s; SD);
-
-    builder_impl_rv64!(i; ADDIW);
-    builder_impl_rv64!(i; SLLIW);
-    builder_impl_rv64!(i; SRLIW);
-    builder_impl_rv64!(i; SRAIW);
-    builder_impl_rv64!(r; ADDW);
-    builder_impl_rv64!(r; SUBW);
-    builder_impl_rv64!(r; SLLW);
-    builder_impl_rv64!(r; SRLW);
-    builder_impl_rv64!(r; SRAW);
-
-    builder_impl_rv64!(r; MUL);
-    builder_impl_rv64!(r; MULH);
-    builder_impl_rv64!(r; MULHSU);
-    builder_impl_rv64!(r; MULHU);
-    builder_impl_rv64!(r; DIV);
-    builder_impl_rv64!(r; DIVU);
-    builder_impl_rv64!(r; REM);
-    builder_impl_rv64!(r; REMU);
-    builder_impl_rv64!(r; MULW);
-    builder_impl_rv64!(r; DIVW);
-    builder_impl_rv64!(r; DIVUW);
-    builder_impl_rv64!(r; REMW);
-    builder_impl_rv64!(r; REMUW);
 
     #[allow(non_snake_case)]
     pub fn COMMENT(comment: String) -> RV64Instruction {
@@ -498,20 +662,10 @@ impl RV64InstBuilder {
     pub fn MV(rd: MachineOperand, rs: MachineOperand) -> RV64Instruction {
         RV64Instruction::MV { rd, rs }
     }
-    builder_impl_rv64!(cj; JEQ);
-    builder_impl_rv64!(cj; JNE);
-    builder_impl_rv64!(cj; JLT);
-    builder_impl_rv64!(cj; JGE);
-    builder_impl_rv64!(cj; JLTU);
-    builder_impl_rv64!(cj; JGEU);
     #[allow(non_snake_case)]
     pub fn LIMM(rd: MachineOperand, imm: i32) -> RV64Instruction {
         RV64Instruction::LIMM { rd, imm }
     }
-    builder_impl_rv64!(r; SEQ);
-    builder_impl_rv64!(r; SNE);
-    builder_impl_rv64!(r; SGE);
-    builder_impl_rv64!(r; SGEU);
 }
 
 #[derive(Clone, Debug)]
@@ -553,13 +707,21 @@ impl MachineBB {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum VRegType {
+    Int32,
+    Int64,
+    Fp32,
+}
+
 pub struct MachineFunc {
     pub func: String,
     pub entry: Option<Id<MachineBB>>,
     pub bbs: Vec<Id<MachineBB>>,
     pub virtual_max: u32,
+    pub vreg_types: HashMap<u32, VRegType>,
     pub stack_size: u32,
-    pub saved_regs: HashSet<RVReg>,
+    pub saved_regs: HashSet<RVGPR>,
 
     // use_lr?
 
@@ -567,7 +729,7 @@ pub struct MachineFunc {
 }
 
 pub struct MachineProgram {
-    pub funcs: Vec<MachineFunc>,
+    pub funcs: HashMap<String, MachineFunc>,
 
     // global_decl
 
@@ -583,7 +745,7 @@ pub struct MachineProgram {
 impl MachineProgram {
     pub fn new() -> Self {
         Self {
-            funcs: Vec::new(),
+            funcs: HashMap::new(),
             blocks: Arena::new(),
             insts: Arena::new(),
             block_map: HashMap::new(),
@@ -599,6 +761,7 @@ impl MachineProgram {
             entry: None,
             bbs: Vec::new(),
             virtual_max: 0,
+            vreg_types: HashMap::new(),
             stack_size: 0,
             saved_regs: HashSet::new(),
         }
@@ -677,6 +840,45 @@ impl MachineProgram {
         self.insts[before].prev = Some(minst_id);
     }
 
+    pub fn insert_after(&mut self, after: Id<MachineInst>, inst: RV64Instruction) {
+        let minst = MachineInst {
+            inst: inst.clone(),
+            bb: self.insts[after].bb,
+            inlined: false,
+            prev: Some(after),
+            next: self.insts[after].next,
+        };
+        let minst_id = self.insts.alloc(minst);
+        if let Some(rd) = inst.get_rd() {
+            self.define_vreg(rd, minst_id);
+        }
+        self.mark_inline_inst(minst_id);
+        if let Some(next) = self.insts[after].next {
+            self.insts[next].prev = Some(minst_id);
+        } else {
+            self.blocks[self.insts[after].bb].insts_tail = Some(minst_id);
+        }
+        self.insts[after].next = Some(minst_id);
+    }
+
+    pub fn remove(&mut self, inst: Id<MachineInst>) {
+        let minst = self.insts[inst].clone();
+        if let Some(prev) = minst.prev {
+            self.insts[prev].next = minst.next;
+        } else {
+            self.blocks[minst.bb].insts_head = minst.next;
+        }
+        if let Some(next) = minst.next {
+            self.insts[next].prev = minst.prev;
+        } else {
+            self.blocks[minst.bb].insts_tail = minst.prev;
+        }
+        if let Some(rd) = minst.inst.get_rd() {
+            self.vreg_def.remove(&rd);
+        }
+        self.insts.remove(inst);
+    }
+
     pub fn mark_inline(&mut self, inst: Id<MachineInst>, status: bool) {
         self.insts[inst].inlined = status;
     }
@@ -700,5 +902,23 @@ impl MachineProgram {
             }
             _ => {}
         }
+    }
+
+    pub fn get_def_use(&self, minst: Id<MachineInst>) -> (Vec<MachineOperand>, Vec<MachineOperand>) {
+        let inst = &self.insts[minst].inst;
+        if let RV64Instruction::CALL { callee: _ } = inst {
+            unimplemented!()
+        }
+
+        inst.get_def_use()
+    }
+
+    pub fn get_operands_mut(&mut self, minst: Id<MachineInst>) -> Vec<&mut MachineOperand> {
+        let inst = &mut self.insts[minst].inst;
+        if let RV64Instruction::CALL { callee: _ } = inst {
+            unimplemented!()
+        }
+
+        inst.get_operands_mut()
     }
 }

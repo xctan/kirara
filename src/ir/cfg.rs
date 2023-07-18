@@ -160,6 +160,16 @@ impl Loop {
     pub fn header(&self) -> BlockId {
         self.blocks[0]
     }
+
+    pub fn depth(&self) -> usize {
+        let mut depth = 1;
+        let mut runner = self.parent.upgrade();
+        while let Some(parent) = runner {
+            depth += 1;
+            runner = parent.borrow().parent.upgrade();
+        }
+        depth
+    }
 }
 
 pub struct LoopInfo {
@@ -187,6 +197,9 @@ impl LoopInfo {
     fn dfs(&mut self, worklist: &mut Vec<BlockId>, unit: &mut TransUnit, this: BlockId) {
         let children = unit.blocks[this].dom.clone();
         for child in children {
+            if child == this {
+                continue;
+            }
             self.dfs(worklist, unit, child);
         }
         assert!(worklist.is_empty());
@@ -257,5 +270,12 @@ impl LoopInfo {
                 sub = sub.clone().borrow().parent.upgrade().unwrap();
             }
         }
+    }
+
+    pub fn depth(&self, bb: BlockId) -> usize {
+        self.loop_of_bb
+            .get(&bb)
+            .map(|l| l.borrow().depth())
+            .unwrap_or(0)
     }
 }

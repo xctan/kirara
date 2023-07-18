@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use crate::{
     ir::{structure::{BasicBlock, TransUnit},
     value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue, calculate_used_by}},
-    alloc::Id, asm::{RV64InstBuilder, RVReg}, ctype::{TypePtrHelper, TypeKind, BinaryOpType},
+    alloc::Id, asm::{RV64InstBuilder, RVGPR}, ctype::{TypePtrHelper, TypeKind, BinaryOpType},
 };
 
-use super::{MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction};
+use super::{MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction, VRegType};
 
 impl TransUnit {
     pub fn emit_asm(&mut self) -> MachineProgram {
@@ -14,7 +14,7 @@ impl TransUnit {
 
         for func in self.funcs() {
             let mfunc = AsmFuncBuilder::new(&func, &mut program, self).build();
-            program.funcs.push(mfunc);
+            program.funcs.insert(func, mfunc);
         }
 
         program
@@ -33,13 +33,14 @@ struct AsmFuncBuilder<'a> {
     // todo: global decl
 
     pub virtual_max: u32,
+    pub vreg_types: HashMap<u32, VRegType>,
 }
 
 macro_rules! pre {
-    (zero) => { MachineOperand::PreColored(RVReg::zero()) };
-    (a0) => { MachineOperand::PreColored(RVReg::a(0)) };
-    (fp) => { MachineOperand::PreColored(RVReg::fp()) };
-    (sp) => { MachineOperand::PreColored(RVReg::sp()) };
+    (zero) => { MachineOperand::PreColored(RVGPR::zero()) };
+    (a0) => { MachineOperand::PreColored(RVGPR::a(0)) };
+    (fp) => { MachineOperand::PreColored(RVGPR::fp()) };
+    (sp) => { MachineOperand::PreColored(RVGPR::sp()) };
 }
 
 impl<'a> AsmFuncBuilder<'a> {
@@ -50,11 +51,20 @@ impl<'a> AsmFuncBuilder<'a> {
             unit,
             bb_map: HashMap::new(),
             val_map: HashMap::new(),
-            virtual_max: 0,
+            virtual_max: 1,
+            vreg_types: HashMap::new(),
         }
     }
 
-    pub fn build(&mut self) -> MachineFunc {
+    pub fn build(mut self) -> MachineFunc {
+        let mut mfunc = self.build_inner();
+        mfunc.virtual_max = self.virtual_max;
+        mfunc.vreg_types = self.vreg_types;
+
+        mfunc
+    }
+
+    fn build_inner(&mut self) -> MachineFunc {
         let mut mfunc = self.prog.new_func(self.name.clone());
         calculate_used_by(self.unit, self.name.as_str());
 
@@ -353,6 +363,11 @@ impl<'a> AsmFuncBuilder<'a> {
                     InstructionValue::Alloca(a) => {
                         let dst = self.resolve(inst, mbb);
                         let object_size = a.ty.get().size() as u32;
+                        let object_align = a.ty.get().align() as u32;
+                        // fixup
+                        if mfunc.stack_size % object_align != 0 {
+                            mfunc.stack_size += object_align - mfunc.stack_size % object_align;
+                        }
                         let object_begin = mfunc.stack_size;
                         mfunc.stack_size += object_size;
                         if is_imm12(object_begin as i32) {
@@ -563,12 +578,33 @@ impl<'a> AsmFuncBuilder<'a> {
             }
         }
 
-        mfunc.virtual_max = self.virtual_max;
+        // remove useless instructions (already inlined)
+        for bb in &irfunc.bbs {
+            let mbb = self.bb_map[bb];
+            let mut iter = self.prog.blocks[mbb].insts_head;
+            while let Some(inst) = iter {
+                let insn = self.prog.insts[inst].clone();
+                iter = insn.next;
+
+                if insn.inlined {
+                    self.prog.remove(inst);
+                }
+            }
+        }
+
         mfunc
     }
 
     fn new_vreg(&mut self) -> MachineOperand {
         let old = self.virtual_max;
+        self.vreg_types.insert(old, VRegType::Int32);
+        self.virtual_max += 1;
+        MachineOperand::Virtual(old)
+    }
+
+    fn new_vreg64(&mut self) -> MachineOperand {
+        let old = self.virtual_max;
+        self.vreg_types.insert(old, VRegType::Int64);
         self.virtual_max += 1;
         MachineOperand::Virtual(old)
     }
@@ -580,16 +616,22 @@ impl<'a> AsmFuncBuilder<'a> {
                 // should check if we can directly encode the immediate to the instruction!
                 panic!("")
             },
-            ValueType::Instruction(_inst) => {
+            ValueType::Instruction(ref _inst) => {
                 if self.val_map.contains_key(&val) {
                     self.val_map[&val]
                 } else {
-                    let res = self.new_vreg();
+                    let res = match value.ty().get().kind {
+                        TypeKind::I1 => self.new_vreg(),
+                        TypeKind::I32 => self.new_vreg(),
+                        TypeKind::I64 => self.new_vreg64(),
+                        TypeKind::Ptr(_) => self.new_vreg64(),
+                        _ => unimplemented!("unknown type width: {:?}", value.ty().get().kind)
+                    };
                     self.val_map.insert(val, res);
                     res
                 }
             },
-            ValueType::Parameter(_param) => {
+            ValueType::Parameter(ref _param) => {
                 if self.val_map.contains_key(&val) {
                     self.val_map[&val]
                 } else {
@@ -600,13 +642,13 @@ impl<'a> AsmFuncBuilder<'a> {
                     let entry = self.bb_map[&self.unit.funcs[self.name.as_str()].entry_bb];
                     if idx < 8 {
                         // first 8 params are passed in registers
-                        self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, MachineOperand::PreColored(RVReg::a(idx))));
+                        self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, MachineOperand::PreColored(RVGPR::a(idx))));
                     } else {
                         // extra args are passed on stack, 8 bytes aligned
                         // for i-th arg, it is at [fp + 8 * (i - 8)]
                         let offset = 8 * (idx - 8) as i32;
                         if is_imm12(offset) {
-                            self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, MachineOperand::PreColored(RVReg::fp()), offset));
+                            self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, MachineOperand::PreColored(RVGPR::fp()), offset));
                         } else {
                             // try to use itself as scratch register; should it cause any problem?
                             let (load_high, lo12) = AsmFuncBuilder::load_imm32_hi20(res, offset);
@@ -614,7 +656,7 @@ impl<'a> AsmFuncBuilder<'a> {
                             if let Some(minst) = load_high {
                                 // pushed in reverse order
                                 self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, res, lo12));
-                                self.prog.push_to_begin(entry, RV64InstBuilder::ADD(res, res, MachineOperand::PreColored(RVReg::fp())));
+                                self.prog.push_to_begin(entry, RV64InstBuilder::ADD(res, res, MachineOperand::PreColored(RVGPR::fp())));
                                 self.prog.push_to_begin(entry, minst);
                             } else {
                                 // hi20 cannot be zero, or we can use LD directly

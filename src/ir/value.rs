@@ -219,6 +219,7 @@ impl ValueTrait for StoreInst {}
 
 #[derive(Debug, Clone)]
 pub struct AllocaInst {
+    pub alloc_ty: Weak<Type>,
     pub ty: Weak<Type>,
     pub name: String,
 }

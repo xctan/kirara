@@ -78,7 +78,7 @@ impl TransUnit {
                                 println!();
                             }
                             InstructionValue::Alloca(ref insn) => {
-                                print!("{} = alloca {}, align {}", insn.name, insn.ty.get(), insn.ty.get().align());
+                                print!("{} = alloca {}, align {}", insn.name, insn.alloc_ty.get(), insn.alloc_ty.get().align());
                                 println!();
                             }
                             InstructionValue::Branch(ref insn) => {

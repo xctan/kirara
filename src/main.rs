@@ -33,6 +33,9 @@ fn main() {
     ir::opt::canonicalize::Canonicalize::run(&mut unit);
     unit.print();
 
-    let asm = unit.emit_asm();
+    let mut asm = unit.emit_asm();
+    asm.print();
+    asm.allocate_registers(&mut unit);
+    asm.simplify();
     asm.print();
 }

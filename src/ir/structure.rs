@@ -282,7 +282,8 @@ impl TransUnit {
     pub fn alloca(&mut self, ty: Weak<Type>) -> ValueId {
         let inst = AllocaInst {
             name: self.gen_local_name(),
-            ty,
+            alloc_ty: ty.clone(),
+            ty: Type::ptr_to(ty),
         };
         let val = ValueType::Instruction(InstructionValue::Alloca(inst));
         let val = Value::new(val);
@@ -312,7 +313,7 @@ impl TransUnit {
 
     pub fn load(&mut self, ptr: ValueId) -> ValueId {
         let ptr_val = self.values.get(ptr).unwrap();
-        let ty = ptr_val.ty();
+        let ty = ptr_val.ty().get().base_type();
         let inst = LoadInst {
             name: self.gen_local_name(),
             ty,

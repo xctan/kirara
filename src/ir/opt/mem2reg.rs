@@ -35,8 +35,8 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
         let mut inst = block.insts_start;
         while let Some(insn_id) = inst {
             let insn = unit.values.get(insn_id).unwrap();
-            if let InstructionValue::Alloca(AllocaInst{ty, ..}) = insn.value.as_inst() {
-                let ty = ty.upgrade().unwrap();
+            if let InstructionValue::Alloca(AllocaInst{alloc_ty, ..}) = insn.value.as_inst() {
+                let ty = alloc_ty.upgrade().unwrap();
                 if matches!(ty.kind, TypeKind::I32) {
                     let alloca_id = alloca_ids.len();
                     alloca_ids.insert(insn_id, alloca_id);

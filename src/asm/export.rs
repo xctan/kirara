@@ -1,12 +1,12 @@
 use std::{fmt::{Display, Debug}, collections::{HashMap, HashSet}};
 
-use super::{MachineOperand, RVReg, MachineProgram, RV64Instruction};
+use super::{MachineOperand, RVGPR, MachineProgram, RV64Instruction};
 
 impl MachineProgram {
     pub fn print(&self) {
         let mut counter = 0;
 
-        for f in &self.funcs {
+        for (_, f) in &self.funcs {
             counter += 1;
             let mut counter2 = 0;
             let mut count2 = || {
@@ -108,9 +108,9 @@ impl MachineProgram {
                         continue;
                     }
 
-                    if inst.inlined {
-                        continue;
-                    }
+                    // if inst.inlined {
+                    //     continue;
+                    // }
                     match inst.inst {
                         RV64Instruction::SEQ { rd, rs1, rs2 } => {
                             println!("  xor {}, {}, {}", rd, rs1, rs2);
@@ -265,14 +265,14 @@ impl Display for RV64Instruction {
 impl Display for MachineOperand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MachineOperand::Virtual(reg) => write!(f, "r%{}", reg),
-            MachineOperand::PreColored(reg) => write!(f, "r@{}", reg),
+            MachineOperand::Virtual(reg) => write!(f, "%{}", reg),
+            MachineOperand::PreColored(reg) => write!(f, "{}", reg),
             MachineOperand::Allocated(reg) => write!(f, "{}", reg),
         }
     }
 }
 
-impl Display for RVReg {
+impl Display for RVGPR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(self, f)
     }

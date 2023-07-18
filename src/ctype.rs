@@ -140,7 +140,7 @@ impl Display for Type {
             TypeKind::I32 => write!(f, "i32"),
             TypeKind::I64 => write!(f, "i64"),
             TypeKind::Ptr(p) => {
-                write!(f, "{}*", p.get().base_type().get())
+                write!(f, "{}*", p.get())
             },
             TypeKind::Func(_func) => unimplemented!(),
             TypeKind::Array(arr) => {
