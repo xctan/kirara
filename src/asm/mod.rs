@@ -642,7 +642,7 @@ impl RV64InstBuilder {
         }
     }
 
-    #[allow(non_snake_case)]
+    #[allow(non_snake_case, unused)]
     pub fn COMMENT(comment: String) -> RV64Instruction {
         RV64Instruction::COMMENT { comment }
     }
@@ -650,7 +650,7 @@ impl RV64InstBuilder {
     pub fn JUMP(target: Id<MachineBB>) -> RV64Instruction {
         RV64Instruction::JUMP { target }
     }
-    #[allow(non_snake_case)]
+    #[allow(non_snake_case, unused)]
     pub fn CALL(callee: String) -> RV64Instruction {
         RV64Instruction::CALL { callee }
     }
@@ -711,6 +711,7 @@ impl MachineBB {
 pub enum VRegType {
     Int32,
     Int64,
+    #[allow(unused)]
     Fp32,
 }
 
@@ -765,12 +766,6 @@ impl MachineProgram {
             stack_size: 0,
             saved_regs: HashSet::new(),
         }
-    }
-
-    pub fn alloc_block(&mut self, idx: usize, mbb: MachineBB) -> Id<MachineBB> {
-        let mbb_id = self.blocks.alloc(mbb);
-        self.block_map.insert(mbb_id, idx);
-        mbb_id
     }
 
     pub fn push_to_end(&mut self, mbb: Id<MachineBB>, inst: RV64Instruction) {

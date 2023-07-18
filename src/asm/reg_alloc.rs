@@ -6,7 +6,7 @@ use super::{MachineOperand, MachineInst, MachineProgram, RVGPR, RV64Instruction,
 
 /// number of assignable general registers
 /// including: a0-a7, s1-s11, t0-t6
-const Kgpr: usize = 26;
+const KGPR: usize = 26;
 
 impl MachineProgram {
     pub fn allocate_registers(&mut self, ir: &mut TransUnit) {
@@ -79,7 +79,7 @@ impl<'a> RegisterAllocator<'a> {
             loop_count: HashMap::new(),
         };
 
-        for i in 0..Kgpr {
+        for i in 0..KGPR {
             init.degree.insert(MachineOperand::PreColored(RVGPR::x(i)), 0x40000000);
         }
 
@@ -426,7 +426,7 @@ impl<'a> RegisterAllocator<'a> {
             let v = MachineOperand::Virtual(i);
             self.degree.entry(v).or_insert(0);
             self.adj_list.entry(v).or_insert(HashSet::new());
-            if self.degree[&v] >= Kgpr {
+            if self.degree[&v] >= KGPR {
                 self.spill_worklist.insert(v);
             } else if self.move_related(v) {
                 self.freeze_worklist.insert(v);
@@ -457,7 +457,7 @@ impl<'a> RegisterAllocator<'a> {
     fn decrement_degree(&mut self, m: MachineOperand) {
         let d = self.degree[&m];
         self.degree.insert(m, d - 1);
-        if d == Kgpr {
+        if d == KGPR {
             self.enable_moves(m);
             self.spill_worklist.insert(m);
             if self.move_related(m) {
@@ -485,14 +485,14 @@ impl<'a> RegisterAllocator<'a> {
     }
 
     fn add_work_list(&mut self, u: MachineOperand) {
-        if !u.is_precolored() && !self.move_related(u) && self.degree[&u] < Kgpr {
+        if !u.is_precolored() && !self.move_related(u) && self.degree[&u] < KGPR {
             self.freeze_worklist.remove(&u);
             self.simplify_worklist.insert(u);
         }
     }
 
     fn ok(&self, t: MachineOperand, r: MachineOperand) -> bool {
-        self.degree[&t] < Kgpr ||
+        self.degree[&t] < KGPR ||
         t.is_precolored() ||
         self.adj_set.contains(&(t, r))
     }
@@ -521,7 +521,7 @@ impl<'a> RegisterAllocator<'a> {
             self.add_edge(t, u);
             self.decrement_degree(t);
         }
-        if self.degree[&u] >= Kgpr && self.freeze_worklist.contains(&u) {
+        if self.degree[&u] >= KGPR && self.freeze_worklist.contains(&u) {
             self.freeze_worklist.remove(&u);
             self.spill_worklist.insert(u);
         }
@@ -531,9 +531,9 @@ impl<'a> RegisterAllocator<'a> {
         adj_u.extend(adj_v);
         adj_u
             .iter()
-            .filter(|x| self.degree[x] >= Kgpr)
+            .filter(|x| self.degree[x] >= KGPR)
             .count()
-            .lt(&Kgpr)
+            .lt(&KGPR)
     }
 
     fn coalesce(&mut self) {
@@ -579,7 +579,7 @@ impl<'a> RegisterAllocator<'a> {
             } else {
                 m.dst
             };
-            if !self.move_related(v) && self.degree[&v] < Kgpr {
+            if !self.move_related(v) && self.degree[&v] < KGPR {
                 self.freeze_worklist.remove(&v);
                 self.simplify_worklist.insert(v);
             }
