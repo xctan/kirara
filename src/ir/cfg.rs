@@ -46,7 +46,7 @@ fn intersect(unit: &TransUnit, i: BlockId, j: BlockId) -> BlockId {
                 finger1 = finger;
                 finger1_order = unit.blocks.get(finger1).unwrap().rpo;
             } else {
-                return finger2;
+                unreachable!()
             }
         }
         while finger2_order > finger1_order {
@@ -54,7 +54,7 @@ fn intersect(unit: &TransUnit, i: BlockId, j: BlockId) -> BlockId {
                 finger2 = finger;
                 finger2_order = unit.blocks.get(finger2).unwrap().rpo;
             } else {
-                return finger1;
+                unreachable!()
             }
         }
     }
@@ -71,21 +71,42 @@ fn compute_idom(unit: &mut TransUnit, func: &str) {
 
     let ordering = reverse_post_order(unit, entry_bb);
 
+    // println!("calculation order:");
+    // let mut i = 0;
+    // for bb in &ordering {
+    //     if i != 0 {
+    //         print!(" -> ");
+    //     }
+    //     print!("{}", unit.blocks[*bb].name);
+    //     i += 1;
+    // }
+    // println!();
+
     // calculate immediate dominator
     let mut changed = true;
     while changed {
         changed = false;
         for node in &ordering {
             let n = unit.blocks.get(*node).unwrap();
-            if !n.preds.is_empty() {
-                let mut new_idom = 
-                    unit.blocks.get(*n.preds.first().unwrap()).unwrap().idom.unwrap();
-                for pred in n.preds.iter().skip(1) {
-                    new_idom = intersect(unit, *pred, new_idom);
+            if n.preds.len() == 0 {
+                continue;
+            } else if n.preds.len() == 1 {
+                let n = unit.blocks.get_mut(*node).unwrap();
+                if n.idom != Some(*n.preds.first().unwrap()) {
+                    n.idom = Some(*n.preds.first().unwrap());
+                    changed = true;
                 }
-                if n.idom != Some(new_idom) {
+            } else {
+                // multiple predecessors
+                let new_idom = n.preds
+                    .iter()
+                    .cloned()
+                    .filter(|p| unit.blocks[*p].idom.is_some())
+                    .reduce(|a, b| intersect(unit, a, b));
+
+                if n.idom != new_idom {
                     let n = unit.blocks.get_mut(*node).unwrap();
-                    n.idom = Some(new_idom);
+                    n.idom = new_idom;
                     changed = true;
                 }
             }

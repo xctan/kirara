@@ -27,8 +27,9 @@ fn main() {
     // println!("{:#?}", ast);
 
     let mut unit = ast.emit_ir();
-    // unit.print();
+    unit.print();
 
+    ir::opt::canonicalize::Canonicalize::run(&mut unit);
     ir::opt::mem2reg::Mem2Reg::run(&mut unit);
     ir::opt::canonicalize::Canonicalize::run(&mut unit);
     unit.print();

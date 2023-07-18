@@ -72,6 +72,21 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
         alloca_defs[id].iter().for_each(|bb| worklist.push(**bb));
         while let Some(bb) = worklist.pop() {
             let df = unit.blocks.get(bb).unwrap().df.clone();
+
+            // println!("bb {}", unit.blocks.get(bb).unwrap().name);
+            // let idom = unit.blocks.get(bb).unwrap().idom.unwrap();
+            // println!("  idom: {}", unit.blocks.get(idom).unwrap().name);
+            // print!("  df: {{");
+            // let mut i = 0;
+            // for d in &df {
+            //     if i != 0 {
+            //         print!(", ");
+            //     }
+            //     print!("{}", unit.blocks.get(*d).unwrap().name);
+            //     i += 1;
+            // }
+            // println!("}}");
+
             for y in df {
                 if !visited.contains(&y) {
                     visited.insert(y);
