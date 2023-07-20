@@ -19,7 +19,23 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::I1Number(_) => None,
         AstNodeType::I32Number(_) => None,
         AstNodeType::I64Number(_) => None,
-        AstNodeType::Variable(_) => None,
+        AstNodeType::Variable(var) => {
+            let variable = get_object(var).unwrap();
+            let var_ty = variable.ty.get();
+            if let TypeKind::Const(_ty) = var_ty.kind.clone() {
+                let mut init = match variable.data.clone() {
+                    AstObjectType::Var(init) => init,
+                    _ => unreachable!(),
+                };
+                init.eval();
+                match init.data {
+                    InitData::ScalarI32(i) => Some(AstNodeType::I32Number(i)),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        },
         AstNodeType::Convert(Convert{from, ref to}) => {
             assert!(tree.as_ptr() != from.as_ptr());
             ast_const_fold(from.clone());
@@ -114,9 +130,22 @@ pub fn eval(tree: Rc<RefCell<AstNode>>) -> Option<usize> {
         AstNodeType::I1Number(num) => Some(num as usize),
         AstNodeType::I32Number(num) => Some(num as usize),
         AstNodeType::I64Number(num) => Some(num as usize),
-        AstNodeType::Variable(_var) => {
-            // todo: 
-            None
+        AstNodeType::Variable(var) => {
+            let variable = get_object(var).unwrap();
+            let var_ty = variable.ty.get();
+            if let TypeKind::Const(_ty) = var_ty.kind.clone() {
+                let mut init = match variable.data.clone() {
+                    AstObjectType::Var(init) => init,
+                    _ => unreachable!(),
+                };
+                init.eval();
+                match init.data {
+                    InitData::ScalarI32(i) => Some(i as usize),
+                    _ => None,
+                }
+            } else {
+                None
+            }
         },
         AstNodeType::Convert(Convert{from, ..}) => {
             assert!(tree.as_ptr() != from.as_ptr());

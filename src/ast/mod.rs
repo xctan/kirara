@@ -224,8 +224,7 @@ pub struct AstFuncData {
 #[derive(Debug, Clone)]
 pub enum AstObjectType {
     Func(AstFuncData),
-    Var,
-    GlobalVar(Initializer),
+    Var(Initializer),
 }
 
 #[derive(Debug, Clone)]
@@ -296,7 +295,7 @@ pub struct Initializer {
 
 impl Initializer {
     pub fn new(ty: Weak<Type>) -> Self {
-        let data = match ty.upgrade().unwrap().kind.clone() {
+        let data = match ty.get_nocv().kind.clone() {
             // scalar
             TypeKind::I1 |
             TypeKind::I32 |
@@ -473,7 +472,12 @@ impl AstContext {
 
     pub fn new_local_var(&mut self, name: &str, ty: Weak<Type>) -> ObjectId {
         let name = name.to_string();
-        let obj = AstObject::new(name.clone(), ty, true, AstObjectType::Var);
+        let obj = AstObject::new(
+            name.clone(),
+            ty.clone(),
+            true,
+            AstObjectType::Var(Initializer { ty: ty.clone(), data: InitData::ZeroInit }),
+        );
         let id = self.objects.alloc(obj);
         self.locals.push(id);
         self.scopes
@@ -490,7 +494,7 @@ impl AstContext {
             name.clone(),
             ty.clone(),
             false,
-            AstObjectType::GlobalVar(Initializer { ty: ty.clone(), data: InitData::ZeroInit })
+            AstObjectType::Var(Initializer { ty: ty.clone(), data: InitData::ZeroInit })
         );
         let id = self.objects.alloc(obj);
         self.globals.push(id);

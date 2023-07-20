@@ -166,6 +166,13 @@ impl Display for Type {
 
 pub trait TypePtrHelper {
     fn get(&self) -> Rc<Type>;
+    fn get_nocv(&self) -> Rc<Type> {
+        let raw = self.get();
+        match &raw.kind {
+            TypeKind::Const(ty) => ty.get_nocv(),
+            _ => raw,
+        }
+    }
     fn is_function(&self) -> bool {
         self.get().is_function()
     }

@@ -68,10 +68,7 @@ impl AstContext {
                     let func = builder.finish();
                     unit.funcs.insert(name, func);
                 }
-                AstObjectType::Var => {
-                    panic!("local var in global scope");
-                }
-                AstObjectType::GlobalVar(init) => {
+                AstObjectType::Var(init) => {
                     let name = var.name.clone();
                     unit.globals.insert(name, init.clone());
                 }

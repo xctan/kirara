@@ -749,7 +749,7 @@ fn global_declaration((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpa
                 panic!("initializer element is not constant");
             }
             let obj = get_object_mut(object_id).unwrap();
-            obj.data = AstObjectType::GlobalVar(initializer);
+            obj.data = AstObjectType::Var(initializer);
         }
     }
 }
