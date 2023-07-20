@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Weak};
 
 use crate::{
     ir::{structure::{BasicBlock, TransUnit},
     value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue, calculate_used_by}},
-    alloc::Id, asm::{RV64InstBuilder, RVGPR}, ctype::{TypePtrHelper, TypeKind, BinaryOpType},
+    alloc::Id, asm::{RV64InstBuilder, RVGPR}, ctype::{TypePtrHelper, TypeKind, BinaryOpType, Type},
 };
 
 use super::{MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction, VRegType};
@@ -609,6 +609,16 @@ impl<'a> AsmFuncBuilder<'a> {
         MachineOperand::Virtual(old)
     }
 
+    fn type_to_reg(&mut self, ty: Weak<Type>) -> MachineOperand {
+        match ty.get().kind {
+            TypeKind::I1 => self.new_vreg(),
+            TypeKind::I32 => self.new_vreg(),
+            TypeKind::I64 => self.new_vreg64(),
+            TypeKind::Ptr(_) => self.new_vreg64(),
+            _ => unimplemented!("unknown type width: {:?}", ty.get().kind)
+        }
+    }
+
     fn resolve(&mut self, val: Id<Value>, _mbb: Id<MachineBB>) -> MachineOperand {
         let value = self.unit.values[val].clone();
         match value.value {
@@ -620,13 +630,7 @@ impl<'a> AsmFuncBuilder<'a> {
                 if self.val_map.contains_key(&val) {
                     self.val_map[&val]
                 } else {
-                    let res = match value.ty().get().kind {
-                        TypeKind::I1 => self.new_vreg(),
-                        TypeKind::I32 => self.new_vreg(),
-                        TypeKind::I64 => self.new_vreg64(),
-                        TypeKind::Ptr(_) => self.new_vreg64(),
-                        _ => unimplemented!("unknown type width: {:?}", value.ty().get().kind)
-                    };
+                    let res = self.type_to_reg(value.ty());
                     self.val_map.insert(val, res);
                     res
                 }
@@ -635,7 +639,7 @@ impl<'a> AsmFuncBuilder<'a> {
                 if self.val_map.contains_key(&val) {
                     self.val_map[&val]
                 } else {
-                    let res = self.new_vreg();
+                    let res = self.type_to_reg(value.ty());
 
                     let params = self.unit.funcs[self.name.as_str()].params.clone();
                     let idx = params.iter().position(|&x| x == val).unwrap();
@@ -671,7 +675,18 @@ impl<'a> AsmFuncBuilder<'a> {
                     res
                 }
             },
-            ValueType::Global(_g) => todo!(),
+            ValueType::Global(ref g) => {
+                if self.val_map.contains_key(&val) {
+                    self.val_map[&val]
+                } else {
+                    let res = self.type_to_reg(value.ty());
+                    let entry = self.bb_map[&self.unit.funcs[self.name.as_str()].entry_bb];
+                    self.prog.push_to_begin(entry, RV64InstBuilder::LADDR(res, g.name.clone()));
+
+                    self.val_map.insert(val, res);
+                    res
+                }
+            },
         }
     }
 

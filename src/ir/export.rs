@@ -163,7 +163,9 @@ impl TransUnit {
         let bb = &self.values;
         let val = bb.get(id).unwrap();
         match val.value {
-            ValueType::Global(_) => unimplemented!(),
+            ValueType::Global(ref g) => {
+                print!("@{}", g.name);
+            },
             ValueType::Constant(c) => {
                 match c {
                     ConstantValue::I1(b) => print!("{}", b),

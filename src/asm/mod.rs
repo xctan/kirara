@@ -530,6 +530,9 @@ impl RV64Instruction {
         if let RV64Instruction::LIMM { rd, .. } = self {
             return (vec![*rd], vec![])
         }
+        if let RV64Instruction::LADDR { rd, .. } = self {
+            return (vec![*rd], vec![])
+        }
         if let RV64Instruction::RET = self {
             return (vec![], vec![MachineOperand::PreColored(RVGPR::a(0))]);
         }
@@ -572,6 +575,9 @@ impl RV64Instruction {
         }
         if let RV64Instruction::LIMM { rd, .. } = self {
             return vec![rd];
+        }
+        if let RV64Instruction::LADDR { rd, .. } = self {
+            return vec![rd]
         }
         if let RV64Instruction::RET = self {
             return vec![];
@@ -665,6 +671,10 @@ impl RV64InstBuilder {
     #[allow(non_snake_case)]
     pub fn LIMM(rd: MachineOperand, imm: i32) -> RV64Instruction {
         RV64Instruction::LIMM { rd, imm }
+    }
+    #[allow(non_snake_case)]
+    pub fn LADDR(rd: MachineOperand, label: String) -> RV64Instruction {
+        RV64Instruction::LADDR { rd, label }
     }
 }
 

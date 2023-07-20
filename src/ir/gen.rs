@@ -18,6 +18,15 @@ impl AstContext {
     pub fn emit_ir(&mut self) -> TransUnit {
         let mut unit = TransUnit::new();
         for var in self.globals.clone() {
+            let var = self.get_object_mut(var).unwrap();
+            if let AstObjectType::Var(init) = var.data.clone() {
+                let name = var.name.clone();
+                let ty = Type::ptr_to(var.ty.clone());
+                var.ir_value = Some(unit.global(&name, ty));
+                unit.globals.insert(name, init);
+            }
+        }
+        for var in self.globals.clone() {
             let var = self.get_object(var).unwrap();
             match var.data.clone() {
                 AstObjectType::Func(ref func) => {
@@ -68,10 +77,7 @@ impl AstContext {
                     let func = builder.finish();
                     unit.funcs.insert(name, func);
                 }
-                AstObjectType::Var(init) => {
-                    let name = var.name.clone();
-                    unit.globals.insert(name, init.clone());
-                }
+                _ => (),
             }
         }
         unit

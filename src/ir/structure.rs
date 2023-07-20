@@ -10,7 +10,7 @@ use crate::ir::value::{
 };
 
 use super::builder::IrFuncBuilder;
-use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst};
+use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue};
 
 #[derive(Debug, Clone)]
 pub struct IrFunc {
@@ -277,6 +277,12 @@ impl TransUnit {
     pub fn const_i1(&mut self, val: bool) -> ValueId {
         let val = ConstantValue::I1(val);
         let val = ValueType::Constant(val);
+        let val = Value::new(val);
+        self.values.alloc(val)
+    }
+
+    pub fn global(&mut self, name: &str, ty: Weak<Type>) -> ValueId {
+        let val = ValueType::Global(GlobalValue{ name: name.to_string(), ty });
         let val = Value::new(val);
         self.values.alloc(val)
     }
