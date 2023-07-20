@@ -84,6 +84,12 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
                 _ => None,
             }
         },
+        AstNodeType::FunCall(funcall) => {
+            for arg in funcall.args {
+                ast_const_fold(arg);
+            }
+            None
+        },
         AstNodeType::Return(expr) => {
             ast_const_fold(expr);
             None

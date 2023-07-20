@@ -41,6 +41,7 @@ impl Type {
         match &self.kind {
             TypeKind::Ptr(ty) => ty.clone(),
             TypeKind::Array(arr) => arr.base_type.clone(),
+            TypeKind::Func(func) => func.ret_type.clone(),
             _ => panic!("not applicable"),
         }
     }
@@ -69,6 +70,10 @@ impl Type {
             TypeKind::Array(arr) => arr.clone(),
             _ => panic!("not an array"),
         }
+    }
+
+    pub fn is_void(&self) -> bool {
+        matches!(self.kind, TypeKind::Void)
     }
 
     pub fn void_type() -> Weak<Type> {

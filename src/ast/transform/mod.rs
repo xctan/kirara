@@ -76,6 +76,12 @@ pub trait AstRewriteVisitor {
         None
     }
     fn visit_goto(&mut self, _label: String) -> Option<Rc<RefCell<AstNode>>> { None }
+    fn visit_funcall(&mut self, _func: String, _args: Vec<Rc<RefCell<AstNode>>>) -> Option<Rc<RefCell<AstNode>>> {
+        for arg in _args {
+            self.rewrite(arg);
+        }
+        None
+    }
 
     fn before_statement(&mut self, _stmt: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> { None }
 
@@ -102,6 +108,7 @@ pub trait AstRewriteVisitor {
             crate::ast::AstNodeType::I64Number(num) => self.visit_i64_number(num),
             crate::ast::AstNodeType::Variable(id) => self.visit_variable(id),
             crate::ast::AstNodeType::Convert(convert) => self.visit_convert(convert.from, convert.to),
+            crate::ast::AstNodeType::FunCall(funcall) => self.visit_funcall(funcall.func, funcall.args),
             crate::ast::AstNodeType::BinaryOp(binary_op) => self.visit_binary_op(binary_op.lhs, binary_op.rhs, binary_op.op),
             // crate::ast::AstNodeType::UnaryOp(unary_op) => self.visit_unary_op(unary_op.rhs, unary_op.op),
             crate::ast::AstNodeType::Return(expr) => self.visit_return(expr),

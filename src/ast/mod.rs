@@ -36,6 +36,12 @@ pub struct Convert {
 }
 
 #[derive(Debug, Clone)]
+pub struct FunCall {
+    pub func: String,
+    pub args: Vec<Rc<RefCell<AstNode>>>,
+}
+
+#[derive(Debug, Clone)]
 pub enum AstNodeType {
     Unit,
     I1Number(bool),
@@ -44,6 +50,7 @@ pub enum AstNodeType {
     Variable(ObjectId),
     BinaryOp(BinaryOp),
     Convert(Convert),
+    FunCall(FunCall),
     Block(Vec<Rc<RefCell<AstNode>>>),
     ExprStmt(Rc<RefCell<AstNode>>),
     Return(Rc<RefCell<AstNode>>),

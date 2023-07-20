@@ -73,6 +73,37 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
                 _ => unreachable!(),
             }
         },
+        AstNodeType::FunCall(funcall) => {
+            // skip check for intrinsics as for now
+            let intrinsics = [
+                "intrinsics.memcpy",
+                "intrinsics.memset",
+            ];
+            if intrinsics.contains(&&funcall.func[..]) {
+                return;
+            }
+
+            let f = find_func(&funcall.func).expect("function not found");
+            let obj = get_object(f).unwrap();
+            let func = obj.ty.get().as_function();
+            if func.params.len() == 0 {
+                todo!() // variadic function in C
+            } else if func.params.len() == 1 && func.params[0].1.get().is_void() {
+                // no argument
+                assert!(funcall.args.len() == 0);
+            } else {
+                assert!(funcall.args.len() == func.params.len());
+                for (i, arg) in funcall.args.iter().enumerate() {
+                    ast_type_check(arg.clone());
+                    let arg_new = ast_gen_convert(arg.clone(), func.params[i].1.clone());
+                    let mut arg_mut = arg.borrow_mut();
+                    arg_mut.node = arg_new;
+                    arg_mut.ty = func.params[i].1.clone();
+                }
+            }
+
+            func.ret_type.clone()
+        }
         AstNodeType::Return(expr) => {
             ast_type_check(expr);
             Type::void_type()
