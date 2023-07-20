@@ -739,8 +739,22 @@ pub struct MachineFunc {
     // todo: omit_fp_fixup, for sp-relative addressing
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum DataLiteral {
+    // .byte
+    // .half
+    /// .word
+    Word(u32),
+    // .quad
+    /// .zero
+    Zero(u32),
+}
+
 pub struct MachineProgram {
     pub funcs: HashMap<String, MachineFunc>,
+
+    /// data of global variables (functions are not included)
+    pub symbols: HashMap<String, Vec<DataLiteral>>,
 
     // global_decl
 
@@ -757,6 +771,7 @@ impl MachineProgram {
     pub fn new() -> Self {
         Self {
             funcs: HashMap::new(),
+            symbols: HashMap::new(),
             blocks: Arena::new(),
             insts: Arena::new(),
             block_map: HashMap::new(),

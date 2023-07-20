@@ -3,14 +3,18 @@ use std::{collections::HashMap, rc::Weak};
 use crate::{
     ir::{structure::{BasicBlock, TransUnit},
     value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue, calculate_used_by}},
-    alloc::Id, asm::{RV64InstBuilder, RVGPR}, ctype::{TypePtrHelper, TypeKind, BinaryOpType, Type},
+    alloc::Id, asm::{RV64InstBuilder, RVGPR}, ctype::{TypePtrHelper, TypeKind, BinaryOpType, Type}, ast::{Initializer, InitData},
 };
 
-use super::{MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction, VRegType};
+use super::{MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction, VRegType, DataLiteral};
 
 impl TransUnit {
     pub fn emit_asm(&mut self) -> MachineProgram {
         let mut program = MachineProgram::new();
+
+        for (global, init) in &self.globals {
+            program.symbols.insert(global.clone(), flatten_initializer(init));
+        }
 
         for func in self.funcs() {
             let mfunc = AsmFuncBuilder::new(&func, &mut program, self).build();
@@ -18,6 +22,21 @@ impl TransUnit {
         }
 
         program
+    }
+}
+
+fn flatten_initializer(init: &Initializer) -> Vec<DataLiteral> {
+    match init.data {
+        InitData::ScalarI32(i) => vec![DataLiteral::Word(i as u32)],
+        InitData::Aggregate(ref aggr) => {
+            let mut res = Vec::new();
+            for init in aggr.iter() {
+                res.extend(flatten_initializer(init));
+            }
+            res
+        }
+        InitData::ZeroInit => vec![DataLiteral::Zero(init.ty.get().size as u32)],
+        _ => unimplemented!("flatten_initializer"),
     }
 }
 

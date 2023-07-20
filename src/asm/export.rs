@@ -1,6 +1,6 @@
 use std::{fmt::{Display, Debug}, collections::{HashMap, HashSet}};
 
-use super::{MachineOperand, RVGPR, MachineProgram, RV64Instruction};
+use super::{MachineOperand, RVGPR, MachineProgram, RV64Instruction, DataLiteral};
 
 impl MachineProgram {
     pub fn print(&self) {
@@ -94,16 +94,16 @@ impl MachineProgram {
                         _ => None,
                     };
                     if let Some((op, rs1, rs2, succ, fail)) = cond {
-                        println!("  b{} {}, {}, {}", op, rs1, rs2, bb_names[&succ]);
+                        println!("\tb{} {}, {}, {}", op, rs1, rs2, bb_names[&succ]);
                         if next_bb.is_none() || next_bb.is_some() && *next_bb.unwrap() != fail {
-                            println!("  j {}", bb_names[&fail]);
+                            println!("\tj {}", bb_names[&fail]);
                         }
                         continue;
                     }
 
                     if let RV64Instruction::JUMP { target } = inst.inst {
                         if next_bb.is_none() || next_bb.is_some() && *next_bb.unwrap() != target {
-                            println!("  j {}", bb_names[&target]);
+                            println!("\tj {}", bb_names[&target]);
                         }
                         continue;
                     }
@@ -113,24 +113,31 @@ impl MachineProgram {
                     // }
                     match inst.inst {
                         RV64Instruction::SEQ { rd, rs1, rs2 } => {
-                            println!("  xor {}, {}, {}", rd, rs1, rs2);
-                            println!("  seqz {}", rd); // alias for sltiu rd, rd, 1
+                            println!("\txor {}, {}, {}", rd, rs1, rs2);
+                            println!("\tseqz {}", rd); // alias for sltiu rd, rd, 1
                         }
                         RV64Instruction::SNE { rd, rs1, rs2 } => {
-                            println!("  xor {}, {}, {}", rd, rs1, rs2);
-                            println!("  snez {}", rd); // alias for sltu rd, zero, rd
+                            println!("\txor {}, {}, {}", rd, rs1, rs2);
+                            println!("\tsnez {}", rd); // alias for sltu rd, zero, rd
                         }
                         RV64Instruction::SGE { rd, rs1, rs2 } => {
-                            println!("  slt {}, {}, {}", rd, rs1, rs2);
-                            println!("  xori {}, {}, 1", rd, rd);
+                            println!("\tslt {}, {}, {}", rd, rs1, rs2);
+                            println!("\txori {}, {}, 1", rd, rd);
                         }
                         RV64Instruction::SGEU { rd, rs1, rs2 } => {
-                            println!("  sltu {}, {}, {}", rd, rs1, rs2);
-                            println!("  xori {}, {}, 1", rd, rd);
+                            println!("\tsltu {}, {}, {}", rd, rs1, rs2);
+                            println!("\txori {}, {}, 1", rd, rd);
                         }
-                        _ => println!("  {}", inst.inst),
+                        _ => println!("\t{}", inst.inst),
                     }
                 }
+            }
+        }
+
+        for (s, d) in &self.symbols {
+            println!("{}:", s);
+            for dd in d {
+                println!("\t{}", dd);
             }
         }
     }
@@ -275,5 +282,14 @@ impl Display for MachineOperand {
 impl Display for RVGPR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(self, f)
+    }
+}
+
+impl Display for DataLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DataLiteral::Word(w) => write!(f, ".word {}", w),
+            DataLiteral::Zero(size) => write!(f, ".zero {}", size),
+        }
     }
 }
