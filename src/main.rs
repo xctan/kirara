@@ -1,4 +1,12 @@
 use std::io::{stdin, Read};
+use clap::Parser;
+
+#[derive(Parser, Default, Debug)]
+struct Arguments {
+    #[clap(short, long)]
+    /// Dump every intermediate representation
+    dump: bool,
+}
 
 mod alloc;
 mod token;
@@ -14,6 +22,15 @@ use crate::{
 };
 
 fn main() {
+    let args = Arguments::parse();
+    macro_rules! debug {
+        ($act:expr) => {
+            if args.dump {
+                $act
+            }
+        };
+    }
+
     let mut input = String::new();
     stdin().read_to_string(&mut input).unwrap();
 
@@ -27,15 +44,15 @@ fn main() {
     // println!("{:#?}", ast);
 
     let mut unit = ast.emit_ir();
-    unit.print();
+    debug!(unit.print());
 
     ir::opt::canonicalize::Canonicalize::run(&mut unit);
     ir::opt::mem2reg::Mem2Reg::run(&mut unit);
     ir::opt::canonicalize::Canonicalize::run(&mut unit);
-    unit.print();
+    debug!(unit.print());
 
     let mut asm = unit.emit_asm();
-    asm.print();
+    debug!(asm.print());
     asm.allocate_registers(&mut unit);
     asm.simplify();
     asm.print();
