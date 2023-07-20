@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::rc::Weak;
 
 use crate::alloc::{Id, Arena};
+use crate::ast::Initializer;
 use crate::ctype::{Type, BinaryOpType, TypePtrHelper};
 use crate::ir::value::{
     InstructionValue, ReturnInst, StoreInst, LoadInst, BinaryInst, BranchInst, 
@@ -69,6 +70,7 @@ pub struct TransUnit {
     pub blocks: Arena<BasicBlock>,
     pub inst_bb: HashMap<ValueId, BlockId>,
     // global variable defs
+    pub globals: HashMap<String, Initializer>,
 
     // funcs
     pub funcs: HashMap<String, IrFunc>,
@@ -83,6 +85,7 @@ impl TransUnit {
             values: Arena::new(),
             blocks: Arena::new(),
             inst_bb: HashMap::new(),
+            globals: HashMap::new(),
             funcs: HashMap::new(),
             counter: 0,
         }

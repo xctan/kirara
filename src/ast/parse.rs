@@ -718,6 +718,127 @@ fn is_function(cursor: TokenSpan) -> bool {
     }
 }
 
+fn global_declaration((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
+    // global_declaration = declspec (declarator ("," declarator)* | ";")
+    let mut cursor0 = cursor;
+    let mut count = 0;
+
+    loop {
+        if let Ok((cursor1, _)) = ttag!(P(";"))(cursor0) {
+            cursor0 = cursor1;
+            break Ok((cursor0, ()));
+        }
+
+        if count > 0 {
+            let (cursor1, _) = ttag!(P(","))(cursor0)?;
+            cursor0 = cursor1;
+        }
+        count += 1;
+
+        let (cursor1, (ty, id)) = declarator((cursor0, ty.clone()))?;
+        cursor0 = cursor1;
+        let object_id = new_global_var(id.as_str(), ty.clone());
+
+        if let Ok((cursor2, _)) = ttag!(P("="))(cursor0) {
+            cursor0 = cursor2;
+            
+            let mut initializer = Initializer::new(ty);
+            (cursor0, _) = initializer2(cursor0, &mut initializer)?;
+            initializer.eval();
+            if !initializer.data.is_const() {
+                panic!("initializer element is not constant");
+            }
+            let obj = get_object_mut(object_id).unwrap();
+            obj.data = AstObjectType::GlobalVar(initializer);
+        }
+    }
+}
+
+fn initializer2<'a>(cursor: TokenSpan<'a>, init: &mut Initializer) -> IResult<TokenSpan<'a>, ()> {
+    // expression | "{" initializer ("," initializer)* ","? "}" 
+
+    // todo: string-literal if ty is array and token is string-literal
+
+    // array
+    if init.ty.is_array() {
+        if ttag!(P("{"))(cursor).is_ok() {
+            return array_initializer1(cursor, init);
+        } else {
+            return array_initializer2(cursor, init, 0);
+        }
+    }
+
+    // todo: struct & union
+
+    // scalar surrounded by braces
+    if let Ok((cursor, _)) = ttag!(P("{"))(cursor) {
+        initializer2(cursor, init)?;
+        // should we discard any excess elements?
+        return ttag!(P("}"))(cursor).map(|(cursor, _)| (cursor, ()));
+    }
+
+    // expression
+    let (cursor, expr) = assignment(cursor)?;
+    init.data = InitData::Expr(expr);
+
+    Ok((cursor, ()))
+}
+
+fn skip_initialier(cursor: TokenSpan) -> IResult<TokenSpan, ()> {
+    alt((
+        map(tuple((ttag!(P("{")), skip_initialier, ttag!(P("}")))), |_| ()),
+        map(assignment, |_| ()),
+    ))(cursor)
+}
+
+fn array_initializer1<'a>(cursor: TokenSpan<'a>, init: &mut Initializer) -> IResult<TokenSpan<'a>, ()> {
+    let (mut cursor, _) = ttag!(P("{"))(cursor)?;
+    
+    let mut index = 0;
+    loop {
+        if let Ok(_) = ttag!(P("["))(cursor) {
+            unimplemented!("designated initializer");
+        }
+
+        if index < init.ty.as_array().len as usize {
+            (cursor, _) = initializer2(cursor, &mut init.as_array_mut()[index])?;
+            index += 1;
+        } else {
+            (cursor, _) = skip_initialier(cursor)?;
+        }
+
+        if let Ok((cursor, _)) = ttag!(P("}"))(cursor) {
+            break Ok((cursor, ()));
+        }
+        (cursor, _) = ttag!(P(","))(cursor)?;
+        if let Ok((cursor, _)) = ttag!(P("}"))(cursor) {
+            break Ok((cursor, ()));
+        }
+    }
+}
+
+fn array_initializer2<'a>(mut cursor: TokenSpan<'a>, init: &mut Initializer, mut index: usize) -> IResult<TokenSpan<'a>, ()> {
+    loop {
+        if index >= init.ty.as_array().len as usize || ttag!(P("}"))(cursor).is_ok() {
+            break Ok((cursor, ()));
+        }
+        if index > 0 {
+            (cursor, _) = ttag!(P(","))(cursor)?;
+        }
+
+        if let Ok(_) = ttag!(P("["))(cursor) {
+            unimplemented!("designated initializer");
+        }
+        if let Ok(_) = ttag!(P("."))(cursor) {
+            unimplemented!("designated initializer");
+        }
+
+        (cursor, _) = initializer2(cursor, &mut init.as_array_mut()[index])?;
+
+        index += 1;
+    }
+}
+
 pub fn parse<'a>(curosr: &'a Vec<Token>) -> Result<AstContext, nom::Err<nom::error::Error<TokenSpan<'a>>>>
 {
     init_context();
@@ -731,7 +852,7 @@ pub fn parse<'a>(curosr: &'a Vec<Token>) -> Result<AstContext, nom::Err<nom::err
             continue;
         }
 
-        unimplemented!("global variable")
+        cur = global_declaration((cursor, base_ty))?.0;
     }
     
     Ok(take_context())

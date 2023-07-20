@@ -1,4 +1,4 @@
-use crate::ctype::TypePtrHelper;
+use crate::{ctype::TypePtrHelper, ast::{Initializer, InitData}};
 
 use super::{
     value::{ValueType, ValueId, ConstantValue, InstructionValue, ValueTrait},
@@ -7,12 +7,41 @@ use super::{
 
 impl TransUnit {
     pub fn print(&self) {
+        for (name, init) in &self.globals {
+            self.print_global(name, init);
+        }
+
         for (name, func) in &self.funcs {
             self.print_func(name, func);
         }
     }
 
-    pub fn print_func(&self, name: &str, func: &IrFunc) {
+    fn print_global(&self, name: &str, init: &Initializer) {
+        print!("@{} = dso_local global ", name);
+        self.print_initializer(init);
+        println!(", align {}", init.ty.get().align());
+    }
+
+    fn print_initializer(&self, init: &Initializer) {
+        print!("{} ", init.ty.get());
+        match init.data {
+            InitData::ScalarI32(i) => print!("{}", i),
+            InitData::Aggregate(ref data) => {
+                print!("[");
+                for (idx, val) in data.iter().enumerate() {
+                    if idx != 0 {
+                        print!(", ");
+                    }
+                    self.print_initializer(val);
+                }
+                print!("]");
+            },
+            InitData::ZeroInit => print!("zeroinitializer"),
+            _ => panic!("unexpected non-constant initializer: {:?}", init.data),
+        }
+    }
+
+    fn print_func(&self, name: &str, func: &IrFunc) {
         let ty = func.ty.get().as_function();
         print!("define {} @{}(", ty.ret_type.get(), name);
         for (idx, (_, argty)) in ty.params.iter().enumerate() {

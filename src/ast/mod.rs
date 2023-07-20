@@ -4,7 +4,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use crate::alloc::{Arena, Id};
+use crate::{alloc::{Arena, Id}, ctype::{TypeKind, TypePtrHelper}};
 
 pub(in crate::ast) mod context;
 pub mod parse;
@@ -19,6 +19,8 @@ use crate::{
     ir::value::ValueId,
     token::TokenRange,
 };
+
+use self::transform::const_fold::ast_const_fold;
 
 #[derive(Debug, Clone)]
 pub struct BinaryOp {
@@ -223,6 +225,137 @@ pub struct AstFuncData {
 pub enum AstObjectType {
     Func(AstFuncData),
     Var,
+    GlobalVar(Initializer),
+}
+
+#[derive(Debug, Clone)]
+pub enum InitData {
+    Expr(Rc<RefCell<AstNode>>),
+    ScalarI32(i32),
+    // ScalarF32(f32),
+    Aggregate(Vec<Initializer>),
+    ZeroInit,
+}
+
+impl Default for InitData {
+    fn default() -> Self {
+        Self::ZeroInit
+    }
+}
+
+impl InitData {
+    pub fn eval(&mut self) {
+        let new_self = match self {
+            Self::Expr(expr) => {
+                ast_const_fold(expr.clone());
+                match expr.borrow().node.clone() {
+                    AstNodeType::I1Number(num) => {
+                        Self::ScalarI32(num as i32)
+                    },
+                    AstNodeType::I32Number(num) => {
+                        Self::ScalarI32(num)
+                    },
+                    _ => return,
+                }
+            },
+            Self::Aggregate(data) => {
+                for init in data.iter_mut() {
+                    init.data.eval();
+                }
+                return;
+            },
+            _ => return,
+        };
+        *self = new_self;
+    }
+
+    pub fn is_const(&self) -> bool {
+        match self {
+            Self::Expr(_) => false,
+            Self::ScalarI32(_) => true,
+            Self::Aggregate(data) => data.iter().all(|init| init.data.is_const()),
+            Self::ZeroInit => true,
+        }
+    }
+
+    fn is_all_zeroinit(&self) -> bool {
+        match self {
+            Self::Expr(_) => false,
+            Self::ScalarI32(_) => false,
+            Self::Aggregate(data) => data.iter().all(|init| init.data.is_all_zeroinit()),
+            Self::ZeroInit => true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Initializer {
+    pub ty: Weak<Type>,
+    pub data: InitData,
+}
+
+impl Initializer {
+    pub fn new(ty: Weak<Type>) -> Self {
+        let data = match ty.upgrade().unwrap().kind.clone() {
+            // scalar
+            TypeKind::I1 |
+            TypeKind::I32 |
+            TypeKind::I64 |
+            TypeKind::Ptr(_) => InitData::ZeroInit,
+            // aggregate
+            TypeKind::Array(arr) => {
+                let mut data = Vec::new();
+                for _ in 0..arr.len {
+                    data.push(Initializer::new(arr.base_type.clone()));
+                }
+                InitData::Aggregate(data)
+            }
+            _ => unimplemented!("unknown initializer type: {:?}", ty.upgrade().unwrap().kind),
+        };
+        Self { ty, data }
+    }
+
+    pub fn eval(&mut self) {
+        self.data.eval();
+        if self.data.is_all_zeroinit() {
+            self.data = InitData::ZeroInit;
+        } else {
+            self.fill_zero();
+        }
+    }
+
+    fn fill_zero(&mut self) {
+        match self.data {
+            InitData::Aggregate(ref mut data) => {
+                for init in data.iter_mut() {
+                    init.fill_zero();
+                }
+            },
+            InitData::ZeroInit => {
+                let zero = match self.ty.get().kind {
+                    TypeKind::I1 => InitData::ScalarI32(0),
+                    TypeKind::I32 => InitData::ScalarI32(0),
+                    _ => return,
+                };
+                self.data = zero;
+            },
+            _ => {}
+        }
+    }
+
+    pub fn as_array(&self) -> &[Initializer] {
+        match &self.data {
+            InitData::Aggregate(data) => data,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_array_mut(&mut self) -> &mut [Initializer] {
+        match &mut self.data {
+            InitData::Aggregate(data) => data,
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -353,7 +486,12 @@ impl AstContext {
 
     pub fn new_global_var(&mut self, name: &str, ty: Weak<Type>) -> ObjectId {
         let name = name.to_string();
-        let obj = AstObject::new(name.clone(), ty, false, AstObjectType::Var);
+        let obj = AstObject::new(
+            name.clone(),
+            ty.clone(),
+            false,
+            AstObjectType::GlobalVar(Initializer { ty: ty.clone(), data: InitData::ZeroInit })
+        );
         let id = self.objects.alloc(obj);
         self.globals.push(id);
         self.scopes

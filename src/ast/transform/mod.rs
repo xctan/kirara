@@ -8,8 +8,8 @@ pub trait AstTransformPass {
     fn apply(self, tree: &mut AstFuncData);
 }
 
-mod type_check;
-mod const_fold;
+pub(in crate::ast) mod type_check;
+pub(in crate::ast) mod const_fold;
 mod dead_code;
 mod multi_return;
 

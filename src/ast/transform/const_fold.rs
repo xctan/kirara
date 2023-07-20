@@ -13,7 +13,7 @@ impl AstTransformPass for ConstFoldPass {
 }
 
 /// do constant folding on AST
-fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
+pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
     let tree0 = tree.borrow();
     let new_node: Option<AstNodeType> = match tree0.node.clone() {
         AstNodeType::I1Number(_) => None,

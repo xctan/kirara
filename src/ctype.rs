@@ -60,6 +60,17 @@ impl Type {
         }
     }
 
+    pub fn is_array(&self) -> bool {
+        matches!(self.kind, TypeKind::Array(_))
+    }
+
+    pub fn as_array(&self) -> Array {
+        match &self.kind {
+            TypeKind::Array(arr) => arr.clone(),
+            _ => panic!("not an array"),
+        }
+    }
+
     pub fn void_type() -> Weak<Type> {
         VOID_TYPE.with(|t| Rc::downgrade(t))
     }
@@ -155,16 +166,20 @@ impl Display for Type {
 
 pub trait TypePtrHelper {
     fn get(&self) -> Rc<Type>;
-    fn is_function(&self) -> bool;
+    fn is_function(&self) -> bool {
+        self.get().is_function()
+    }
+    fn is_array(&self) -> bool {
+        self.get().is_array()
+    }
+    fn as_array(&self) -> Array {
+        self.get().as_array()
+    }
 }
 
 impl TypePtrHelper for Weak<Type> {
     fn get(&self) -> Rc<Type> {
         self.upgrade().unwrap()
-    }
-
-    fn is_function(&self) -> bool {
-        self.get().is_function()
     }
 }
 
