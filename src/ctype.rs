@@ -114,6 +114,9 @@ impl Type {
     }
 
     pub fn get_common_type(mut a: Weak<Type>, mut b: Weak<Type>) -> Weak<Type> {
+        a = Rc::downgrade(&a.get_nocv());
+        b = Rc::downgrade(&b.get_nocv());
+
         // todo: a is arr or ptr
 
         // todo: func ptr

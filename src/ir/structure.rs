@@ -419,8 +419,8 @@ impl TransUnit {
         let ty = ptr_val.ty().get().base_type();
         let inst = GetElemPtrInst {
             name: self.gen_local_name(),
-            ty,
-            aggregate_ty: ptr_val.ty(),
+            ty: Type::ptr_to(ty.get().base_type()),
+            aggregate_ty: ty,
             ptr,
             index: idx,
         };

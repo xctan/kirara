@@ -435,7 +435,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     InstructionValue::GetElemPtr(g) => {
                         let dst = self.resolve(inst, mbb);
                         let ptr = self.resolve(g.ptr, mbb);
-                        let elem_size = g.ty.get().size() as i32;
+                        let elem_size = g.ty.get().base_type().get().size() as i32;
                         if let Some(idx) = self.resolve_constant(g.index) {
                             let offset = idx * elem_size;
                             if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {

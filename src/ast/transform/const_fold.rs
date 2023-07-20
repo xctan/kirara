@@ -23,6 +23,7 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
             let variable = get_object(var).unwrap();
             let var_ty = variable.ty.get();
             if let TypeKind::Const(_ty) = var_ty.kind.clone() {
+                // sysy extension: const variable can be evaluated at compile time
                 let mut init = match variable.data.clone() {
                     AstObjectType::Var(init) => init,
                     _ => unreachable!(),
@@ -134,6 +135,7 @@ pub fn eval(tree: Rc<RefCell<AstNode>>) -> Option<usize> {
             let variable = get_object(var).unwrap();
             let var_ty = variable.ty.get();
             if let TypeKind::Const(_ty) = var_ty.kind.clone() {
+                // sysy extension: const variable can be evaluated at compile time
                 let mut init = match variable.data.clone() {
                     AstObjectType::Var(init) => init,
                     _ => unreachable!(),
