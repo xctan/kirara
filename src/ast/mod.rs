@@ -316,7 +316,7 @@ impl Initializer {
                 }
                 InitData::Aggregate(data)
             }
-            _ => unimplemented!("unknown initializer type: {:?}", ty.kind),
+            _ => unimplemented!("unknown initializer type: {:?}", ty.get_nocv().kind),
         };
         Self { ty, data }
     }

@@ -62,10 +62,12 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
                 BinaryOpType::Gt => Type::i1_type(),
                 BinaryOpType::Ge => Type::i1_type(),
                 BinaryOpType::Assign => {
-                    if lhs.borrow().ty.clone().unwrap().is_same_as(&rhs.borrow().ty.clone().unwrap().get_nocv()) {
+                    if lhs.borrow().ty.clone().unwrap().is_same_as(&rhs.borrow().ty.clone().unwrap().get_nocv()) ||
+                        lhs.borrow().ty.clone().unwrap().is_same_as(&rhs.borrow().ty.clone().unwrap())
+                    {
                         lhs.borrow().ty.clone().unwrap().clone()
                     } else {
-                        panic!("type mismatch");
+                        panic!("type mismatch: left {}, right {}", lhs.borrow().ty.clone().unwrap(), rhs.borrow().ty.clone().unwrap());
                     }
                 },
                 BinaryOpType::LogAnd => Type::i1_type(),
@@ -152,6 +154,10 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
 }
 
 fn ast_gen_convert(from: Rc<RefCell<AstNode>>, to: Rc<Type>) -> AstNodeType {
+    if from.borrow().ty.clone().unwrap().is_const() {
+        return from.borrow().node.clone();
+    }
+
     if from.borrow().ty.clone().unwrap().is_same_as(&to) {
         return from.borrow().node.clone();
     }

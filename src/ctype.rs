@@ -180,7 +180,7 @@ pub trait TypePtrHelper {
 impl TypePtrHelper for Rc<Type> {
     fn get_nocv(&self) -> Rc<Type> {
         match &self.kind {
-            TypeKind::Ptr(ty) => ty.clone(),
+            TypeKind::Const(ty) => ty.clone(),
             _ => self.clone(),
         }
     }
@@ -194,6 +194,8 @@ impl TypePtrCompare for Rc<Type> {
     fn is_same_as(&self, other: &Self) -> bool {
         if self.is_ptr() && other.is_ptr() {
             self.base_type().is_same_as(&other.base_type())
+        } else if self.is_const() && other.is_const() {
+            self.get_nocv().is_same_as(&other.get_nocv())
         } else {
             matches!(
                 (&self.kind, &other.kind), 

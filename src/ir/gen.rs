@@ -218,7 +218,7 @@ impl EmitIrExpr for AstNodeType {
                         builder.binary(BinaryOpType::Ne, from_id, zero).push()
                     }
                     (TypeKind::I1, TypeKind::I32) => builder.zext(from_id, Type::i32_type()).push(),
-                    _ => unimplemented!(),
+                    _ => unimplemented!("convert {:?} to {:?}", from, to),
                 }
             }
             AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op }) => {
