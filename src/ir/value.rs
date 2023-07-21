@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use std::{rc::Weak, collections::HashSet};
+use std::collections::HashSet;
 
 use crate::alloc::Id;
 

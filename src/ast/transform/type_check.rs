@@ -1,4 +1,4 @@
-use std::{rc::{Rc, Weak}, cell::RefCell};
+use std::{rc::Rc, cell::RefCell};
 
 use crate::{ast::*, ctype::{Type, TypePtrCompare, TypePtrHelper}};
 

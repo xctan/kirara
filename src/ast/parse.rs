@@ -6,12 +6,12 @@ use nom::{
     branch::alt,
 };
 
-use std::{rc::{Rc, Weak}, cell::RefCell, convert::TryInto, mem::swap};
+use std::{rc::Rc, cell::RefCell, convert::TryInto, mem::swap};
 
 use crate::{
     token::{TokenSpan, Token, range_between},
     ast::*,
-    ctype::{BinaryOpType, Type, TypePtrHelper},
+    ctype::{BinaryOpType, Type},
 };
 
 use super::transform::AstPassManager;

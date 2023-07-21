@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::{Rc, Weak}};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::ctype::{Type, BinaryOpType};
 

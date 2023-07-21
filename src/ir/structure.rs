@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use std::rc::{Weak, Rc};
+use std::rc::Rc;
 
 use crate::alloc::{Id, Arena};
 use crate::ast::Initializer;
-use crate::ctype::{Type, BinaryOpType, TypePtrHelper};
+use crate::ctype::{Type, BinaryOpType};
 use crate::ir::value::{
     InstructionValue, ReturnInst, StoreInst, LoadInst, BinaryInst, BranchInst, 
     ZextInst, GetElemPtrInst, ValueType, PhiInst

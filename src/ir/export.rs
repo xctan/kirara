@@ -1,4 +1,4 @@
-use crate::{ctype::TypePtrHelper, ast::{Initializer, InitData}};
+use crate::{ast::{Initializer, InitData}};
 
 use super::{
     value::{ValueType, ValueId, ConstantValue, InstructionValue, ValueTrait},

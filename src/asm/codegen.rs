@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::{Weak, Rc}};
+use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     ir::{structure::{BasicBlock, TransUnit},

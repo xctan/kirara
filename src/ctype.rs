@@ -1,4 +1,4 @@
-use std::{fmt::{Display, Debug}, rc::{Rc, Weak}, cell::RefCell};
+use std::{fmt::{Display, Debug}, rc::Rc, cell::RefCell};
 
 #[derive(Debug, Clone)]
 pub enum TypeKind {

@@ -1,6 +1,6 @@
 use std::{rc::Rc, cell::RefCell};
 
-use crate::{ast::*, ctype::{TypeKind, TypePtrHelper}};
+use crate::{ast::*, ctype::TypeKind};
 
 use super::AstTransformPass;
 

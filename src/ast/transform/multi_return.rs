@@ -2,7 +2,7 @@ use std::{rc::Rc, cell::RefCell};
 
 use crate::{
     ast::{ObjectId, AstNode, AstNodeType, AstFuncData, context::new_local_var},
-    ctype::{TypePtrHelper, BinaryOpType, TypeKind},
+    ctype::{BinaryOpType, TypeKind},
 };
 
 use super::{AstRewriteVisitor, AstTransformPass};

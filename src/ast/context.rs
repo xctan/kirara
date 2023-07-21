@@ -2,7 +2,7 @@
 //! 
 //! This mod uses dirty and unsafe code to manage the AST context as a global object.
 
-use std::rc::{Weak, Rc};
+use std::rc::Rc;
 
 use crate::{token::TokenSpan, ctype::Type};
 

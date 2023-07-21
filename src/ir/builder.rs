@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use std::{collections::HashMap, rc::Weak};
+use std::collections::HashMap;
 
 use crate::ctype::{BinaryOpType, Type};
 

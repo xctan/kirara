@@ -1,7 +1,7 @@
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
-    rc::{Rc, Weak},
+    rc::Rc,
 };
 
 use crate::{alloc::{Arena, Id}, ctype::{TypeKind, TypePtrHelper}};
