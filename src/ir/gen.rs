@@ -33,7 +33,7 @@ impl AstContext {
                     let name = var.name.clone();
                     let mut builder = unit.builder(var.ty.clone());
 
-                    let ty = var.ty.get();
+                    let ty = var.ty.clone();
                     let func_ty = ty.as_function();
                     let params: Vec<_> = func_ty.params
                         .iter()
@@ -212,8 +212,7 @@ impl EmitIrExpr for AstNodeType {
             AstNodeType::I32Number(num) => builder.const_i32(*num),
             AstNodeType::Convert(Convert { from, to }) => {
                 let from_id = from.emit_ir_expr(builder, ctx);
-                let to = to.upgrade().unwrap();
-                match (&from.borrow().ty.get_nocv().kind, &to.kind) {
+                match (&from.borrow().ty.clone().unwrap().get_nocv().kind, &to.kind) {
                     (TypeKind::I32, TypeKind::I1) => {
                         let zero = builder.const_i32(0);
                         builder.binary(BinaryOpType::Ne, from_id, zero).push()
@@ -273,7 +272,7 @@ impl EmitIrLValue for AstNodeType {
                 let var = ctx.get_object(*var).unwrap();
                 var.ir_value.unwrap()
             }
-            _ => unimplemented!(),
+            _ => unimplemented!("is this a lvalue? {:?}", self),
         }
     }
 }

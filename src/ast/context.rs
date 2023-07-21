@@ -2,7 +2,7 @@
 //! 
 //! This mod uses dirty and unsafe code to manage the AST context as a global object.
 
-use std::rc::Weak;
+use std::rc::{Weak, Rc};
 
 use crate::{token::TokenSpan, ctype::Type};
 
@@ -71,7 +71,7 @@ pub fn pop_loop() -> Option<(String, String)> {
     }
 }
 
-pub fn new_local_var_with_token(id: TokenSpan, ty: Weak<Type>) -> ObjectId {
+pub fn new_local_var_with_token(id: TokenSpan, ty: Rc<Type>) -> ObjectId {
     let instance = unsafe {
         CTX.as_mut().unwrap()
     };
@@ -81,14 +81,14 @@ pub fn new_local_var_with_token(id: TokenSpan, ty: Weak<Type>) -> ObjectId {
     obj_id
 }
 
-pub fn new_local_var(id: &str, ty: Weak<Type>) -> ObjectId {
+pub fn new_local_var(id: &str, ty: Rc<Type>) -> ObjectId {
     let instance = unsafe {
         CTX.as_mut().unwrap()
     };
     instance.new_local_var(id, ty)
 }
 
-pub fn new_global_var(id: &str, ty: Weak<Type>) -> ObjectId {
+pub fn new_global_var(id: &str, ty: Rc<Type>) -> ObjectId {
     let instance = unsafe {
         CTX.as_mut().unwrap()
     };

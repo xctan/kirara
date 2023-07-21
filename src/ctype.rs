@@ -1,4 +1,4 @@
-use std::{fmt::{Display, Debug}, rc::{Rc, Weak}, cell::RefCell, unimplemented};
+use std::{fmt::{Display, Debug}, rc::{Rc, Weak}, cell::RefCell};
 
 #[derive(Debug, Clone)]
 pub enum TypeKind {
@@ -6,10 +6,10 @@ pub enum TypeKind {
     I1,
     I32,
     I64,
-    Ptr(Weak<Type>),
+    Ptr(Rc<Type>),
     Func(Func),
     Array(Array),
-    Const(Weak<Type>),
+    Const(Rc<Type>),
 }
 
 #[derive(Debug, Clone)]
@@ -37,7 +37,7 @@ impl Type {
         self.align
     }
 
-    pub fn base_type(&self) -> Weak<Type> {
+    pub fn base_type(&self) -> Rc<Type> {
         match &self.kind {
             TypeKind::Ptr(ty) => ty.clone(),
             TypeKind::Array(arr) => arr.base_type.clone(),
@@ -76,67 +76,68 @@ impl Type {
         matches!(self.kind, TypeKind::Void)
     }
 
-    pub fn void_type() -> Weak<Type> {
-        VOID_TYPE.with(|t| Rc::downgrade(t))
+    pub fn is_const(&self) -> bool {
+        matches!(self.kind, TypeKind::Const(_))
     }
 
-    pub fn i1_type() -> Weak<Type> {
-        I1_TYPE.with(|t| Rc::downgrade(t))
+    pub fn void_type() -> Rc<Type> {
+        VOID_TYPE.with(|t| t.clone())
     }
 
-    pub fn i32_type() -> Weak<Type> {
-        I32_TYPE.with(|t| Rc::downgrade(t))
+    pub fn i1_type() -> Rc<Type> {
+        I1_TYPE.with(|t| t.clone())
     }
 
-    pub fn i64_type() -> Weak<Type> {
-        I64_TYPE.with(|t| Rc::downgrade(t))
+    pub fn i32_type() -> Rc<Type> {
+        I32_TYPE.with(|t| t.clone())
+    }
+
+    pub fn i64_type() -> Rc<Type> {
+        I64_TYPE.with(|t| t.clone())
     }
 
     #[allow(unused)]
-    pub fn ptr_to(ty: Weak<Type>) -> Weak<Type> {
+    pub fn ptr_to(ty: Rc<Type>) -> Rc<Type> {
         let ty = Rc::new(Type{kind: TypeKind::Ptr(ty), size: 8, align: 8});
-        TYPES.with(|t| t.borrow_mut().push(ty.clone()));
-        Rc::downgrade(&ty)
+        // TYPES.with(|t| t.borrow_mut().push(ty.clone()));
+        ty
     }
 
-    pub fn func_type(ret_type: Weak<Type>, params: Vec<(String, Weak<Type>)>) -> Weak<Type> {
+    pub fn func_type(ret_type: Rc<Type>, params: Vec<(String, Rc<Type>)>) -> Rc<Type> {
         let ty = Rc::new(Type{kind: TypeKind::Func(Func { ret_type, params }), size: 1, align: 1});
-        TYPES.with(|t| t.borrow_mut().push(ty.clone()));
-        Rc::downgrade(&ty)
+        // TYPES.with(|t| t.borrow_mut().push(ty.clone()));
+        ty
     }
 
-    pub fn array_of(ty: Weak<Type>, size: isize) -> Weak<Type> {
-        let ty = Rc::new(Type{kind: TypeKind::Array(Array { base_type: ty.clone(), len: size }), size: ty.get().size() * size as isize, align: ty.get().align()});
-        TYPES.with(|t| t.borrow_mut().push(ty.clone()));
-        Rc::downgrade(&ty)
+    pub fn array_of(ty: Rc<Type>, size: isize) -> Rc<Type> {
+        let ty = Rc::new(Type{kind: TypeKind::Array(Array { base_type: ty.clone(), len: size }), size: ty.size() * size as isize, align: ty.align()});
+        // TYPES.with(|t| t.borrow_mut().push(ty.clone()));
+        ty
     }
 
-    pub fn const_of(ty: Weak<Type>) -> Weak<Type> {
-        assert!(!matches!(ty.get().kind, TypeKind::Const(_)));
-        let ty = Rc::new(Type{kind: TypeKind::Const(ty.clone()), size: ty.get().size(), align: ty.get().align()});
-        TYPES.with(|t| t.borrow_mut().push(ty.clone()));
-        Rc::downgrade(&ty)
+    pub fn const_of(ty: Rc<Type>) -> Rc<Type> {
+        assert!(!matches!(ty.kind, TypeKind::Const(_)));
+        let ty = Rc::new(Type{kind: TypeKind::Const(ty.clone()), size: ty.size(), align: ty.align()});
+        // TYPES.with(|t| t.borrow_mut().push(ty.clone()));
+        ty
     }
 
-    pub fn get_common_type(mut a: Weak<Type>, mut b: Weak<Type>) -> Weak<Type> {
-        a = Rc::downgrade(&a.get_nocv());
-        b = Rc::downgrade(&b.get_nocv());
-
+    pub fn get_common_type(mut a: Rc<Type>, mut b: Rc<Type>) -> Rc<Type> {
         // todo: a is arr or ptr
 
         // todo: func ptr
 
         // todo: float types
 
-        if a.get().size() < 4 {
+        if a.size() < 4 {
             a = Type::i32_type();
         }
-        if b.get().size() < 4 {
+        if b.size() < 4 {
             b = Type::i32_type();
         }
 
-        if a.get().size() != b.get().size() {
-            return if a.get().size() > b.get().size() {
+        if a.size() != b.size() {
+            return if a.size() > b.size() {
                 a
             } else {
                 b
@@ -159,62 +160,34 @@ impl Display for Type {
             TypeKind::I32 => write!(f, "i32"),
             TypeKind::I64 => write!(f, "i64"),
             TypeKind::Ptr(p) => {
-                write!(f, "{}*", p.get())
+                write!(f, "{}*", p)
             },
             TypeKind::Func(_func) => unimplemented!(),
             TypeKind::Array(arr) => {
-                write!(f, "[{} x {}]", arr.len, arr.base_type.get())
+                write!(f, "[{} x {}]", arr.len, arr.base_type)
             },
             TypeKind::Const(ty) => {
-                write!(f, "{}", ty.get())
+                write!(f, "{}", ty)
             },
         }
     }
 }
 
 pub trait TypePtrHelper {
-    fn get(&self) -> Rc<Type>;
-    fn get_nocv(&self) -> Rc<Type> {
-        let raw = self.get();
-        match &raw.kind {
-            TypeKind::Const(ty) => ty.get_nocv(),
-            _ => raw,
-        }
-    }
-    fn is_function(&self) -> bool {
-        self.get().is_function()
-    }
-    fn is_array(&self) -> bool {
-        self.get().is_array()
-    }
-    fn as_array(&self) -> Array {
-        self.get().as_array()
-    }
+    fn get_nocv(&self) -> Rc<Type>;
 }
 
-impl TypePtrHelper for Weak<Type> {
-    fn get(&self) -> Rc<Type> {
-        self.upgrade().unwrap()
+impl TypePtrHelper for Rc<Type> {
+    fn get_nocv(&self) -> Rc<Type> {
+        match &self.kind {
+            TypeKind::Ptr(ty) => ty.clone(),
+            _ => self.clone(),
+        }
     }
 }
 
 pub trait TypePtrCompare {
     fn is_same_as(&self, other: &Self) -> bool;
-}
-
-impl TypePtrCompare for Weak<Type> {
-    fn is_same_as(&self, other: &Self) -> bool {
-        if self.get().is_ptr() && other.get().is_ptr() {
-            self.get().base_type().is_same_as(&other.get().base_type())
-        } else {
-            matches!(
-                (&self.get().kind, &other.get().kind), 
-                (&TypeKind::Void, &TypeKind::Void) | 
-                (&TypeKind::I1, &TypeKind::I1) | 
-                (&TypeKind::I32, &TypeKind::I32)
-            )
-        }
-    }
 }
 
 impl TypePtrCompare for Rc<Type> {
@@ -234,13 +207,13 @@ impl TypePtrCompare for Rc<Type> {
 
 #[derive(Debug, Clone)]
 pub struct Func {
-    pub ret_type: Weak<Type>,
-    pub params: Vec<(String, Weak<Type>)>,
+    pub ret_type: Rc<Type>,
+    pub params: Vec<(String, Rc<Type>)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Array {
-    pub base_type: Weak<Type>,
+    pub base_type: Rc<Type>,
     pub len: isize,
 }
 

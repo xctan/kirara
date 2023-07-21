@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::rc::Weak;
+use std::rc::{Weak, Rc};
 
 use crate::alloc::{Id, Arena};
 use crate::ast::Initializer;
@@ -16,7 +16,7 @@ use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpIn
 pub struct IrFunc {
     pub bbs: Vec<BlockId>,
     pub entry_bb: BlockId,
-    pub ty: Weak<Type>,
+    pub ty: Rc<Type>,
     pub params: Vec<ValueId>,
 }
 
@@ -91,7 +91,7 @@ impl TransUnit {
         }
     }
 
-    pub fn builder<'a>(&'a mut self, ty: Weak<Type>) -> IrFuncBuilder<'a> {
+    pub fn builder<'a>(&'a mut self, ty: Rc<Type>) -> IrFuncBuilder<'a> {
         IrFuncBuilder {
             unit: self,
             cur_bb: None,
@@ -281,14 +281,14 @@ impl TransUnit {
         self.values.alloc(val)
     }
 
-    pub fn global(&mut self, name: &str, ty: Weak<Type>) -> ValueId {
+    pub fn global(&mut self, name: &str, ty: Rc<Type>) -> ValueId {
         let val = ValueType::Global(GlobalValue{ name: name.to_string(), ty });
         let val = Value::new(val);
         self.values.alloc(val)
     }
 
     // local inst builders
-    pub fn alloca(&mut self, ty: Weak<Type>) -> ValueId {
+    pub fn alloca(&mut self, ty: Rc<Type>) -> ValueId {
         let inst = AllocaInst {
             name: self.gen_local_name(),
             alloc_ty: ty.clone(),
@@ -322,7 +322,7 @@ impl TransUnit {
 
     pub fn load(&mut self, ptr: ValueId) -> ValueId {
         let ptr_val = self.values.get(ptr).unwrap();
-        let ty = ptr_val.ty().get().base_type();
+        let ty = ptr_val.ty().base_type();
         let inst = LoadInst {
             name: self.gen_local_name(),
             ty,
@@ -388,7 +388,7 @@ impl TransUnit {
         id
     }
 
-    pub fn zext(&mut self, value: ValueId, ty: Weak<Type>) -> ValueId {
+    pub fn zext(&mut self, value: ValueId, ty: Rc<Type>) -> ValueId {
         let from = self.values.get(value).unwrap().ty();
         let inst = ZextInst {
             name: self.gen_local_name(),
@@ -422,10 +422,10 @@ impl TransUnit {
 
     pub fn gep(&mut self, ptr: ValueId, idx: ValueId) -> ValueId {
         let ptr_val = self.values.get(ptr).unwrap().clone();
-        let ty = ptr_val.ty().get().base_type();
+        let ty = ptr_val.ty().base_type();
         let inst = GetElemPtrInst {
             name: self.gen_local_name(),
-            ty: Type::ptr_to(ty.get().base_type()),
+            ty: Type::ptr_to(ty.base_type()),
             aggregate_ty: ty,
             ptr,
             index: idx,

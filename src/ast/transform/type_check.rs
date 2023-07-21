@@ -15,10 +15,10 @@ impl AstTransformPass for TypeCheckPass {
 // type check and fix
 pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
     let tree0 = tree.borrow();
-    let new_type: Weak<Type> = match tree0.node.clone() {
-        AstNodeType::I1Number(_) => Type::i1_type(),
-        AstNodeType::I32Number(_) => Type::i32_type(),
-        AstNodeType::I64Number(_) => Type::i64_type(),
+    let new_type: Rc<Type> = match tree0.node.clone() {
+        AstNodeType::I1Number(_) => Type::const_of(Type::i1_type()),
+        AstNodeType::I32Number(_) => Type::const_of(Type::i32_type()),
+        AstNodeType::I64Number(_) => Type::const_of(Type::i64_type()),
         AstNodeType::Variable(id) => get_object(id).unwrap().ty.clone(),
         AstNodeType::Convert(Convert { from, to }) => {
             ast_type_check(from);
@@ -27,7 +27,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op: BinaryOpType::Index }) => {
             ast_type_check(lhs.clone());
             ast_type_check(rhs.clone());
-            lhs.borrow().ty.get().base_type()
+            lhs.borrow().ty.clone().unwrap().base_type()
         }
         AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op }) => {
             ast_type_check(lhs.clone());
@@ -35,19 +35,19 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             let common_ty = match op {
                 BinaryOpType::LogAnd | BinaryOpType::LogOr => Type::i1_type(),
                 _ => Type::get_common_type(
-                    lhs.borrow().ty.clone(),
-                    rhs.borrow().ty.clone(),
+                    lhs.borrow().ty.clone().unwrap().clone(),
+                    rhs.borrow().ty.clone().unwrap().clone(),
                 )
             };
             let lhs_new = ast_gen_convert(lhs.clone(), common_ty.clone());
             let mut lhs_mut = lhs.borrow_mut();
             lhs_mut.node = lhs_new;
-            lhs_mut.ty = common_ty.clone();
+            lhs_mut.ty = Some(common_ty.clone());
             drop(lhs_mut);
             let rhs_new = ast_gen_convert(rhs.clone(), common_ty.clone());
             let mut rhs_mut = rhs.borrow_mut();
             rhs_mut.node = rhs_new;
-            rhs_mut.ty = common_ty.clone();
+            rhs_mut.ty = Some(common_ty.clone());
             drop(rhs_mut);
             match op {
                 BinaryOpType::Add => common_ty,
@@ -62,8 +62,8 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
                 BinaryOpType::Gt => Type::i1_type(),
                 BinaryOpType::Ge => Type::i1_type(),
                 BinaryOpType::Assign => {
-                    if lhs.borrow().ty.is_same_as(&rhs.borrow().ty) {
-                        lhs.borrow().ty.clone()
+                    if lhs.borrow().ty.clone().unwrap().is_same_as(&rhs.borrow().ty.clone().unwrap().get_nocv()) {
+                        lhs.borrow().ty.clone().unwrap().clone()
                     } else {
                         panic!("type mismatch");
                     }
@@ -85,10 +85,10 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
 
             let f = find_func(&funcall.func).expect("function not found");
             let obj = get_object(f).unwrap();
-            let func = obj.ty.get().as_function();
+            let func = obj.ty.as_function();
             if func.params.len() == 0 {
                 todo!() // variadic function in C
-            } else if func.params.len() == 1 && func.params[0].1.get().is_void() {
+            } else if func.params.len() == 1 && func.params[0].1.is_void() {
                 // no argument
                 assert!(funcall.args.len() == 0);
             } else {
@@ -98,7 +98,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
                     let arg_new = ast_gen_convert(arg.clone(), func.params[i].1.clone());
                     let mut arg_mut = arg.borrow_mut();
                     arg_mut.node = arg_new;
-                    arg_mut.ty = func.params[i].1.clone();
+                    arg_mut.ty = Some(func.params[i].1.clone());
                 }
             }
 
@@ -124,7 +124,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             let cond_new = ast_gen_convert(ifs.cond.clone(), Type::i1_type());
             let mut cond_mut = ifs.cond.borrow_mut();
             cond_mut.node = cond_new;
-            cond_mut.ty = Type::i1_type();
+            cond_mut.ty = Some(Type::i1_type());
             ast_type_check(ifs.then.clone());
             if !ifs.els.borrow().is_unit() {
                 ast_type_check(ifs.els);
@@ -136,7 +136,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             let cond_new = ast_gen_convert(whiles.cond.clone(), Type::i1_type());
             let mut cond_mut = whiles.cond.borrow_mut();
             cond_mut.node = cond_new;
-            cond_mut.ty = Type::i1_type();
+            cond_mut.ty = Some(Type::i1_type());
             ast_type_check(whiles.body.clone());
             Type::void_type()
         },
@@ -148,13 +148,11 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
     };
     drop(tree0);
 
-    if new_type.upgrade().is_some() {
-        (*tree).borrow_mut().ty = new_type;
-    }
+    (*tree).borrow_mut().ty = Some(new_type);
 }
 
-fn ast_gen_convert(from: Rc<RefCell<AstNode>>, to: Weak<Type>) -> AstNodeType {
-    if from.borrow().ty.is_same_as(&to) {
+fn ast_gen_convert(from: Rc<RefCell<AstNode>>, to: Rc<Type>) -> AstNodeType {
+    if from.borrow().ty.clone().unwrap().is_same_as(&to) {
         return from.borrow().node.clone();
     }
 

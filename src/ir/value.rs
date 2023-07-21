@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::{rc::Weak, collections::HashSet};
 
 use crate::alloc::Id;
@@ -12,8 +13,8 @@ pub type ValueId = Id<Value>;
 pub trait ValueTrait {
     fn name(&self) -> String { String::new() }
     fn set_name(&mut self, _name: String) {}
-    fn ty(&self) -> Weak<Type> { Type::void_type() }
-    fn set_ty(&mut self, _ty: Weak<Type>) {}
+    fn ty(&self) -> Rc<Type> { Type::void_type() }
+    fn set_ty(&mut self, _ty: Rc<Type>) {}
 }
 
 // todo: use derive macro
@@ -26,10 +27,10 @@ macro_rules! impl_value_trait {
             fn set_name(&mut self, name: String) {
                 self.name = name;
             }
-            fn ty(&self) -> Weak<Type> {
+            fn ty(&self) -> Rc<Type> {
                 self.ty.clone()
             }
-            fn set_ty(&mut self, ty: Weak<Type>) {
+            fn set_ty(&mut self, ty: Rc<Type>) {
                 self.ty = ty;
             }
         }
@@ -46,12 +47,12 @@ macro_rules! impl_value_trait {
                     $( $en::$var(v) => v.set_name(name), )+
                 }
             }
-            fn ty(&self) -> Weak<Type> {
+            fn ty(&self) -> Rc<Type> {
                 match self {
                     $( $en::$var(v) => v.ty(), )+
                 }
             }
-            fn set_ty(&mut self, ty: Weak<Type>) {
+            fn set_ty(&mut self, ty: Rc<Type>) {
                 match self {
                     $( $en::$var(v) => v.set_ty(ty), )+
                 }
@@ -73,8 +74,8 @@ pub struct Value {
 impl ValueTrait for Value {
     fn name(&self) -> String { self.value.name() }
     fn set_name(&mut self, name: String) { self.value.set_name(name); }
-    fn ty(&self) -> Weak<Type> { self.value.ty() }
-    fn set_ty(&mut self, ty: Weak<Type>) { self.value.set_ty(ty); }
+    fn ty(&self) -> Rc<Type> { self.value.ty() }
+    fn set_ty(&mut self, ty: Rc<Type>) { self.value.set_ty(ty); }
 }
 
 impl Value {
@@ -133,7 +134,7 @@ impl ValueType {
 #[derive(Debug, Clone)]
 pub struct ParameterValue {
     pub name: String,
-    pub ty: Weak<Type>,
+    pub ty: Rc<Type>,
 }
 
 impl_value_trait!(ParameterValue);
@@ -141,7 +142,7 @@ impl_value_trait!(ParameterValue);
 #[derive(Debug, Clone)]
 pub struct GlobalValue {
     pub name: String,
-    pub ty: Weak<Type>,
+    pub ty: Rc<Type>,
 }
 
 impl_value_trait!(GlobalValue);
@@ -153,7 +154,7 @@ pub enum ConstantValue {
 }
 
 impl ValueTrait for ConstantValue {
-    fn ty(&self) -> Weak<Type> {
+    fn ty(&self) -> Rc<Type> {
         match self {
             ConstantValue::I1(_) => Type::i1_type(),
             ConstantValue::I32(_) => Type::i32_type(),
@@ -194,7 +195,7 @@ pub struct BinaryInst {
     pub rhs: ValueId,
     pub op: BinaryOp,
     pub name: String,
-    pub ty: Weak<Type>,
+    pub ty: Rc<Type>,
 }
 
 impl_value_trait!(BinaryInst);
@@ -203,7 +204,7 @@ impl_value_trait!(BinaryInst);
 pub struct LoadInst {
     pub ptr: ValueId,
     pub name: String,
-    pub ty: Weak<Type>,
+    pub ty: Rc<Type>,
 }
 
 impl_value_trait!(LoadInst);
@@ -218,8 +219,8 @@ impl ValueTrait for StoreInst {}
 
 #[derive(Debug, Clone)]
 pub struct AllocaInst {
-    pub alloc_ty: Weak<Type>,
-    pub ty: Weak<Type>,
+    pub alloc_ty: Rc<Type>,
+    pub ty: Rc<Type>,
     pub name: String,
 }
 
@@ -251,8 +252,8 @@ impl ValueTrait for JumpInst {}
 #[derive(Debug, Clone)]
 pub struct ZextInst {
     pub value: ValueId,
-    pub from: Weak<Type>,
-    pub ty: Weak<Type>,
+    pub from: Rc<Type>,
+    pub ty: Rc<Type>,
     pub name: String,
 }
 
@@ -260,7 +261,7 @@ impl_value_trait!(ZextInst);
 
 #[derive(Debug, Clone)]
 pub struct PhiInst {
-    pub ty: Weak<Type>,
+    pub ty: Rc<Type>,
     pub name: String,
     pub args: Vec<(ValueId, BlockId)>,
 }
@@ -273,8 +274,8 @@ pub struct GetElemPtrInst {
     // pub indices: Vec<ValueId>,
     pub index: ValueId,
     pub name: String,
-    pub ty: Weak<Type>,
-    pub aggregate_ty: Weak<Type>,
+    pub ty: Rc<Type>,
+    pub aggregate_ty: Rc<Type>,
 }
 
 impl_value_trait!(GetElemPtrInst);

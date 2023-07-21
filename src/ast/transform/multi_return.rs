@@ -91,8 +91,8 @@ impl AstTransformPass for MergeMultiReturnPass {
                 ReturnGotoRewriter.rewrite(tree.body.clone());
             },
             None => {
-                let ret_type = tree.func_ty.get().as_function().ret_type;
-                match &ret_type.get().kind {
+                let ret_type = tree.func_ty.as_function().ret_type;
+                match &ret_type.kind {
                     &TypeKind::Void => {
                         ReturnGotoRewriter.rewrite(tree.body.clone());
                     },

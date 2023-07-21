@@ -19,11 +19,11 @@ impl TransUnit {
     fn print_global(&self, name: &str, init: &Initializer) {
         print!("@{} = dso_local global ", name);
         self.print_initializer(init);
-        println!(", align {}", init.ty.get().align());
+        println!(", align {}", init.ty.align());
     }
 
     fn print_initializer(&self, init: &Initializer) {
-        print!("{} ", init.ty.get());
+        print!("{} ", init.ty);
         match init.data {
             InitData::ScalarI32(i) => print!("{}", i),
             InitData::Aggregate(ref data) => {
@@ -42,13 +42,13 @@ impl TransUnit {
     }
 
     fn print_func(&self, name: &str, func: &IrFunc) {
-        let ty = func.ty.get().as_function();
-        print!("define {} @{}(", ty.ret_type.get(), name);
+        let ty = func.ty.as_function();
+        print!("define {} @{}(", ty.ret_type, name);
         for (idx, (_, argty)) in ty.params.iter().enumerate() {
             if idx != 0 {
                 print!(", ");
             }
-            print!("{} %{}", argty.get(), idx);
+            print!("{} %{}", argty, idx);
         }
         println!(") {{");
 
@@ -77,7 +77,7 @@ impl TransUnit {
                         match *insn {
                             InstructionValue::Binary(ref insn) => {
                                 let lhs = arena.get(insn.lhs).unwrap();
-                                print!("{} = {} {} ", insn.name, insn.op, lhs.ty().get());
+                                print!("{} = {} {} ", insn.name, insn.op, lhs.ty());
                                 self.print_value(insn.lhs);
                                 print!(", ");
                                 self.print_value(insn.rhs);
@@ -86,7 +86,7 @@ impl TransUnit {
                             InstructionValue::Return(ref insn) => {
                                 print!("ret");
                                 if let Some(val) = insn.value {
-                                    print!(" {} ", arena.get(val).unwrap().ty().get());
+                                    print!(" {} ", arena.get(val).unwrap().ty());
                                     self.print_value(val);
                                 } else {
                                     print!(" void");
@@ -94,25 +94,25 @@ impl TransUnit {
                                 println!();
                             }
                             InstructionValue::Load(ref insn) => {
-                                print!("{} = load {}, ptr ", insn.name, insn.ty.get());
+                                print!("{} = load {}, ptr ", insn.name, insn.ty);
                                 self.print_value(insn.ptr);
                                 println!();
                             }
                             InstructionValue::Store(ref insn) => {
                                 let v = arena.get(insn.value).unwrap();
-                                print!("store {} ", v.ty().get());
+                                print!("store {} ", v.ty());
                                 self.print_value(insn.value);
                                 print!(", ptr ");
                                 self.print_value(insn.ptr);
                                 println!();
                             }
                             InstructionValue::Alloca(ref insn) => {
-                                print!("{} = alloca {}, align {}", insn.name, insn.alloc_ty.get(), insn.alloc_ty.get().align());
+                                print!("{} = alloca {}, align {}", insn.name, insn.alloc_ty, insn.alloc_ty.align());
                                 println!();
                             }
                             InstructionValue::Branch(ref insn) => {
                                 print!("br ");
-                                print!("{} ", arena.get(insn.cond).unwrap().ty().get());
+                                print!("{} ", arena.get(insn.cond).unwrap().ty());
                                 self.print_value(insn.cond);
                                 print!(", ");
                                 let succ = self.blocks.get(insn.succ).unwrap();
@@ -124,13 +124,13 @@ impl TransUnit {
                                 println!("br label %{}", succ.name);
                             }
                             InstructionValue::Zext(ref insn) => {
-                                print!("{} = zext {} ", insn.name, arena.get(insn.value).unwrap().ty().get());
+                                print!("{} = zext {} ", insn.name, arena.get(insn.value).unwrap().ty());
                                 self.print_value(insn.value);
-                                print!(" to {}", insn.ty.get());
+                                print!(" to {}", insn.ty);
                                 println!();
                             }
                             InstructionValue::Phi(ref insn) => {
-                                print!("{} = phi {} ", insn.name, insn.ty.get());
+                                print!("{} = phi {} ", insn.name, insn.ty);
                                 for (idx, &(val, bb)) in insn.args.iter().enumerate() {
                                     if idx != 0 {
                                         print!(", ");
@@ -142,10 +142,10 @@ impl TransUnit {
                                 println!();
                             }
                             InstructionValue::GetElemPtr(ref gep) => {
-                                print!("{} = getelementptr inbounds {}, ptr ", gep.name, gep.aggregate_ty.get());
+                                print!("{} = getelementptr inbounds {}, ptr ", gep.name, gep.aggregate_ty);
                                 self.print_value(gep.ptr);
                                 let idx_val = arena.get(gep.index).unwrap();
-                                print!(", i64 0, {} ", idx_val.ty().get());
+                                print!(", i64 0, {} ", idx_val.ty());
                                 self.print_value(gep.index);
                                 println!();
                             }

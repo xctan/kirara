@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::{collections::HashMap, rc::Weak};
 
 use crate::ctype::{BinaryOpType, Type};
@@ -17,7 +18,7 @@ pub struct IrFuncBuilder<'a> {
     pub labels: HashMap<String, BlockId>,
     pub jumps: Vec<(BackPatchItem, String)>,
     pub unit: &'a mut TransUnit,
-    pub ty: Weak<Type>,
+    pub ty: Rc<Type>,
     pub params: Vec<ValueId>,
 }
 
@@ -116,7 +117,7 @@ impl IrFuncBuilder<'_> {
     }
 
     // function param builder
-    pub fn param(&mut self, ty: Weak<Type>) -> ValueId {
+    pub fn param(&mut self, ty: Rc<Type>) -> ValueId {
         let var = ParameterValue {
             name: self.unit.gen_local_name(),
             ty,
@@ -137,14 +138,14 @@ impl IrFuncBuilder<'_> {
     }
 
     // proxy to inst builders
-    inst_proxy!(alloca(ty: Weak<Type>));
+    inst_proxy!(alloca(ty: Rc<Type>));
     inst_proxy!(ret(val: Option<ValueId>));
     inst_proxy!(store(val: ValueId, ptr: ValueId));
     inst_proxy!(load(ptr: ValueId));
     inst_proxy!(binary(op: BinaryOpType, lhs: ValueId, rhs: ValueId));
     inst_proxy!(branch(cond: ValueId, succ: BlockId, fail: BlockId));
     inst_proxy!(jump(succ: BlockId));
-    inst_proxy!(zext(val: ValueId, ty: Weak<Type>));
+    inst_proxy!(zext(val: ValueId, ty: Rc<Type>));
     inst_proxy!(phi(args: Vec<(ValueId, BlockId)>));
     inst_proxy!(gep(ptr: ValueId, idx: ValueId));
 }

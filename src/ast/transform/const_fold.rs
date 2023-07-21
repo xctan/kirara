@@ -21,7 +21,7 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::I64Number(_) => None,
         AstNodeType::Variable(var) => {
             let variable = get_object(var).unwrap();
-            let var_ty = variable.ty.get();
+            let var_ty = variable.ty.clone();
             if let TypeKind::Const(_ty) = var_ty.kind.clone() {
                 // sysy extension: const variable can be evaluated at compile time
                 let mut init = match variable.data.clone() {
@@ -40,7 +40,7 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::Convert(Convert{from, ref to}) => {
             assert!(tree.as_ptr() != from.as_ptr());
             ast_const_fold(from.clone());
-            match (from.borrow().node.clone(), &to.get().kind) {
+            match (from.borrow().node.clone(), &to.kind) {
                 (AstNodeType::I1Number(num), &TypeKind::I32) => Some(AstNodeType::I32Number(num as i32)),
                 (AstNodeType::I32Number(num), &TypeKind::I32) => Some(AstNodeType::I32Number(num)),
                 (AstNodeType::I32Number(num), &TypeKind::I1) => Some(AstNodeType::I1Number(num != 0)),
@@ -69,7 +69,7 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
                         BinaryOpType::Le => Bool(lhs <= rhs),
                         BinaryOpType::Gt => Bool(lhs > rhs),
                         BinaryOpType::Ge => Bool(lhs >= rhs),
-                        _ => unreachable!(),
+                        _ => unreachable!("op {:?}, lhs {:?}, rhs {:?}", op, lhs, rhs),
                     };
                     Some(num)
                 },
@@ -139,7 +139,7 @@ pub fn eval(tree: Rc<RefCell<AstNode>>) -> Option<usize> {
         AstNodeType::I64Number(num) => Some(num as usize),
         AstNodeType::Variable(var) => {
             let variable = get_object(var).unwrap();
-            let var_ty = variable.ty.get();
+            let var_ty = variable.ty.clone();
             if let TypeKind::Const(_ty) = var_ty.kind.clone() {
                 // sysy extension: const variable can be evaluated at compile time
                 let mut init = match variable.data.clone() {

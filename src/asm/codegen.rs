@@ -1,9 +1,9 @@
-use std::{collections::HashMap, rc::Weak};
+use std::{collections::HashMap, rc::{Weak, Rc}};
 
 use crate::{
     ir::{structure::{BasicBlock, TransUnit},
     value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue, calculate_used_by}},
-    alloc::Id, asm::{RV64InstBuilder, RVGPR}, ctype::{TypePtrHelper, TypeKind, BinaryOpType, Type}, ast::{Initializer, InitData},
+    alloc::Id, asm::{RV64InstBuilder, RVGPR}, ctype::{TypeKind, BinaryOpType, Type}, ast::{Initializer, InitData},
 };
 
 use super::{MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction, VRegType, DataLiteral};
@@ -35,7 +35,7 @@ fn flatten_initializer(init: &Initializer) -> Vec<DataLiteral> {
             }
             res
         }
-        InitData::ZeroInit => vec![DataLiteral::Zero(init.ty.get().size as u32)],
+        InitData::ZeroInit => vec![DataLiteral::Zero(init.ty.size as u32)],
         _ => unimplemented!("flatten_initializer"),
     }
 }
@@ -276,7 +276,7 @@ impl<'a> AsmFuncBuilder<'a> {
                             if let Some(minst_id) = self.prog.vreg_def.get(&mo_rhs) {
                                 self.prog.mark_inline(*minst_id, false);
                             }
-                            match b.ty().get().kind {
+                            match b.ty().kind {
                                 TypeKind::I32 => {
                                     match b.op {
                                         BinaryOpType::Add => {
@@ -327,7 +327,7 @@ impl<'a> AsmFuncBuilder<'a> {
                         }
                     },
                     InstructionValue::Load(l) => {
-                        let instruction = match l.ty.get().kind {
+                        let instruction = match l.ty.kind {
                             TypeKind::I32 => RV64InstBuilder::LW,
                             TypeKind::I64 => RV64InstBuilder::LD,
                             _ => unimplemented!(),
@@ -349,7 +349,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     },
                     InstructionValue::Store(s) => {
                         let val = self.unit.values[s.value].clone();
-                        let instruction = match val.ty().get().kind {
+                        let instruction = match val.ty().kind {
                             TypeKind::I32 => RV64InstBuilder::SW,
                             TypeKind::I64 => RV64InstBuilder::SD,
                             _ => unimplemented!(),
@@ -381,8 +381,8 @@ impl<'a> AsmFuncBuilder<'a> {
                     },
                     InstructionValue::Alloca(a) => {
                         let dst = self.resolve(inst, mbb);
-                        let object_size = a.ty.get().size() as u32;
-                        let object_align = a.ty.get().align() as u32;
+                        let object_size = a.ty.size() as u32;
+                        let object_align = a.ty.align() as u32;
                         // fixup
                         if mfunc.stack_size % object_align != 0 {
                             mfunc.stack_size += object_align - mfunc.stack_size % object_align;
@@ -399,7 +399,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     InstructionValue::Return(r) => {
                         if let Some(val) = r.value {
                             let value = self.unit.values[val].clone();
-                            match value.ty().get().kind {
+                            match value.ty().kind {
                                 TypeKind::I32 => {
                                     if let Some(imm) = self.resolve_constant(val) {
                                         emit!(LIMM pre!(a0), imm);
@@ -454,7 +454,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     InstructionValue::GetElemPtr(g) => {
                         let dst = self.resolve(inst, mbb);
                         let ptr = self.resolve(g.ptr, mbb);
-                        let elem_size = g.ty.get().base_type().get().size() as i32;
+                        let elem_size = g.ty.base_type().size() as i32;
                         if let Some(idx) = self.resolve_constant(g.index) {
                             let offset = idx * elem_size;
                             if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
@@ -628,13 +628,13 @@ impl<'a> AsmFuncBuilder<'a> {
         MachineOperand::Virtual(old)
     }
 
-    fn type_to_reg(&mut self, ty: Weak<Type>) -> MachineOperand {
-        match ty.get().kind {
+    fn type_to_reg(&mut self, ty: Rc<Type>) -> MachineOperand {
+        match ty.kind {
             TypeKind::I1 => self.new_vreg(),
             TypeKind::I32 => self.new_vreg(),
             TypeKind::I64 => self.new_vreg64(),
             TypeKind::Ptr(_) => self.new_vreg64(),
-            _ => unimplemented!("unknown type width: {:?}", ty.get().kind)
+            _ => unimplemented!("unknown type width: {:?}", ty.kind)
         }
     }
 

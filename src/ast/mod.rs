@@ -32,7 +32,7 @@ pub struct BinaryOp {
 #[derive(Debug, Clone)]
 pub struct Convert {
     pub from: Rc<RefCell<AstNode>>,
-    pub to: Weak<Type>,
+    pub to: Rc<Type>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,7 +88,7 @@ pub struct GotoStmt {
 pub struct AstNode {
     pub node: AstNodeType,
     pub token: TokenRange,
-    pub ty: Weak<Type>,
+    pub ty: Option<Rc<Type>>,
 }
 
 impl AstNode {
@@ -96,7 +96,7 @@ impl AstNode {
         Self {
             node,
             token,
-            ty: Weak::new(),
+            ty: None,
         }
     }
 
@@ -110,7 +110,7 @@ impl AstNode {
         Rc::new(RefCell::new(node))
     }
 
-    pub fn convert(from: Rc<RefCell<Self>>, to: Weak<Type>, token: TokenRange) -> Rc<RefCell<Self>> {
+    pub fn convert(from: Rc<RefCell<Self>>, to: Rc<Type>, token: TokenRange) -> Rc<RefCell<Self>> {
         let node = Self::new(AstNodeType::Convert(Convert { from, to }), token);
         Rc::new(RefCell::new(node))
     }
@@ -194,7 +194,7 @@ impl AstNodeRewrite for Rc<RefCell<AstNode>> {
 #[derive(Debug)]
 pub struct AstObject {
     pub name: String,
-    pub ty: Weak<Type>,
+    pub ty: Rc<Type>,
     pub token: TokenRange,
     pub is_local: bool,
 
@@ -204,7 +204,7 @@ pub struct AstObject {
 }
 
 impl AstObject {
-    fn new(name: String, ty: Weak<Type>, is_local: bool, data: AstObjectType) -> Self {
+    fn new(name: String, ty: Rc<Type>, is_local: bool, data: AstObjectType) -> Self {
         Self {
             name,
             ty,
@@ -222,7 +222,7 @@ pub struct AstFuncData {
     pub params: Vec<ObjectId>,
     pub body: Rc<RefCell<AstNode>>,
     pub ret_var: Option<ObjectId>,
-    pub func_ty: Weak<Type>,
+    pub func_ty: Rc<Type>,
     // is_definition
     // is_static
     // is_inline
@@ -296,12 +296,12 @@ impl InitData {
 
 #[derive(Debug, Clone)]
 pub struct Initializer {
-    pub ty: Weak<Type>,
+    pub ty: Rc<Type>,
     pub data: InitData,
 }
 
 impl Initializer {
-    pub fn new(ty: Weak<Type>) -> Self {
+    pub fn new(ty: Rc<Type>) -> Self {
         let data = match ty.get_nocv().kind.clone() {
             // scalar
             TypeKind::I1 |
@@ -316,7 +316,7 @@ impl Initializer {
                 }
                 InitData::Aggregate(data)
             }
-            _ => unimplemented!("unknown initializer type: {:?}", ty.upgrade().unwrap().kind),
+            _ => unimplemented!("unknown initializer type: {:?}", ty.kind),
         };
         Self { ty, data }
     }
@@ -338,7 +338,7 @@ impl Initializer {
                 }
             },
             InitData::ZeroInit => {
-                let zero = match self.ty.get().kind {
+                let zero = match self.ty.kind {
                     TypeKind::I1 => InitData::ScalarI32(0),
                     TypeKind::I32 => InitData::ScalarI32(0),
                     _ => return,
@@ -477,7 +477,7 @@ impl AstContext {
         }
     }
 
-    pub fn new_local_var(&mut self, name: &str, ty: Weak<Type>) -> ObjectId {
+    pub fn new_local_var(&mut self, name: &str, ty: Rc<Type>) -> ObjectId {
         let name = name.to_string();
         let obj = AstObject::new(
             name.clone(),
@@ -495,7 +495,7 @@ impl AstContext {
         id
     }
 
-    pub fn new_global_var(&mut self, name: &str, ty: Weak<Type>) -> ObjectId {
+    pub fn new_global_var(&mut self, name: &str, ty: Rc<Type>) -> ObjectId {
         let name = name.to_string();
         let obj = AstObject::new(
             name.clone(),

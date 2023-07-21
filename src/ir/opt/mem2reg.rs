@@ -34,9 +34,9 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
         let block = unit.blocks.get(*bb).unwrap();
         let mut inst = block.insts_start;
         while let Some(insn_id) = inst {
-            let insn = unit.values.get(insn_id).unwrap();
+            let insn = unit.values.get(insn_id).unwrap().clone();
             if let InstructionValue::Alloca(AllocaInst{alloc_ty, ..}) = insn.value.as_inst() {
-                let ty = alloc_ty.upgrade().unwrap();
+                let ty = alloc_ty.clone();
                 if matches!(ty.kind, TypeKind::I32) {
                     let alloca_id = alloca_ids.len();
                     alloca_ids.insert(insn_id, alloca_id);
@@ -92,7 +92,7 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
                     visited.insert(y);
                     worklist.push(y);
 
-                    let ud = undef.obtain(unit, ty.clone());
+                    let ud = undef.obtain(unit, (*ty).clone());
                     let preds = unit.blocks.get(y).unwrap().preds.clone();
                     let args = preds.into_iter()
                         .map(|pred| (ud, pred))
@@ -109,7 +109,7 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
     let mut visited = HashSet::new();
     let mut worklist = Vec::new();
     let values: Vec<_> = allocas.iter()
-        .map(|ty| undef.obtain(unit, ty.clone()))
+        .map(|ty| undef.obtain(unit, (*ty).clone()))
         .collect();
     visited.insert(func.entry_bb);
     worklist.push((func.entry_bb, values));

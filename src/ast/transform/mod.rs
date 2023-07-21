@@ -34,7 +34,7 @@ pub trait AstRewriteVisitor {
     fn visit_i64_number(&mut self, _num: i64) -> Option<Rc<RefCell<AstNode>>> { None }
     fn visit_variable(&mut self, _id: ObjectId) -> Option<Rc<RefCell<AstNode>>> { None }
     // expression constructs
-    fn visit_convert(&mut self, _from: Rc<RefCell<AstNode>>, _to: Weak<Type>) -> Option<Rc<RefCell<AstNode>>> { 
+    fn visit_convert(&mut self, _from: Rc<RefCell<AstNode>>, _to: Rc<Type>) -> Option<Rc<RefCell<AstNode>>> { 
         self.rewrite(_from);
         None
      }

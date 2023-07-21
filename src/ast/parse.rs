@@ -323,7 +323,7 @@ fn return_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>
 }
 
 // declspec contains base type and variable attributes; todo: var_attr
-fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Weak<Type>> {
+fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Rc<Type>> {
     map(
         many1(alt((
             ttag!(K("int")),
@@ -362,7 +362,7 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Weak<Type>> {
     )(cursor)
 }
 
-fn declarator((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, (Weak<Type>, TokenSpan)> {
+fn declarator((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, (Rc<Type>, TokenSpan)> {
     // "*"* ("(" declarator ")" | identifier) type_suffix
     // let mut ty = ty.clone();
     let ty = ty.clone();
@@ -379,7 +379,7 @@ fn declarator((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, (Weak
     }
 }
 
-fn type_suffix((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak<Type>> {
+fn type_suffix((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, Rc<Type>> {
     // func_params | array_dimensions | empty
     if let Ok((cursor, ty)) = func_params((cursor.clone(), ty.clone())) {
         return Ok((cursor, ty));
@@ -392,7 +392,7 @@ fn type_suffix((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak
     Ok((cursor, ty))
 }
 
-fn array_dimensions((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak<Type>> {
+fn array_dimensions((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, Rc<Type>> {
     // C: "[" ("static" | "restrict")* const_expr? "]" type_suffix
     // "[" const_expr? "]" type_suffix
     let (cursor, dim) = delimited(
@@ -413,7 +413,7 @@ fn array_dimensions((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan,
     }
 }
 
-fn func_params((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak<Type>> {
+fn func_params((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, Rc<Type>> {
     // C: "(" ("void" | param ("," param)* ("," "...")?)? ")"
     // "(" ("void" | param ("," param)*)? ")"
     // param = declspec declarator
@@ -438,7 +438,7 @@ fn func_params((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, Weak
     )(cursor)
 }
 
-fn param(cursor: TokenSpan) -> IResult<TokenSpan, (String, Weak<Type>)> {
+fn param(cursor: TokenSpan) -> IResult<TokenSpan, (String, Rc<Type>)> {
     // declspec declarator
     let base_ty = declspec(cursor)?;
     let (cursor, (ty, id)) = declarator(base_ty)?;
@@ -475,12 +475,14 @@ fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
             initializer.eval();
             match initializer.data.clone() {
                 InitData::ScalarI32(int) => {
-                    let rhs = AstNode::i32_number(int, 0..0);
                     let obj = get_object(object_id).unwrap();
-                    let var = AstNode::variable(object_id, obj.token.clone());
-                    let assign = AstNode::binary(var, rhs, BinaryOpType::Assign, obj.token.clone());
-                    let node = AstNode::expr_stmt(assign, obj.token.clone());
-                    init.push(node);
+                    if !obj.ty.is_const() {
+                        let rhs = AstNode::i32_number(int, 0..0);
+                        let var = AstNode::variable(object_id, obj.token.clone());
+                        let assign = AstNode::binary(var, rhs, BinaryOpType::Assign, obj.token.clone());
+                        let node = AstNode::expr_stmt(assign, obj.token.clone());
+                        init.push(node);
+                    }
                 },
                 InitData::Expr(expr) => {
                     let obj = get_object(object_id).unwrap();
@@ -491,7 +493,7 @@ fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
                 },
                 InitData::ZeroInit => {
                     // todo: memset to zero
-                    unimplemented!("zero init")
+                    println!("warning: zero initialization not implemented");
                 },
                 InitData::Aggregate(data) => {
                     // todo: memcpy from const version
@@ -718,7 +720,7 @@ fn goto_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>>
     )(cursor)
 }
 
-fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
+fn function((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, ()> {
     // function_def = declspec declarator (compound_statement | ";")
     let (cursor, (ty, name)) = declarator((cursor.clone(), ty))?;
     let name = name.as_str().to_string();
@@ -737,7 +739,7 @@ fn function((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
     }
 
     let obj = get_object(obj_id).unwrap();
-    let params = obj.ty.get().as_function().params;
+    let params = obj.ty.as_function().params;
     drop(obj);
 
     enter_scope();
@@ -782,7 +784,7 @@ fn is_function(cursor: TokenSpan) -> bool {
     }
 }
 
-fn global_declaration((cursor, ty): (TokenSpan, Weak<Type>)) -> IResult<TokenSpan, ()> {
+fn global_declaration((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, ()> {
     // global_declaration = declspec (declarator ("," declarator)* | ";")
     let mut cursor0 = cursor;
     let mut count = 0;
@@ -857,6 +859,9 @@ fn skip_initialier(cursor: TokenSpan) -> IResult<TokenSpan, ()> {
 
 fn array_initializer1<'a>(cursor: TokenSpan<'a>, init: &mut Initializer) -> IResult<TokenSpan<'a>, ()> {
     let (mut cursor, _) = ttag!(P("{"))(cursor)?;
+    if let Ok((cursor, _)) = ttag!(P("}"))(cursor) {
+        return Ok((cursor, ()));
+    }
     
     let mut index = 0;
     loop {
