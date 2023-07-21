@@ -11,7 +11,18 @@ impl MachineProgram {
                 .iter()
                 .filter(|reg| reg.is_callee_saved())
                 .collect::<Vec<_>>();
-            let saved_size = callee_saved.len() as u32 * 8;
+            let thin = callee_saved
+                .iter()
+                .all(|reg| reg != &&RVGPR::ra() && reg != &&RVGPR::fp());
+            let callee_saved = callee_saved
+                .into_iter()
+                .filter(|reg| reg != &&RVGPR::ra() && reg != &&RVGPR::fp())
+                .collect::<Vec<_>>();
+            let saved_size = if thin {
+                callee_saved.len() as u32 * 8
+            } else {
+                callee_saved.len() as u32 * 8 + 16
+            };
             let stack_size = local_size + saved_size;
 
             // alignment requirement
@@ -37,12 +48,19 @@ impl MachineProgram {
             let saved_offset = |idx| {
                 small_stack_size as i32 - 8 - idx as i32 * 8
             };
-            i!(ADDI r!(sp), r!(sp), -(small_stack_size as i32));
-            i!(SD r!(ra), r!(sp), saved_offset(0));
-            i!(SD r!(fp), r!(sp), saved_offset(1));
-            i!(ADDI r!(fp), r!(sp), small_stack_size as i32);
+            if small_stack_size != 0 {
+                i!(ADDI r!(sp), r!(sp), -(small_stack_size as i32));
+            }
+            let save_adj = if thin {
+                0
+            } else {
+                i!(SD r!(ra), r!(sp), saved_offset(0));
+                i!(SD r!(fp), r!(sp), saved_offset(1));
+                i!(ADDI r!(fp), r!(sp), small_stack_size as i32);
+                2
+            };
             for (idx, reg) in callee_saved.iter().enumerate() {
-                i!(SD r!(sp), MachineOperand::PreColored(**reg), saved_offset(idx as u32 + 2));
+                i!(SD r!(sp), MachineOperand::PreColored(**reg), saved_offset(idx as u32 + save_adj));
             }
             let rem_stack_size = stack_size - small_stack_size;
             if rem_stack_size != 0 {
@@ -71,11 +89,15 @@ impl MachineProgram {
                 }
             }
             for (idx, reg) in callee_saved.iter().enumerate() {
-                i!(LD MachineOperand::PreColored(**reg), r!(sp), saved_offset(idx as u32 + 2));
+                i!(LD MachineOperand::PreColored(**reg), r!(sp), saved_offset(idx as u32 + save_adj));
             }
-            i!(LD r!(fp), r!(sp), saved_offset(1));
-            i!(LD r!(ra), r!(sp), saved_offset(0));
-            i!(ADDI r!(sp), r!(sp), small_stack_size as i32);
+            if !thin {
+                i!(LD r!(fp), r!(sp), saved_offset(1));
+                i!(LD r!(ra), r!(sp), saved_offset(0));
+            }
+            if small_stack_size != 0 {
+                i!(ADDI r!(sp), r!(sp), small_stack_size as i32);
+            }
 
             // let caller_saved = mfunc.used_regs
             //     .iter()
