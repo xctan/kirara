@@ -1,8 +1,4 @@
-use std::{collections::{HashMap, HashSet, BTreeSet}, ops::AddAssign, cmp::Ordering};
-
-use crate::{alloc::Id, ir::{cfg::LoopInfo, structure::TransUnit}, asm::RV64InstBuilder};
-
-use super::{MachineOperand, MachineInst, MachineProgram, RVGPR, RV64Instruction, VRegType};
+use super::import::*;
 
 /// number of assignable general registers
 /// including: a0-a7, s1-s11, t0-t6
@@ -21,6 +17,9 @@ impl MachineProgram {
                 allocator.run();
                 if allocator.spilled_nodes.is_empty() {
                     done = true;
+                    let used_regs_allocated = allocator.used_regs;
+                    let func = self.funcs.get_mut(func.as_str()).unwrap();
+                    func.used_regs.extend(used_regs_allocated);
                 } else {
                     allocator.rewrite_program();
                 }
@@ -52,6 +51,8 @@ struct RegisterAllocator<'a> {
     active_moves: HashSet<Move>,
     
     loop_count: HashMap<MachineOperand, usize>,
+
+    used_regs: HashSet<RVGPR>,
 }
 
 impl<'a> RegisterAllocator<'a> {
@@ -77,6 +78,7 @@ impl<'a> RegisterAllocator<'a> {
             worklist_moves: HashSet::new(),
             active_moves: HashSet::new(),
             loop_count: HashMap::new(),
+            used_regs: HashSet::new(),
         };
 
         for i in 0..KGPR {
@@ -655,6 +657,7 @@ impl<'a> RegisterAllocator<'a> {
             } else {
                 let c = *ok_colors.iter().next().unwrap();
                 colored.insert(n, MachineOperand::Allocated(c));
+                self.used_regs.insert(c);
             }
         }
 

@@ -55,5 +55,6 @@ fn main() {
     debug!(asm.print());
     asm.allocate_registers(&mut unit);
     asm.simplify();
+    asm.setup_stack();
     asm.print();
 }

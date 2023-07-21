@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::{HashMap, HashSet}, rc::Rc};
 
 use crate::{
     ir::{structure::{BasicBlock, TransUnit},
@@ -53,6 +53,7 @@ struct AsmFuncBuilder<'a> {
 
     pub virtual_max: u32,
     pub vreg_types: HashMap<u32, VRegType>,
+    pub used_regs: HashSet<RVGPR>,
 }
 
 macro_rules! pre {
@@ -72,6 +73,7 @@ impl<'a> AsmFuncBuilder<'a> {
             val_map: HashMap::new(),
             virtual_max: 1,
             vreg_types: HashMap::new(),
+            used_regs: HashSet::new(),
         }
     }
 
@@ -79,6 +81,7 @@ impl<'a> AsmFuncBuilder<'a> {
         let mut mfunc = self.build_inner();
         mfunc.virtual_max = self.virtual_max;
         mfunc.vreg_types = self.vreg_types;
+        mfunc.used_regs.extend(self.used_regs);
 
         mfunc
     }
@@ -107,6 +110,11 @@ impl<'a> AsmFuncBuilder<'a> {
             }
         }
         mfunc.entry = Some(self.bb_map[&irfunc.entry_bb]);
+        self.prog.push_to_begin(
+            mfunc.entry.unwrap(),
+            // placeholder for prolouge
+            RV64Instruction::ENTER,
+        );
 
         // 2. translate instructions except phi
         for bb in &irfunc.bbs {
@@ -124,6 +132,7 @@ impl<'a> AsmFuncBuilder<'a> {
             let mut iter = block.insts_start;
             while let Some(inst) = iter {
                 let insn = &self.unit.values[inst].clone();
+                iter = insn.next;
 
                 let iv = insn.value.as_inst().clone();
                 match iv {
@@ -227,11 +236,17 @@ impl<'a> AsmFuncBuilder<'a> {
                                     } else {
                                         // fallback to register
                                         let tmp = self.new_vreg();
-                                        emit!(LIMM tmp, i);
                                         match b.op {
                                             BinaryOpType::Add | BinaryOpType::Sub => {
-                                                emit!(ADDW dst, mo_lhs, tmp);
+                                                let (hi, lo) = split_imm32(i);
+                                                emit!(LUI tmp, hi);
+                                                emit!(ADDIW tmp, tmp, lo);
+                                                continue
                                             }
+                                            _ => {}
+                                        }
+                                        emit!(LIMM tmp, i);
+                                        match b.op {
                                             BinaryOpType::Ne => {
                                                 // emit!(XOR dst, mo_lhs, tmp);
                                                 // emit!(SLTU dst, pre!(zero), dst);
@@ -398,6 +413,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     },
                     InstructionValue::Return(r) => {
                         if let Some(val) = r.value {
+                            self.used_regs.insert(RVGPR::a(0));
                             let value = self.unit.values[val].clone();
                             match value.ty().kind {
                                 TypeKind::I32 => {
@@ -412,6 +428,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                 _ => unimplemented!(),
                             }
                         }
+                        emit!(LEAVE);
                         emit!(RET);
                     },
                     InstructionValue::Branch(b) => {
@@ -502,8 +519,6 @@ impl<'a> AsmFuncBuilder<'a> {
                         }
                     },
                 }
-
-                iter = insn.next;
             }
         }
 
@@ -665,10 +680,12 @@ impl<'a> AsmFuncBuilder<'a> {
                     let entry = self.bb_map[&self.unit.funcs[self.name.as_str()].entry_bb];
                     if idx < 8 {
                         // first 8 params are passed in registers
+                        self.used_regs.insert(RVGPR::a(idx));
                         self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, MachineOperand::PreColored(RVGPR::a(idx))));
                     } else {
                         // extra args are passed on stack, 8 bytes aligned
                         // for i-th arg, it is at [fp + 8 * (i - 8)]
+                        self.used_regs.insert(RVGPR::fp());
                         let offset = 8 * (idx - 8) as i32;
                         if is_imm12(offset) {
                             self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, MachineOperand::PreColored(RVGPR::fp()), offset));
@@ -753,8 +770,15 @@ impl<'a> AsmFuncBuilder<'a> {
 }
 
 #[inline(always)]
-fn is_imm12(imm: i32) -> bool {
+pub fn is_imm12(imm: i32) -> bool {
     imm >= -2048 && imm < 2048
+}
+
+#[inline(always)]
+pub fn split_imm32(imm: i32) -> (i32, i32) {
+    let hi20 = (imm + 0x800) >> 12 & 0xfffff;
+    let lo12 = imm & 0xfff;
+    (hi20, lo12)
 }
 
 #[inline(always)]

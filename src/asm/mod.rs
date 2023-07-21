@@ -1,4 +1,4 @@
-use std::{collections::{HashSet, HashMap}, fmt::Debug};
+use std::{collections::{HashSet, HashMap, BTreeSet}, fmt::Debug};
 
 use crate::{ir::structure::BlockId, alloc::{Id, Arena}};
 
@@ -6,9 +6,12 @@ pub mod codegen;
 pub mod export;
 pub mod reg_alloc;
 pub mod simplify;
+pub mod stack_fix;
+mod import;
 
 /// Listing of physical registers
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[allow(unused)]
 #[repr(u16)]
 pub enum RVGPR {
     X0, // always zero
@@ -82,17 +85,10 @@ impl Ord for RVGPR {
 
 impl RVGPR {
     pub fn a(i: usize) -> Self {
-        match i {
-            0 => RVGPR::X10,
-            1 => RVGPR::X11,
-            2 => RVGPR::X12,
-            3 => RVGPR::X13,
-            4 => RVGPR::X14,
-            5 => RVGPR::X15,
-            6 => RVGPR::X16,
-            7 => RVGPR::X17,
-            _ => panic!("invalid A register index"),
+        if i > 7 {
+            panic!("invalid A register index");
         }
+        unsafe { std::mem::transmute::<u16, RVGPR>(i as u16 + 10) }
     }
 
     pub fn sp() -> Self {
@@ -107,72 +103,53 @@ impl RVGPR {
         RVGPR::X0
     }
 
+    pub fn ra() -> Self {
+        RVGPR::X1
+    }
+
     pub fn s(i: usize) -> Self {
-        match i {
-            0 => RVGPR::X8,
-            1 => RVGPR::X9,
-            2 => RVGPR::X18,
-            3 => RVGPR::X19,
-            4 => RVGPR::X20,
-            5 => RVGPR::X21,
-            6 => RVGPR::X22,
-            7 => RVGPR::X23,
-            8 => RVGPR::X24,
-            9 => RVGPR::X25,
-            10 => RVGPR::X26,
-            11 => RVGPR::X27,
-            _ => panic!("invalid S register index"),
+        if i > 11 {
+            panic!("invalid S register index");
+        }
+        if i < 2 {
+            unsafe { std::mem::transmute::<u16, RVGPR>(i as u16 + 8) }
+        } else {
+            unsafe { std::mem::transmute::<u16, RVGPR>(i as u16 + 16) }
         }
     }
 
     pub fn t(i: usize) -> Self {
-        match i {
-            0 => RVGPR::X5,
-            1 => RVGPR::X6,
-            2 => RVGPR::X7,
-            3 => RVGPR::X28,
-            4 => RVGPR::X29,
-            5 => RVGPR::X30,
-            6 => RVGPR::X31,
-            _ => panic!("invalid T register index"),
+        if i > 6 {
+            panic!("invalid T register index");
+        }
+        if i < 3 {
+            unsafe { std::mem::transmute::<u16, RVGPR>(i as u16 + 5) }
+        } else {
+            unsafe { std::mem::transmute::<u16, RVGPR>(i as u16 + 25) }
         }
     }
 
     pub fn x(i: usize) -> Self {
-        match i {
-            0 => RVGPR::X1,
-            1 => RVGPR::X2,
-            2 => RVGPR::X3,
-            3 => RVGPR::X4,
-            4 => RVGPR::X5,
-            5 => RVGPR::X6,
-            6 => RVGPR::X7,
-            7 => RVGPR::X8,
-            8 => RVGPR::X9,
-            9 => RVGPR::X10,
-            10 => RVGPR::X11,
-            11 => RVGPR::X12,
-            12 => RVGPR::X13,
-            13 => RVGPR::X14,
-            14 => RVGPR::X15,
-            15 => RVGPR::X16,
-            16 => RVGPR::X17,
-            17 => RVGPR::X18,
-            18 => RVGPR::X19,
-            19 => RVGPR::X20,
-            20 => RVGPR::X21,
-            21 => RVGPR::X22,
-            22 => RVGPR::X23,
-            23 => RVGPR::X24,
-            24 => RVGPR::X25,
-            25 => RVGPR::X26,
-            26 => RVGPR::X27,
-            27 => RVGPR::X28,
-            28 => RVGPR::X29,
-            29 => RVGPR::X30,
-            30 => RVGPR::X31,
-            _ => panic!("invalid X register index"),
+        if i > 31 {
+            panic!("invalid X register index");
         }
+        unsafe { std::mem::transmute::<u16, RVGPR>(i as u16) }
+    }
+
+    pub fn is_caller_saved(&self) -> bool {
+        let id = unsafe { std::mem::transmute::<_, u16>(*self) };
+        // a0-a7
+        id >= 10 && id <= 17 ||
+        // t0-t2
+        id >= 5 && id <= 7 ||
+        // t3-t6
+        id >= 28 && id <= 31
+    }
+
+    pub fn is_callee_saved(&self) -> bool {
+        let id = unsafe { std::mem::transmute::<_, u16>(*self) };
+        // s0-s11
+        id >= 8 && id <= 9 || id >= 18 && id <= 27
     }
 }
 
@@ -353,6 +330,12 @@ pub enum RV64Instruction {
     SNE { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
     SGE { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
     SGEU { rd: MachineOperand, rs1: MachineOperand, rs2: MachineOperand },
+    // prologue and epilogue of a function
+    ENTER,
+    LEAVE,
+    // prologue and epilogue of subroutine calls
+    // XSAVE
+    // XRSTR
 }
 
 macro_rules! implement_typed_instruction {
@@ -539,6 +522,9 @@ impl RV64Instruction {
         if let RV64Instruction::JUMP { .. } = self {
             return (vec![], vec![]);
         }
+        if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE) {
+            return (vec![], vec![]);
+        }
 
         panic!("unimplemented: {:?}", self)
     }
@@ -583,6 +569,9 @@ impl RV64Instruction {
             return vec![];
         }
         if let RV64Instruction::JUMP { .. } = self {
+            return vec![];
+        }
+        if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE) {
             return vec![];
         }
 
@@ -676,6 +665,10 @@ impl RV64InstBuilder {
     pub fn LADDR(rd: MachineOperand, label: String) -> RV64Instruction {
         RV64Instruction::LADDR { rd, label }
     }
+    #[allow(non_snake_case)]
+    pub fn LEAVE() -> RV64Instruction {
+        RV64Instruction::LEAVE
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -732,7 +725,7 @@ pub struct MachineFunc {
     pub virtual_max: u32,
     pub vreg_types: HashMap<u32, VRegType>,
     pub stack_size: u32,
-    pub saved_regs: HashSet<RVGPR>,
+    pub used_regs: BTreeSet<RVGPR>,
 
     // use_lr?
 
@@ -789,7 +782,7 @@ impl MachineProgram {
             virtual_max: 0,
             vreg_types: HashMap::new(),
             stack_size: 0,
-            saved_regs: HashSet::new(),
+            used_regs: BTreeSet::new(),
         }
     }
 

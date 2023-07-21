@@ -264,6 +264,10 @@ impl Display for RV64Instruction {
                 write!(f, "li {}, {}", rd, imm),
             RV64Instruction::LADDR { rd, label } =>
                 write!(f, "la {}, {}", rd, label),
+            RV64Instruction::ENTER =>
+                write!(f, "enter"),
+            RV64Instruction::LEAVE =>
+                write!(f, "leave"),
             _ => panic!("unimplemented instruction: {:?}", self),
         }
     }
