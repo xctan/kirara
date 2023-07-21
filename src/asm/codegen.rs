@@ -110,11 +110,6 @@ impl<'a> AsmFuncBuilder<'a> {
             }
         }
         mfunc.entry = Some(self.bb_map[&irfunc.entry_bb]);
-        self.prog.push_to_begin(
-            mfunc.entry.unwrap(),
-            // placeholder for prolouge
-            RV64Instruction::ENTER,
-        );
 
         // 2. translate instructions except phi
         for bb in &irfunc.bbs {
@@ -625,6 +620,13 @@ impl<'a> AsmFuncBuilder<'a> {
                 }
             }
         }
+
+        // 4. add real prolouge
+        self.prog.push_to_begin(
+            mfunc.entry.unwrap(),
+            // placeholder for prolouge
+            RV64Instruction::ENTER,
+        );
 
         mfunc
     }
