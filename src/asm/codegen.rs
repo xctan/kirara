@@ -381,8 +381,8 @@ impl<'a> AsmFuncBuilder<'a> {
                     },
                     InstructionValue::Alloca(a) => {
                         let dst = self.resolve(inst, mbb);
-                        let object_size = a.ty.size() as u32;
-                        let object_align = a.ty.align() as u32;
+                        let object_size = a.alloc_ty.size() as u32;
+                        let object_align = a.alloc_ty.align() as u32;
                         // fixup
                         if mfunc.stack_size % object_align != 0 {
                             mfunc.stack_size += object_align - mfunc.stack_size % object_align;

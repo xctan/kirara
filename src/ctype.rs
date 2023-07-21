@@ -175,12 +175,22 @@ impl Display for Type {
 
 pub trait TypePtrHelper {
     fn get_nocv(&self) -> Rc<Type>;
+
+    fn remove_cv(&self) -> Rc<Type>;
 }
 
 impl TypePtrHelper for Rc<Type> {
     fn get_nocv(&self) -> Rc<Type> {
         match &self.kind {
             TypeKind::Const(ty) => ty.clone(),
+            _ => self.clone(),
+        }
+    }
+
+    fn remove_cv(&self) -> Rc<Type> {
+        match &self.kind {
+            TypeKind::Const(ty) => ty.clone(),
+            TypeKind::Array(arr) => Type::array_of(arr.base_type.remove_cv(), arr.len),
             _ => self.clone(),
         }
     }

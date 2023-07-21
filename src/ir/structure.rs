@@ -282,7 +282,7 @@ impl TransUnit {
     }
 
     pub fn global(&mut self, name: &str, ty: Rc<Type>) -> ValueId {
-        let ty = ty.get_nocv();
+        let ty = ty.remove_cv();
         let val = ValueType::Global(GlobalValue{ name: name.to_string(), ty });
         let val = Value::new(val);
         self.values.alloc(val)
@@ -290,7 +290,7 @@ impl TransUnit {
 
     // local inst builders
     pub fn alloca(&mut self, ty: Rc<Type>) -> ValueId {
-        let ty = ty.get_nocv();
+        let ty = ty.remove_cv();
         let inst = AllocaInst {
             name: self.gen_local_name(),
             alloc_ty: ty.clone(),
@@ -324,7 +324,7 @@ impl TransUnit {
 
     pub fn load(&mut self, ptr: ValueId) -> ValueId {
         let ptr_val = self.values.get(ptr).unwrap();
-        let ty = ptr_val.ty().base_type().get_nocv();
+        let ty = ptr_val.ty().base_type().remove_cv();
         let inst = LoadInst {
             name: self.gen_local_name(),
             ty,
@@ -346,7 +346,7 @@ impl TransUnit {
             | BinaryOpType::Mod
             | BinaryOpType::Assign => {
                 let lhs = self.values.get(lhs).unwrap();
-                lhs.ty().get_nocv()
+                lhs.ty().remove_cv()
             }
             BinaryOpType::Ne
             | BinaryOpType::Eq
@@ -424,7 +424,7 @@ impl TransUnit {
 
     pub fn gep(&mut self, ptr: ValueId, idx: ValueId) -> ValueId {
         let ptr_val = self.values.get(ptr).unwrap().clone();
-        let ty = ptr_val.ty().base_type().get_nocv();
+        let ty = ptr_val.ty().base_type().remove_cv();
         let inst = GetElemPtrInst {
             name: self.gen_local_name(),
             ty: Type::ptr_to(ty.base_type()),
