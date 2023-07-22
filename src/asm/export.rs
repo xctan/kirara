@@ -94,16 +94,16 @@ impl MachineProgram {
                         _ => None,
                     };
                     if let Some((op, rs1, rs2, succ, fail)) = cond {
-                        println!("\tb{} {}, {}, {}", op, rs1, rs2, bb_names[&succ]);
+                        println!("\tb{}\t{}, {}, {}", op, rs1, rs2, bb_names[&succ]);
                         if next_bb.is_none() || next_bb.is_some() && *next_bb.unwrap() != fail {
-                            println!("\tj {}", bb_names[&fail]);
+                            println!("\tj\t{}", bb_names[&fail]);
                         }
                         continue;
                     }
 
                     if let RV64Instruction::JUMP { target } = inst.inst {
                         if next_bb.is_none() || next_bb.is_some() && *next_bb.unwrap() != target {
-                            println!("\tj {}", bb_names[&target]);
+                            println!("\tj\t{}", bb_names[&target]);
                         }
                         continue;
                     }
@@ -113,20 +113,20 @@ impl MachineProgram {
                     // }
                     match inst.inst {
                         RV64Instruction::SEQ { rd, rs1, rs2 } => {
-                            println!("\txor {}, {}, {}", rd, rs1, rs2);
-                            println!("\tseqz {}", rd); // alias for sltiu rd, rd, 1
+                            println!("\txor\t{}, {}, {}", rd, rs1, rs2);
+                            println!("\tseqz\t{}", rd); // alias for sltiu rd, rd, 1
                         }
                         RV64Instruction::SNE { rd, rs1, rs2 } => {
-                            println!("\txor {}, {}, {}", rd, rs1, rs2);
-                            println!("\tsnez {}", rd); // alias for sltu rd, zero, rd
+                            println!("\txor\t{}, {}, {}", rd, rs1, rs2);
+                            println!("\tsnez\t{}", rd); // alias for sltu rd, zero, rd
                         }
                         RV64Instruction::SGE { rd, rs1, rs2 } => {
-                            println!("\tslt {}, {}, {}", rd, rs1, rs2);
-                            println!("\txori {}, {}, 1", rd, rd);
+                            println!("\tslt\t{}, {}, {}", rd, rs1, rs2);
+                            println!("\txori\t{}, {}, 1", rd, rd);
                         }
                         RV64Instruction::SGEU { rd, rs1, rs2 } => {
-                            println!("\tsltu {}, {}, {}", rd, rs1, rs2);
-                            println!("\txori {}, {}, 1", rd, rd);
+                            println!("\tsltu\t{}, {}, {}", rd, rs1, rs2);
+                            println!("\txori\t{}, {}, 1", rd, rd);
                         }
                         _ => println!("\t{}", inst.inst),
                     }
@@ -147,123 +147,123 @@ impl Display for RV64Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RV64Instruction::LUI { rd, imm } =>
-                write!(f, "lui {}, {}", rd, imm),
+                write!(f, "lui\t{}, {}", rd, imm),
             RV64Instruction::LB { rd, rs1, imm } =>
-                write!(f, "lb {}, {}({})", rd, imm, rs1),
+                write!(f, "lb\t{}, {}({})", rd, imm, rs1),
             RV64Instruction::LH { rd, rs1, imm } =>
-                write!(f, "lh {}, {}({})", rd, imm, rs1),
+                write!(f, "lh\t{}, {}({})", rd, imm, rs1),
             RV64Instruction::LW { rd, rs1, imm } =>
-                write!(f, "lw {}, {}({})", rd, imm, rs1),
+                write!(f, "lw\t{}, {}({})", rd, imm, rs1),
             RV64Instruction::LBU { rd, rs1, imm } =>
-                write!(f, "lbu {}, {}({})", rd, imm, rs1),
+                write!(f, "lbu\t{}, {}({})", rd, imm, rs1),
             RV64Instruction::LHU { rd, rs1, imm } =>
-                write!(f, "lhu {}, {}({})", rd, imm, rs1),
+                write!(f, "lhu\t{}, {}({})", rd, imm, rs1),
             RV64Instruction::SB { rs1, rs2, imm } =>
-                write!(f, "sb {}, {}({})", rs2, imm, rs1),
+                write!(f, "sb\t{}, {}({})", rs2, imm, rs1),
             RV64Instruction::SH { rs1, rs2, imm } =>
-                write!(f, "sh {}, {}({})", rs2, imm, rs1),
+                write!(f, "sh\t{}, {}({})", rs2, imm, rs1),
             RV64Instruction::SW { rs1, rs2, imm } =>
-                write!(f, "sw {}, {}({})", rs2, imm, rs1),
+                write!(f, "sw\t{}, {}({})", rs2, imm, rs1),
             RV64Instruction::ADDI { rd, rs1, imm } =>
-                write!(f, "addi {}, {}, {}", rd, rs1, imm),
+                write!(f, "addi\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::SLTI { rd, rs1, imm } =>
-                write!(f, "slti {}, {}, {}", rd, rs1, imm),
+                write!(f, "slti\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::SLTIU { rd, rs1, imm } =>
-                write!(f, "sltiu {}, {}, {}", rd, rs1, imm),
+                write!(f, "sltiu\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::XORI { rd, rs1, imm } =>
-                write!(f, "xori {}, {}, {}", rd, rs1, imm),
+                write!(f, "xori\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::ORI { rd, rs1, imm } =>
-                write!(f, "ori {}, {}, {}", rd, rs1, imm),
+                write!(f, "ori\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::ANDI { rd, rs1, imm } =>
-                write!(f, "andi {}, {}, {}", rd, rs1, imm),
+                write!(f, "andi\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::SLLI { rd, rs1, imm } =>
-                write!(f, "slli {}, {}, {}", rd, rs1, imm),
+                write!(f, "slli\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::SRLI { rd, rs1, imm } =>
-                write!(f, "srli {}, {}, {}", rd, rs1, imm),
+                write!(f, "srli\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::SRAI { rd, rs1, imm } =>
-                write!(f, "srai {}, {}, {}", rd, rs1, imm),
+                write!(f, "srai\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::ADD { rd, rs1, rs2 } =>
-                write!(f, "add {}, {}, {}", rd, rs1, rs2),
+                write!(f, "add\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::SUB { rd, rs1, rs2 } =>
-                write!(f, "sub {}, {}, {}", rd, rs1, rs2),
+                write!(f, "sub\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::SLL { rd, rs1, rs2 } =>
-                write!(f, "sll {}, {}, {}", rd, rs1, rs2),
+                write!(f, "sll\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::SLT { rd, rs1, rs2 } =>
-                write!(f, "slt {}, {}, {}", rd, rs1, rs2),
+                write!(f, "slt\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::SLTU { rd, rs1, rs2 } =>
-                write!(f, "sltu {}, {}, {}", rd, rs1, rs2),
+                write!(f, "sltu\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::XOR { rd, rs1, rs2 } =>
-                write!(f, "xor {}, {}, {}", rd, rs1, rs2),
+                write!(f, "xor\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::SRL { rd, rs1, rs2 } =>
-                write!(f, "srl {}, {}, {}", rd, rs1, rs2),
+                write!(f, "srl\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::SRA { rd, rs1, rs2 } =>
-                write!(f, "sra {}, {}, {}", rd, rs1, rs2),
+                write!(f, "sra\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::OR { rd, rs1, rs2 } =>
-                write!(f, "or {}, {}, {}", rd, rs1, rs2),
+                write!(f, "or\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::AND { rd, rs1, rs2 } =>
-                write!(f, "and {}, {}, {}", rd, rs1, rs2),
+                write!(f, "and\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::LWU { rd, rs1, imm } =>
-                write!(f, "lwu {}, {}({})", rd, imm, rs1),
+                write!(f, "lwu\t{}, {}({})", rd, imm, rs1),
             RV64Instruction::LD { rd, rs1, imm } =>
-                write!(f, "ld {}, {}({})", rd, imm, rs1),
+                write!(f, "ld\t{}, {}({})", rd, imm, rs1),
             RV64Instruction::SD { rs1, rs2, imm } =>
-                write!(f, "sd {}, {}({})", rs2, imm, rs1),
+                write!(f, "sd\t{}, {}({})", rs2, imm, rs1),
             RV64Instruction::ADDIW { rd, rs1, imm } =>
-                write!(f, "addiw {}, {}, {}", rd, rs1, imm),
+                write!(f, "addiw\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::SLLIW { rd, rs1, imm } =>
-                write!(f, "slliw {}, {}, {}", rd, rs1, imm),
+                write!(f, "slliw\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::SRLIW { rd, rs1, imm } =>
-                write!(f, "srliw {}, {}, {}", rd, rs1, imm),
+                write!(f, "srliw\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::SRAIW { rd, rs1, imm } =>
-                write!(f, "sraiw {}, {}, {}", rd, rs1, imm),
+                write!(f, "sraiw\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::ADDW { rd, rs1, rs2 } =>
-                write!(f, "addw {}, {}, {}", rd, rs1, rs2),
+                write!(f, "addw\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::SUBW { rd, rs1, rs2 } =>
-                write!(f, "subw {}, {}, {}", rd, rs1, rs2),
+                write!(f, "subw\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::SLLW { rd, rs1, rs2 } =>
-                write!(f, "sllw {}, {}, {}", rd, rs1, rs2),
+                write!(f, "sllw\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::SRLW { rd, rs1, rs2 } =>
-                write!(f, "srlw {}, {}, {}", rd, rs1, rs2),
+                write!(f, "srlw\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::SRAW { rd, rs1, rs2 } =>
-                write!(f, "sraw {}, {}, {}", rd, rs1, rs2),
+                write!(f, "sraw\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::MUL { rd, rs1, rs2 } =>
-                write!(f, "mul {}, {}, {}", rd, rs1, rs2),
+                write!(f, "mul\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::MULH { rd, rs1, rs2 } =>
-                write!(f, "mulh {}, {}, {}", rd, rs1, rs2),
+                write!(f, "mulh\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::MULHSU { rd, rs1, rs2 } =>
-                write!(f, "mulhsu {}, {}, {}", rd, rs1, rs2),
+                write!(f, "mulhsu\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::MULHU { rd, rs1, rs2 } =>
-                write!(f, "mulhu {}, {}, {}", rd, rs1, rs2),
+                write!(f, "mulhu\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::DIV { rd, rs1, rs2 } =>
-                write!(f, "div {}, {}, {}", rd, rs1, rs2),
+                write!(f, "div\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::DIVU { rd, rs1, rs2 } =>
-                write!(f, "divu {}, {}, {}", rd, rs1, rs2),
+                write!(f, "divu\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::REM { rd, rs1, rs2 } =>
-                write!(f, "rem {}, {}, {}", rd, rs1, rs2),
+                write!(f, "rem\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::REMU { rd, rs1, rs2 } =>
-                write!(f, "remu {}, {}, {}", rd, rs1, rs2),
+                write!(f, "remu\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::MULW { rd, rs1, rs2 } =>
-                write!(f, "mulw {}, {}, {}", rd, rs1, rs2),
+                write!(f, "mulw\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::DIVW { rd, rs1, rs2 } =>
-                write!(f, "divw {}, {}, {}", rd, rs1, rs2),
+                write!(f, "divw\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::DIVUW { rd, rs1, rs2 } =>
-                write!(f, "divuw {}, {}, {}", rd, rs1, rs2),
+                write!(f, "divuw\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::REMW { rd, rs1, rs2 } =>
-                write!(f, "remw {}, {}, {}", rd, rs1, rs2),
+                write!(f, "remw\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::REMUW { rd, rs1, rs2 } =>
-                write!(f, "remuw {}, {}, {}", rd, rs1, rs2),
+                write!(f, "remuw\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::COMMENT { comment } =>
                 write!(f, "# {}", comment),
-            RV64Instruction::CALL { callee } =>
-                write!(f, "call {}", callee),
+            RV64Instruction::CALL { callee, .. } =>
+                write!(f, "call\t{}", callee),
             RV64Instruction::RET =>
                 write!(f, "ret"),
             RV64Instruction::MV { rd, rs } =>
-                write!(f, "mv {}, {}", rd, rs),
+                write!(f, "mv\t{}, {}", rd, rs),
             RV64Instruction::LIMM { rd, imm } =>
-                write!(f, "li {}, {}", rd, imm),
+                write!(f, "li\t{}, {}", rd, imm),
             RV64Instruction::LADDR { rd, label } =>
-                write!(f, "la {}, {}", rd, label),
+                write!(f, "la\t{}, {}", rd, label),
             RV64Instruction::ENTER =>
                 write!(f, "enter"),
             RV64Instruction::LEAVE =>
@@ -292,8 +292,8 @@ impl Display for RVGPR {
 impl Display for DataLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DataLiteral::Word(w) => write!(f, ".word {}", w),
-            DataLiteral::Zero(size) => write!(f, ".zero {}", size),
+            DataLiteral::Word(w) => write!(f, ".word\t{}", w),
+            DataLiteral::Zero(size) => write!(f, ".zero\t{}", size),
         }
     }
 }

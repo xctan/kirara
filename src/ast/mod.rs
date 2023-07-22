@@ -37,7 +37,7 @@ pub struct Convert {
 
 #[derive(Debug, Clone)]
 pub struct FunCall {
-    pub func: String,
+    pub func: Rc<RefCell<AstNode>>,
     pub args: Vec<Rc<RefCell<AstNode>>>,
 }
 
@@ -125,6 +125,11 @@ impl AstNode {
         Rc::new(RefCell::new(node))
     }
 
+    pub fn call(func: Rc<RefCell<Self>>, args: Vec<Rc<RefCell<Self>>>, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::FunCall(FunCall { func, args }), token);
+        Rc::new(RefCell::new(node))
+    }
+
     pub fn expr_stmt(expr: Rc<RefCell<Self>>, token: TokenRange) -> Rc<RefCell<Self>> {
         let node = Self::new(AstNodeType::ExprStmt(expr), token);
         Rc::new(RefCell::new(node))
@@ -197,6 +202,8 @@ pub struct AstObject {
     pub ty: Rc<Type>,
     pub token: TokenRange,
     pub is_local: bool,
+    /// declaration or definition
+    pub is_decl: bool,
 
     pub data: AstObjectType,
 
@@ -210,6 +217,7 @@ impl AstObject {
             ty,
             token: 0..0,
             is_local,
+            is_decl: false,
             data,
             ir_value: None,
         }

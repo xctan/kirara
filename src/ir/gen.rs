@@ -20,6 +20,9 @@ impl AstContext {
         for var in self.globals.clone() {
             let var = self.get_object_mut(var).unwrap();
             if let AstObjectType::Var(init) = var.data.clone() {
+                if var.is_decl {
+                    continue;
+                }
                 let name = var.name.clone();
                 let ty = Type::ptr_to(var.ty.clone());
                 var.ir_value = Some(unit.global(&name, ty));
@@ -244,6 +247,20 @@ impl EmitIrExpr for AstNodeType {
                 let var = ctx.get_object(*var).unwrap();
                 let val = var.ir_value.unwrap();
                 builder.load(val).push()
+            }
+            AstNodeType::FunCall(func) => {
+                // currently only direct call is supported
+                match func.func.borrow().node.clone() {
+                    AstNodeType::Variable(v) => {
+                        let function = ctx.get_object(v).unwrap().name.clone();
+                        let func_ty = ctx.get_object(v).unwrap().ty.as_function();
+                        let args = func.args
+                            .iter()
+                            .map(|arg| arg.emit_ir_expr(builder, ctx)).collect();
+                        builder.call(&function, func_ty.ret_type.clone(), args).push()
+                    }
+                    _ => unimplemented!("try to call non-variable: {:?}", func.func.borrow().node),
+                }
             }
             _ => unimplemented!(),
         }

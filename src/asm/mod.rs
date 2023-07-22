@@ -6,7 +6,7 @@ pub mod codegen;
 pub mod export;
 pub mod reg_alloc;
 pub mod simplify;
-pub mod stack_fix;
+pub mod context;
 mod import;
 
 /// Listing of physical registers
@@ -201,14 +201,17 @@ pub enum MachineOperand {
 }
 
 impl MachineOperand {
+    #[inline(always)]
     pub fn needs_coloring(&self) -> bool {
         matches!(self, MachineOperand::Virtual(_) | MachineOperand::PreColored(_))
     }
 
+    #[inline(always)]
     pub fn is_precolored(&self) -> bool {
         matches!(self, MachineOperand::PreColored(_))
     }
 
+    #[inline(always)]
     pub fn color(&self) -> Option<RVGPR> {
         match self {
             MachineOperand::Virtual(_) => None,
@@ -311,7 +314,7 @@ pub enum RV64Instruction {
 
     // pseudo instructions for convenience
     COMMENT { comment: String },
-    CALL { callee: String },
+    CALL { callee: String, params: usize },
     RET,
     // alias for addi
     MV { rd: MachineOperand, rs: MachineOperand },
@@ -525,6 +528,15 @@ impl RV64Instruction {
         if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE) {
             return (vec![], vec![]);
         }
+        if let RV64Instruction::CALL { params, .. } = self {
+            let uses: Vec<_> = (0..usize::min(8, *params))
+                .map(|i| MachineOperand::PreColored(RVGPR::a(i)))
+                .collect();
+            let defs: Vec<_> = (0..7).map(|i| MachineOperand::PreColored(RVGPR::a(i)))
+                .chain((0..6).map(|i| MachineOperand::PreColored(RVGPR::t(i))))
+                .collect();
+            return (defs, uses);
+        }
 
         panic!("unimplemented: {:?}", self)
     }
@@ -572,6 +584,9 @@ impl RV64Instruction {
             return vec![];
         }
         if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE) {
+            return vec![];
+        }
+        if matches!(self, RV64Instruction::CALL { .. }) {
             return vec![];
         }
 
@@ -646,8 +661,8 @@ impl RV64InstBuilder {
         RV64Instruction::JUMP { target }
     }
     #[allow(non_snake_case, unused)]
-    pub fn CALL(callee: String) -> RV64Instruction {
-        RV64Instruction::CALL { callee }
+    pub fn CALL(callee: String, params: usize) -> RV64Instruction {
+        RV64Instruction::CALL { callee, params }
     }
     #[allow(non_snake_case)]
     pub fn RET() -> RV64Instruction {
@@ -919,19 +934,11 @@ impl MachineProgram {
 
     pub fn get_def_use(&self, minst: Id<MachineInst>) -> (Vec<MachineOperand>, Vec<MachineOperand>) {
         let inst = &self.insts[minst].inst;
-        if let RV64Instruction::CALL { callee: _ } = inst {
-            unimplemented!()
-        }
-
         inst.get_def_use()
     }
 
     pub fn get_operands_mut(&mut self, minst: Id<MachineInst>) -> Vec<&mut MachineOperand> {
         let inst = &mut self.insts[minst].inst;
-        if let RV64Instruction::CALL { callee: _ } = inst {
-            unimplemented!()
-        }
-
         inst.get_operands_mut()
     }
 }

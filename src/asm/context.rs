@@ -11,9 +11,9 @@ impl MachineProgram {
                 .iter()
                 .filter(|reg| reg.is_callee_saved())
                 .collect::<Vec<_>>();
-            let thin = callee_saved
+            let thin = mfunc.used_regs
                 .iter()
-                .all(|reg| reg != &&RVGPR::ra() && reg != &&RVGPR::fp());
+                .all(|reg| reg != &RVGPR::ra() && reg != &RVGPR::fp());
             let callee_saved = callee_saved
                 .into_iter()
                 .filter(|reg| reg != &&RVGPR::ra() && reg != &&RVGPR::fp())

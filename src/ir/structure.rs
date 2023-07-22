@@ -10,7 +10,7 @@ use crate::ir::value::{
 };
 
 use super::builder::IrFuncBuilder;
-use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue};
+use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue, CallInst};
 
 #[derive(Debug, Clone)]
 pub struct IrFunc {
@@ -241,6 +241,15 @@ impl TransUnit {
                         .for_each(|arg| arg.0 = new);
                     InstructionValue::Phi(new_phi)
                 }
+                InstructionValue::Call(call) => {
+                    let mut new_call = call.clone();
+                    new_call
+                        .args
+                        .iter_mut()
+                        .filter(|arg| **arg == old)
+                        .for_each(|arg| *arg = new);
+                    InstructionValue::Call(new_call)
+                }
             };
             let user = self.values.get_mut(oc).unwrap();
             user.value = ValueType::Instruction(new_value);
@@ -437,6 +446,24 @@ impl TransUnit {
         let id = self.values.alloc(val);
         self.add_used_by(ptr, id);
         self.add_used_by(idx, id);
+        id
+    }
+
+    // direct call
+    pub fn call(&mut self, func: &str, ret: Rc<Type>, args: Vec<ValueId>) -> ValueId {
+        let func = func.to_string();
+        let inst = CallInst {
+            name: if ret.is_void() {"".to_string()} else {self.gen_local_name()},
+            func,
+            ty: ret,
+            args: args.clone(),
+        };
+        let val = ValueType::Instruction(InstructionValue::Call(inst));
+        let val = Value::new(val);
+        let id = self.values.alloc(val);
+        for arg in args {
+            self.add_used_by(arg, id);
+        }
         id
     }
 }

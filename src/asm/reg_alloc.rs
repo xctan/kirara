@@ -84,6 +84,11 @@ impl<'a> RegisterAllocator<'a> {
         for i in 0..KGPR {
             init.degree.insert(MachineOperand::PreColored(RVGPR::x(i)), 0x40000000);
         }
+        init.used_regs.extend(
+            init.unit.funcs[func].used_regs
+                .iter()
+                .cloned()
+        );
 
         init
     }
@@ -637,8 +642,8 @@ impl<'a> RegisterAllocator<'a> {
         while let Some(n) = self.select_stack.pop() {
             // GPRs
             let mut ok_colors: BTreeSet<_> = (0..=7).map(|x| RVGPR::a(x))
-                .chain((0..=6).map(|x| RVGPR::t(x)))
                 .chain((1..=11).map(|x| RVGPR::s(x)))
+                .chain((0..=6).map(|x| RVGPR::t(x)))
                 .collect();
 
             for w in &self.adj_list[&n] {

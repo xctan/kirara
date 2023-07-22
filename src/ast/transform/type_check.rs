@@ -76,20 +76,11 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             }
         },
         AstNodeType::FunCall(funcall) => {
-            // skip check for intrinsics as for now
-            let intrinsics = [
-                "intrinsics.memcpy",
-                "intrinsics.memset",
-            ];
-            if intrinsics.contains(&&funcall.func[..]) {
-                return;
-            }
-
-            let f = find_func(&funcall.func).expect("function not found");
-            let obj = get_object(f).unwrap();
-            let func = obj.ty.as_function();
+            ast_type_check(funcall.func.clone());
+            let obj = funcall.func.clone();
+            let func = obj.borrow().clone().ty.unwrap().as_function();
             if func.params.len() == 0 {
-                todo!() // variadic function in C
+                // variadic function in C, skip type check
             } else if func.params.len() == 1 && func.params[0].1.is_void() {
                 // no argument
                 assert!(funcall.args.len() == 0);

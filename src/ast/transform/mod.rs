@@ -76,7 +76,8 @@ pub trait AstRewriteVisitor {
         None
     }
     fn visit_goto(&mut self, _label: String) -> Option<Rc<RefCell<AstNode>>> { None }
-    fn visit_funcall(&mut self, _func: String, _args: Vec<Rc<RefCell<AstNode>>>) -> Option<Rc<RefCell<AstNode>>> {
+    fn visit_funcall(&mut self, _func: Rc<RefCell<AstNode>>, _args: Vec<Rc<RefCell<AstNode>>>) -> Option<Rc<RefCell<AstNode>>> {
+        self.rewrite(_func);
         for arg in _args {
             self.rewrite(arg);
         }

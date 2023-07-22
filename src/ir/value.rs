@@ -174,6 +174,7 @@ pub enum InstructionValue {
     Zext(ZextInst),
     Phi(PhiInst),
     GetElemPtr(GetElemPtrInst),
+    Call(CallInst),
 }
 
 impl_value_trait!{InstructionValue{
@@ -187,6 +188,7 @@ impl_value_trait!{InstructionValue{
     Zext,
     Phi,
     GetElemPtr,
+    Call,
 }}
 
 #[derive(Debug, Clone)]
@@ -280,6 +282,16 @@ pub struct GetElemPtrInst {
 
 impl_value_trait!(GetElemPtrInst);
 
+#[derive(Debug, Clone)]
+pub struct CallInst {
+    pub name: String,
+    pub ty: Rc<Type>,
+    pub func: String,
+    pub args: Vec<ValueId>,
+}
+
+impl_value_trait!(CallInst);
+
 pub fn calculate_used_by(unit: &mut TransUnit, func: &str) {
     let func = unit.funcs[func].clone();
 
@@ -336,6 +348,12 @@ pub fn calculate_used_by(unit: &mut TransUnit, func: &str) {
                     ptr_mut.used_by.insert(inst);
                     let index_mut = unit.values.get_mut(g.index).unwrap();
                     index_mut.used_by.insert(inst);
+                },
+                InstructionValue::Call(c) => {
+                    for arg in c.args.iter() {
+                        let arg_mut = unit.values.get_mut(*arg).unwrap();
+                        arg_mut.used_by.insert(inst);
+                    }
                 },
             }
         }

@@ -149,6 +149,22 @@ impl TransUnit {
                                 self.print_value(gep.index);
                                 println!();
                             }
+                            InstructionValue::Call(ref call) => {
+                                if call.ty.is_void() {
+                                    print!("call {} @{}", call.ty, call.func);
+                                } else {
+                                    print!("{} = call {} @{}", call.name, call.ty, call.func);
+                                }
+                                print!("(");
+                                for (idx, arg) in call.args.iter().enumerate() {
+                                    if idx != 0 {
+                                        print!(", ");
+                                    }
+                                    print!("{} ", arena.get(*arg).unwrap().ty());
+                                    self.print_value(*arg);
+                                }
+                                println!(")");
+                            }
                         }
                     }
                     ValueType::Constant(_) => unimplemented!(),

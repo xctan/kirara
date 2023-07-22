@@ -11,7 +11,7 @@ use std::{rc::Rc, cell::RefCell, convert::TryInto, mem::swap};
 use crate::{
     token::{TokenSpan, Token, range_between},
     ast::*,
-    ctype::{BinaryOpType, Type},
+    ctype::{BinaryOpType, Type, TypePtrCompare},
 };
 
 use super::transform::AstPassManager;
@@ -23,7 +23,11 @@ macro_rules! ttag {
         )
     };
     (I) => {
-        nom::bytes::complete::tag(
+        nom::bytes::complete::tag::<
+            $crate::token::TokenType,
+            $crate::token::TokenSpan<'_>,
+            nom::error::Error<$crate::token::TokenSpan<'_>>
+        >(
             $crate::token::TokenType::Identifier
         )
     };
@@ -103,7 +107,16 @@ fn postfix(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
             continue;
         }
 
-        // todo: function call
+        if let Ok((cursor1, (_, args, r))) = tuple((
+            ttag!(P("(")),
+            many0(assignment),
+            ttag!(P(")")),
+        ))(cursor) {
+            let token = range_between(&node.borrow().token, &r.as_range());
+            node = AstNode::call(node, args, token);
+            cursor = cursor1;
+            continue;
+        }
 
         return Ok((cursor, node));
     }
@@ -362,7 +375,7 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Rc<Type>> {
     )(cursor)
 }
 
-fn declarator((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, (Rc<Type>, TokenSpan)> {
+fn declarator((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, (Rc<Type>, Option<TokenSpan>)> {
     // "*"* ("(" declarator ")" | identifier) type_suffix
     // let mut ty = ty.clone();
     let ty = ty.clone();
@@ -373,7 +386,9 @@ fn declarator((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, (Rc<Typ
     if let Ok((_cursor, _)) = ttag!(P("("))(left) {
         todo!()
     } else {
-        let (cursor, id) = ttag!(I)(left)?;
+        let (cursor, id) = ttag!(I)(left)
+            .map(|(cursor, token)| (cursor, Some(token)))
+            .unwrap_or((left, None));
         let (cursor, ty) = type_suffix((cursor, ty))?;
         Ok((cursor, (ty, id)))
     }
@@ -442,7 +457,10 @@ fn param(cursor: TokenSpan) -> IResult<TokenSpan, (String, Rc<Type>)> {
     // declspec declarator
     let base_ty = declspec(cursor)?;
     let (cursor, (ty, id)) = declarator(base_ty)?;
-    Ok((cursor, (id.as_str().to_string(), ty)))
+    Ok((
+        cursor,
+        (id.map(|t| t.as_str().to_string()).unwrap_or(gen_unique_name(".anon")), ty)
+    ))
 }
 
 fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
@@ -465,6 +483,11 @@ fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
 
         let (cursor1, (ty, id)) = declarator((cursor0, ty.clone()))?;
         cursor0 = cursor1;
+        let id = id
+            .ok_or(nom::Err::Error(nom::error::Error {
+                input: cursor0,
+                code: nom::error::ErrorKind::Tag,
+            }))?;
         let object_id = new_local_var_with_token(id, ty.clone());
 
         if let Ok((cursor2, _)) = ttag!(P("="))(cursor0) {
@@ -723,18 +746,30 @@ fn goto_statement(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>>
 fn function((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, ()> {
     // function_def = declspec declarator (compound_statement | ";")
     let (cursor, (ty, name)) = declarator((cursor.clone(), ty))?;
-    let name = name.as_str().to_string();
+    let name = name
+        .ok_or(nom::Err::Error(nom::error::Error {
+            input: cursor,
+            code: nom::error::ErrorKind::Tag,
+        }))?
+        .as_str()
+        .to_string();
     if name.is_empty() {
         panic!("function name omitted");
     }
 
-    let obj_id = if let Some(_id) = find_func(&name) {
-        todo!()
+    let obj_id = if let Some(old_id) = find_func(&name) {
+        let old_obj = get_object(old_id).unwrap();
+        if !old_obj.ty.is_same_as(&ty) {
+            panic!("redefinition of {} as different kind of symbol", name);
+        }
+        old_id
     } else {
         new_global_var(&name, ty.clone())
     };
 
     if let Ok((cursor, _)) = ttag!(P(";"))(cursor) {
+        let obj = get_object_mut(obj_id).unwrap();
+        obj.is_decl = true;
         return Ok((cursor, ()));
     }
 
@@ -803,6 +838,10 @@ fn global_declaration((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan,
 
         let (cursor1, (ty, id)) = declarator((cursor0, ty.clone()))?;
         cursor0 = cursor1;
+        let id = id.ok_or(nom::Err::Error(nom::error::Error {
+            input: cursor0,
+            code: nom::error::ErrorKind::Tag,
+        }))?;
         let object_id = new_global_var(id.as_str(), ty.clone());
 
         if let Ok((cursor2, _)) = ttag!(P("="))(cursor0) {

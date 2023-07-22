@@ -61,6 +61,7 @@ macro_rules! pre {
     (a0) => { MachineOperand::PreColored(RVGPR::a(0)) };
     (fp) => { MachineOperand::PreColored(RVGPR::fp()) };
     (sp) => { MachineOperand::PreColored(RVGPR::sp()) };
+    (a $i:expr) => { MachineOperand::PreColored(RVGPR::a($i)) };
 }
 
 impl<'a> AsmFuncBuilder<'a> {
@@ -513,6 +514,63 @@ impl<'a> AsmFuncBuilder<'a> {
                             }
                         }
                     },
+                    InstructionValue::Call(c) => {
+                        let dst = if c.ty.is_void() {
+                            None
+                        } else {
+                            self.resolve(inst, mbb).into()
+                        };
+                        self.used_regs.insert(RVGPR::ra());
+
+                        for (idx, arg) in c.args.iter().take(8).enumerate() {
+                            let target = pre!(a idx);
+                            if let Some(imm) = self.resolve_constant(*arg) {
+                                emit!(LIMM target, imm);
+                                continue;
+                            }
+                            let reg = self.resolve(*arg, mbb);
+                            let value = self.unit.values[*arg].clone();
+                            match value.ty().kind {
+                                TypeKind::I32 => {
+                                    emit!(MV target, reg);
+                                }
+                                _ => unimplemented!(),
+                            }
+                        }
+                        if c.args.len() > 8 {
+                            let extra = c.args.len() - 8;
+                            let stack_size = extra * 8;
+                            let stack_size = if stack_size % 16 == 0 {
+                                stack_size
+                            } else {
+                                stack_size + 8
+                            };
+                            // already so many arguments!
+                            assert!(stack_size <= 2032);
+                            emit!(ADDI pre!(sp), pre!(sp), -(stack_size as i32));
+                            for i in 0..extra {
+                                let reg = self.resolve_ensure_reg(c.args[8 + i], mbb);
+                                emit!(SD reg, pre!(sp), (i * 8) as i32);
+                            }
+                        }
+
+                        emit!(CALL c.func.clone(), c.args.len());
+
+                        if c.args.len() > 8 {
+                            let extra = c.args.len() - 8;
+                            let stack_size = extra * 8;
+                            let stack_size = if stack_size % 16 == 0 {
+                                stack_size
+                            } else {
+                                stack_size + 8
+                            };
+                            assert!(stack_size <= 2032);
+                            emit!(ADDI pre!(sp), pre!(sp), stack_size as i32);
+                        }
+                        if let Some(dst) = dst {
+                            emit!(MV dst, pre!(a0));
+                        }
+                    },
                 }
             }
         }
@@ -655,6 +713,25 @@ impl<'a> AsmFuncBuilder<'a> {
         }
     }
 
+    fn resolve_ensure_reg(&mut self, val: Id<Value>, _mbb: Id<MachineBB>) -> MachineOperand {
+        let value = self.unit.values[val].clone();
+        match value.value {
+            ValueType::Constant(_c) => {
+                let reg = self.new_vreg();
+                match _c {
+                    ConstantValue::I1(i) => {
+                        self.prog.push_to_begin(_mbb, RV64InstBuilder::LIMM(reg, i as i32));
+                    }
+                    ConstantValue::I32(i) => {
+                        self.prog.push_to_begin(_mbb, RV64InstBuilder::LIMM(reg, i));
+                    }
+                };
+                reg
+            }
+            _ => self.resolve(val, _mbb),
+        }
+    }
+
     fn resolve(&mut self, val: Id<Value>, _mbb: Id<MachineBB>) -> MachineOperand {
         let value = self.unit.values[val].clone();
         match value.value {
@@ -707,6 +784,7 @@ impl<'a> AsmFuncBuilder<'a> {
                         }
 
                         // todo: the "omit frame pointer" version
+                        // save a worklist of loads needed to be fixed with actual offset (with stack size added)
                     }
 
                     self.val_map.insert(val, res);
