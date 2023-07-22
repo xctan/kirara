@@ -149,6 +149,7 @@ impl_value_trait!(GlobalValue);
 
 #[derive(Debug, Clone, Copy)]
 pub enum ConstantValue {
+    Undef,
     I1(bool),
     I32(i32),
 }
@@ -156,6 +157,7 @@ pub enum ConstantValue {
 impl ValueTrait for ConstantValue {
     fn ty(&self) -> Rc<Type> {
         match self {
+            ConstantValue::Undef => Type::void_type(),
             ConstantValue::I1(_) => Type::i1_type(),
             ConstantValue::I32(_) => Type::i32_type(),
         }

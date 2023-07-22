@@ -97,7 +97,7 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
                     let args = preds.into_iter()
                         .map(|pred| (ud, pred))
                         .collect();
-                    let phi = unit.phi(args);
+                    let phi = unit.phi(args, ty.clone());
                     phis.insert(phi, id);
                     unit.insert_at_begin(y, phi);
                 }
@@ -201,7 +201,7 @@ impl UndefValue {
             }
         }
         let val = match ty.kind {
-            TypeKind::I32 => unit.const_i32(114514),
+            TypeKind::I32 => unit.undef(),
             _ => unimplemented!(),
         };
         self.values.push((ty, val));

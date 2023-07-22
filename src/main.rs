@@ -41,7 +41,7 @@ fn main() {
     // }
 
     let mut ast = parse(&tokens).unwrap();
-    // println!("{:#?}", ast);
+    // debug!(println!("{:#?}", ast));
 
     let mut unit = ast.emit_ir();
     debug!(unit.print());

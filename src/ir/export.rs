@@ -184,6 +184,7 @@ impl TransUnit {
             },
             ValueType::Constant(c) => {
                 match c {
+                    ConstantValue::Undef => print!("undef"),
                     ConstantValue::I1(b) => print!("{}", b),
                     ConstantValue::I32(i) => print!("{}", i),
                 }

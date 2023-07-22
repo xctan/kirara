@@ -66,6 +66,7 @@ impl IrFuncBuilder<'_> {
     pub fn start_new_bb(&mut self) -> (BlockId, BlockId) {
         let old = self.cur_bb();
         let name = format!("{}", self.count());
+        println!("new bb: {}", name);
         let bb = self.unit.blocks.alloc(BasicBlock::new(name));
         self.bbs.push(bb);
         self.cur_bb = Some(bb);
@@ -146,7 +147,7 @@ impl IrFuncBuilder<'_> {
     inst_proxy!(branch(cond: ValueId, succ: BlockId, fail: BlockId));
     inst_proxy!(jump(succ: BlockId));
     inst_proxy!(zext(val: ValueId, ty: Rc<Type>));
-    inst_proxy!(phi(args: Vec<(ValueId, BlockId)>));
+    inst_proxy!(phi(args: Vec<(ValueId, BlockId)>, ty: Rc<Type>));
     inst_proxy!(gep(ptr: ValueId, idx: ValueId));
     inst_proxy!(call(func: &str, ret: Rc<Type>, args: Vec<ValueId>));
 }

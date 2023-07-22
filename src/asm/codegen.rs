@@ -146,7 +146,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                 ConstantValue::I32(i) => {
                                     emit!(LIMM reg, i);
                                 }
-                                // _ => unimplemented!(),
+                                _ => unimplemented!(),
                             }
                             reg
                         } else {
@@ -421,7 +421,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                         emit!(MV pre!(a0), src);
                                     }
                                 },
-                                _ => unimplemented!(),
+                                _ => unimplemented!("return type: {:?}", value.ty()),
                             }
                         }
                         emit!(LEAVE);
@@ -650,6 +650,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                 self.prog.insert_before(last, RV64InstBuilder::LIMM(lhs, imm)),
                             ConstantValue::I1(imm) =>
                                 self.prog.insert_before(last, RV64InstBuilder::LIMM(lhs, imm as i32)),
+                            ConstantValue::Undef => {}
                         }
                     }
                 } else {
@@ -659,6 +660,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                 self.prog.push_to_end(mbb, RV64InstBuilder::LIMM(lhs, imm)),
                             ConstantValue::I1(imm) =>
                                 self.prog.push_to_end(mbb, RV64InstBuilder::LIMM(lhs, imm as i32)),
+                            ConstantValue::Undef => {}
                         }
                     }
                 }
@@ -725,6 +727,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     ConstantValue::I32(i) => {
                         self.prog.push_to_begin(_mbb, RV64InstBuilder::LIMM(reg, i));
                     }
+                    _ => unimplemented!(),
                 };
                 reg
             }

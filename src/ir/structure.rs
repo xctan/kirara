@@ -276,6 +276,13 @@ impl TransUnit {
     }
 
     // global value builders
+    pub fn undef(&mut self) -> ValueId {
+        let val = ConstantValue::Undef;
+        let val = ValueType::Constant(val);
+        let val = Value::new(val);
+        self.values.alloc(val)
+    }
+
     pub fn const_i32(&mut self, val: i32) -> ValueId {
         let val = ConstantValue::I32(val);
         let val = ValueType::Constant(val);
@@ -392,6 +399,8 @@ impl TransUnit {
     }
 
     pub fn jump(&mut self, succ: BlockId) -> ValueId {
+        let target_bb = &mut self.blocks[succ];
+        target_bb.is_labeled = true;
         let inst = JumpInst { succ };
         let val = ValueType::Instruction(InstructionValue::Jump(inst));
         let val = Value::new(val);
@@ -414,9 +423,7 @@ impl TransUnit {
         id
     }
 
-    pub fn phi(&mut self, args: Vec<(ValueId, BlockId)>) -> ValueId {
-        assert!(!args.is_empty()); // used to infer type
-        let ty = self.values.get(args[0].0).unwrap().ty();
+    pub fn phi(&mut self, args: Vec<(ValueId, BlockId)>, ty: Rc<Type>) -> ValueId {
         let inst = PhiInst {
             name: self.gen_local_name(),
             ty,

@@ -2,7 +2,7 @@ use nom::{
     IResult,
     combinator::{map, opt, success},
     sequence::{tuple, delimited},
-    multi::{many0, many1, many0_count, separated_list1},
+    multi::{many0, many1, many0_count, separated_list1, separated_list0},
     branch::alt,
 };
 
@@ -109,7 +109,7 @@ fn postfix(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
 
         if let Ok((cursor1, (_, args, r))) = tuple((
             ttag!(P("(")),
-            many0(assignment),
+            separated_list0(ttag!(P(",")), assignment),
             ttag!(P(")")),
         ))(cursor) {
             let token = range_between(&node.borrow().token, &r.as_range());
