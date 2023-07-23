@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::ctype::{Type, BinaryOpType};
+use crate::ctype::{Type, BinaryOpType, UnaryOpType};
 
 use super::{AstNode, ObjectId, AstNodeRewrite, AstFuncData};
 
@@ -37,7 +37,11 @@ pub trait AstRewriteVisitor {
     fn visit_convert(&mut self, _from: Rc<RefCell<AstNode>>, _to: Rc<Type>) -> Option<Rc<RefCell<AstNode>>> { 
         self.rewrite(_from);
         None
-     }
+    }
+    fn visit_unary_op(&mut self, expr: Rc<RefCell<AstNode>>, _op: UnaryOpType) -> Option<Rc<RefCell<AstNode>>> { 
+        self.rewrite(expr);
+        None
+    }
     fn visit_binary_op(&mut self, _lhs: Rc<RefCell<AstNode>>, _rhs: Rc<RefCell<AstNode>>, _op: BinaryOpType) -> Option<Rc<RefCell<AstNode>>> {
         self.rewrite(_lhs);
         self.rewrite(_rhs);
@@ -111,7 +115,7 @@ pub trait AstRewriteVisitor {
             crate::ast::AstNodeType::Convert(convert) => self.visit_convert(convert.from, convert.to),
             crate::ast::AstNodeType::FunCall(funcall) => self.visit_funcall(funcall.func, funcall.args),
             crate::ast::AstNodeType::BinaryOp(binary_op) => self.visit_binary_op(binary_op.lhs, binary_op.rhs, binary_op.op),
-            // crate::ast::AstNodeType::UnaryOp(unary_op) => self.visit_unary_op(unary_op.rhs, unary_op.op),
+            crate::ast::AstNodeType::UnaryOp(unary_op) => self.visit_unary_op(unary_op.expr, unary_op.op),
             crate::ast::AstNodeType::Return(expr) => self.visit_return(expr),
             crate::ast::AstNodeType::ExprStmt(expr) => self.visit_expr_stmt(expr),
             crate::ast::AstNodeType::Unit => self.visit_unit(),

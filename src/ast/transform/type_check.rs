@@ -24,6 +24,22 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             ast_type_check(from);
             to
         },
+        AstNodeType::UnaryOp(UnaryOp { expr, op }) => {
+            ast_type_check(expr.clone());
+            let common_ty = match op {
+                UnaryOpType::LogNot => Type::i1_type(),
+                UnaryOpType::Neg => expr.borrow().ty.clone().unwrap(),
+            };
+            let expr_new = ast_gen_convert(expr.clone(), common_ty.clone());
+            let mut expr_mut = expr.borrow_mut();
+            expr_mut.node = expr_new;
+            expr_mut.ty = Some(common_ty.clone());
+            drop(expr_mut);
+            match op {
+                UnaryOpType::LogNot => Type::i1_type(),
+                UnaryOpType::Neg => common_ty,
+            }
+        },
         AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op: BinaryOpType::Index }) => {
             ast_type_check(lhs.clone());
             ast_type_check(rhs.clone());

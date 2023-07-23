@@ -122,16 +122,53 @@ fn postfix(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     }
 }
 
+fn unary(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // postfix | ('+' | '-' | '!' | '~' | '&' | '*') cast | ('++' | '--') unary | '&&' identifier
+    // partial impl
+    alt((
+        postfix,
+        map(tuple((
+            alt((
+                ttag!(P("+")),
+                ttag!(P("-")),
+                ttag!(P("!")),
+                ttag!(P("~")),
+                ttag!(P("&")),
+                ttag!(P("*")))),
+            cast)),
+            |(sign, expr)| {
+                let op = match sign.as_str() {
+                    "+" => return expr,
+                    "-" => UnaryOpType::Neg,
+                    "!" => UnaryOpType::LogNot,
+                    // "~" => UnaryOpType::BitNot,
+                    // "&" => UnaryOpType::Addr,
+                    // "*" => UnaryOpType::Deref,
+                    _ => unreachable!(),
+                };
+                let token = range_between(&sign.as_range(), &expr.borrow().token);
+                AstNode::unary(expr, op, token)
+            }
+        )
+    ))(cursor)
+}
+
+fn cast(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    // unary | '(' type_name ')' cast
+    // stub impl
+    unary(cursor)
+}
+
 fn multiplication(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     // cast ( ('*' | '/' | '%') cast )*
     // use postfix as cast temporarily
     map(
         tuple((
-            postfix,
+            cast,
             many0(
                 tuple((
                     alt((ttag!(P("*")), ttag!(P("/")), ttag!(P("%")))),
-                    postfix))))),
+                    cast))))),
         |(first, others)| {
             let mut node = first;
             for (sign, other) in others {

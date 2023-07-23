@@ -48,6 +48,26 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
                 _ => None,
             }
         }
+        AstNodeType::UnaryOp(UnaryOp { expr, op }) => {
+            ast_const_fold(expr.clone());
+            match expr.borrow().node.clone() {
+                AstNodeType::I1Number(num) => {
+                    let num = match op {
+                        UnaryOpType::LogNot => AstNodeType::I1Number(!num),
+                        _ => unreachable!("op {:?}, num {:?}", op, num),
+                    };
+                    Some(num)
+                },
+                AstNodeType::I32Number(num) => {
+                    let num = match op {
+                        UnaryOpType::Neg => AstNodeType::I32Number(-num),
+                        _ => unreachable!("op {:?}, num {:?}", op, num),
+                    };
+                    Some(num)
+                },
+                _ => None,
+            }
+        },
         AstNodeType::BinaryOp(BinaryOp{lhs, rhs, op}) => {
             use {
                 AstNodeType::I32Number as Int,

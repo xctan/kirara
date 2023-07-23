@@ -15,12 +15,18 @@ pub use parse::parse;
 pub(in crate::ast) use context::*;
 
 use crate::{
-    ctype::{BinaryOpType, Type},
+    ctype::{BinaryOpType, Type, UnaryOpType},
     ir::value::ValueId,
     token::TokenRange,
 };
 
 use self::transform::const_fold::ast_const_fold;
+
+#[derive(Debug, Clone)]
+pub struct UnaryOp {
+    pub expr: Rc<RefCell<AstNode>>,
+    pub op: UnaryOpType,
+}
 
 #[derive(Debug, Clone)]
 pub struct BinaryOp {
@@ -48,6 +54,7 @@ pub enum AstNodeType {
     I32Number(i32),
     I64Number(i64),
     Variable(ObjectId),
+    UnaryOp(UnaryOp),
     BinaryOp(BinaryOp),
     Convert(Convert),
     FunCall(FunCall),
@@ -112,6 +119,11 @@ impl AstNode {
 
     pub fn convert(from: Rc<RefCell<Self>>, to: Rc<Type>, token: TokenRange) -> Rc<RefCell<Self>> {
         let node = Self::new(AstNodeType::Convert(Convert { from, to }), token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn unary(expr: Rc<RefCell<AstNode>>, op: UnaryOpType, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::UnaryOp(UnaryOp { expr, op }), token);
         Rc::new(RefCell::new(node))
     }
 

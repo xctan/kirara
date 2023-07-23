@@ -270,3 +270,9 @@ impl Display for BinaryOpType {
         write!(f, "{}", s)
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum UnaryOpType {
+    Neg,
+    LogNot,
+}
