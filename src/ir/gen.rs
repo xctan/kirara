@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
     ast::*,
-    ctype::{BinaryOpType, Type, TypePtrHelper, TypeKind},
+    ctype::{BinaryOpType, Type, TypePtrHelper, TypeKind, UnaryOpType},
 };
 
 pub trait EmitIr {
@@ -232,6 +232,22 @@ impl EmitIrExpr for AstNodeType {
                     }
                     (TypeKind::I1, TypeKind::I32) => builder.zext(from_id, Type::i32_type()).push(),
                     _ => unimplemented!("convert {:?} to {:?}", from, to),
+                }
+            }
+            AstNodeType::UnaryOp(UnaryOp { expr, op }) => {
+                let ty = expr.borrow().ty.clone().unwrap();
+                let expr = expr.emit_ir_expr(builder, ctx);
+                match *op {
+                    UnaryOpType::Neg => {
+                        match ty.kind {
+                            TypeKind::I32 => {
+                                let zero = builder.const_i32(0);
+                                builder.binary(BinaryOpType::Sub, zero, expr).push()
+                            }
+                            _ => unimplemented!(),
+                        }
+                    },
+                    _ => unimplemented!(),
                 }
             }
             AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op }) => {

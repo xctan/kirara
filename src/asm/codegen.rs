@@ -135,23 +135,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     InstructionValue::Binary(b) => {
                         let dst = self.resolve(inst, mbb);
 
-                        let val_lhs = self.unit.values[b.lhs].value.clone();
-                        let mo_lhs = if val_lhs.is_constant() {
-                            let val = val_lhs.as_constant().clone();
-                            let reg = self.new_vreg();
-                            match val {
-                                ConstantValue::I1(i) => {
-                                    emit!(LIMM reg, i as i32);
-                                }
-                                ConstantValue::I32(i) => {
-                                    emit!(LIMM reg, i);
-                                }
-                                _ => unimplemented!(),
-                            }
-                            reg
-                        } else {
-                            self.resolve(b.lhs, mbb)
-                        };
+                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
                         if let Some(minst_id) = self.prog.vreg_def.get(&mo_lhs) {
                             self.prog.mark_inline(*minst_id, false);
                         }
@@ -719,17 +703,27 @@ impl<'a> AsmFuncBuilder<'a> {
         let value = self.unit.values[val].clone();
         match value.value {
             ValueType::Constant(_c) => {
-                let reg = self.new_vreg();
                 match _c {
                     ConstantValue::I1(i) => {
-                        self.prog.push_to_begin(_mbb, RV64InstBuilder::LIMM(reg, i as i32));
+                        if i {
+                            let reg = self.new_vreg();
+                            self.prog.push_to_begin(_mbb, RV64InstBuilder::LIMM(reg, i as i32));
+                            reg
+                        } else {
+                            pre!(zero)
+                        }
                     }
                     ConstantValue::I32(i) => {
-                        self.prog.push_to_begin(_mbb, RV64InstBuilder::LIMM(reg, i));
+                        if i != 0 {
+                            let reg = self.new_vreg();
+                            self.prog.push_to_begin(_mbb, RV64InstBuilder::LIMM(reg, i));
+                            reg
+                        } else {
+                            pre!(zero)
+                        }
                     }
                     _ => unimplemented!(),
-                };
-                reg
+                }
             }
             _ => self.resolve(val, _mbb),
         }
