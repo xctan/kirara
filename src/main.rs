@@ -14,6 +14,9 @@ struct Arguments {
     /// Output file
     #[clap(short, long, default_value = "-")]
     output: String,
+    /// Frontend language
+    #[clap(short = 'x', long, default_value = "sysy")]
+    language: String,
 }
 
 mod alloc;
@@ -39,7 +42,11 @@ fn main() {
         };
     }
 
-    let mut input = include_str!("defs.h").to_owned();
+    let mut input = if args.language == "sysy" {
+        include_str!("defs.h").to_owned()
+    } else {
+        String::new()
+    };
     if args.input == "-" {
         std::io::stdin().read_to_string(&mut input).unwrap();
     } else {

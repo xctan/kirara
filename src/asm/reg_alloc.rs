@@ -81,7 +81,7 @@ impl<'a> RegisterAllocator<'a> {
             used_regs: HashSet::new(),
         };
 
-        for i in 0..KGPR {
+        for i in 0..32 {
             init.degree.insert(MachineOperand::PreColored(RVGPR::x(i)), 0x40000000);
         }
         init.used_regs.extend(
@@ -462,7 +462,7 @@ impl<'a> RegisterAllocator<'a> {
     }
 
     fn decrement_degree(&mut self, m: MachineOperand) {
-        let d = self.degree[&m];
+        let d = *self.degree.get(&m).expect(format!("{:?} not in degree", m).as_str());
         self.degree.insert(m, d - 1);
         if d == KGPR {
             self.enable_moves(m);

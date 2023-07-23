@@ -231,6 +231,9 @@ impl EmitIrExpr for AstNodeType {
                         builder.binary(BinaryOpType::Ne, from_id, zero).push()
                     }
                     (TypeKind::I1, TypeKind::I32) => builder.zext(from_id, Type::i32_type()).push(),
+                    (TypeKind::Array(_), TypeKind::Ptr(_)) => {
+                        from_id
+                    }
                     _ => unimplemented!("convert {:?} to {:?}", from, to),
                 }
             }
@@ -271,8 +274,12 @@ impl EmitIrExpr for AstNodeType {
             }
             AstNodeType::Variable(var) => {
                 let var = ctx.get_object(*var).unwrap();
-                let val = var.ir_value.unwrap();
-                builder.load(val).push()
+                if var.ty.is_array() {
+                    var.ir_value.unwrap()
+                } else {
+                    let val = var.ir_value.unwrap();
+                    builder.load(val).push()
+                }
             }
             AstNodeType::FunCall(func) => {
                 // currently only direct call is supported

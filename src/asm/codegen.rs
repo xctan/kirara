@@ -507,19 +507,23 @@ impl<'a> AsmFuncBuilder<'a> {
                         self.used_regs.insert(RVGPR::ra());
 
                         for (idx, arg) in c.args.iter().take(8).enumerate() {
-                            let target = pre!(a idx);
-                            if let Some(imm) = self.resolve_constant(*arg) {
-                                emit!(LIMM target, imm);
-                                continue;
-                            }
-                            let reg = self.resolve(*arg, mbb);
                             let value = self.unit.values[*arg].clone();
                             match value.ty().kind {
-                                TypeKind::I32 => {
+                                TypeKind::I32 | TypeKind::Ptr(_) => {
+                                    let target = pre!(a idx);
+                                    if let Some(imm) = self.resolve_constant(*arg) {
+                                        emit!(LIMM target, imm);
+                                        continue;
+                                    }
+                                    let reg = self.resolve(*arg, mbb);
                                     emit!(MV target, reg);
-                                }
-                                _ => unimplemented!(),
-                            }
+                                    if let Some(vreg) = self.prog.vreg_def.get(&reg) {
+                                        self.prog.mark_inline(*vreg, false);
+                                    }
+                                },
+                                _ => unimplemented!("call arg type: {:?}", value.ty()),
+                            };
+                            
                         }
                         if c.args.len() > 8 {
                             let extra = c.args.len() - 8;

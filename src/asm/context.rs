@@ -60,7 +60,7 @@ impl MachineProgram {
                 2
             };
             for (idx, reg) in callee_saved.iter().enumerate() {
-                i!(SD r!(sp), MachineOperand::PreColored(**reg), saved_offset(idx as u32 + save_adj));
+                i!(SD MachineOperand::PreColored(**reg), r!(sp), saved_offset(idx as u32 + save_adj));
             }
             let rem_stack_size = stack_size - small_stack_size;
             if rem_stack_size != 0 {

@@ -151,12 +151,12 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
     }
 }
 
-pub fn eval(tree: Rc<RefCell<AstNode>>) -> Option<usize> {
+pub fn eval(tree: Rc<RefCell<AstNode>>) -> Option<isize> {
     let tree0 = tree.borrow();
     match tree0.node.clone() {
-        AstNodeType::I1Number(num) => Some(num as usize),
-        AstNodeType::I32Number(num) => Some(num as usize),
-        AstNodeType::I64Number(num) => Some(num as usize),
+        AstNodeType::I1Number(num) => Some(num as isize),
+        AstNodeType::I32Number(num) => Some(num as isize),
+        AstNodeType::I64Number(num) => Some(num as isize),
         AstNodeType::Variable(var) => {
             let variable = get_object(var).unwrap();
             let var_ty = variable.ty.clone();
@@ -168,7 +168,7 @@ pub fn eval(tree: Rc<RefCell<AstNode>>) -> Option<usize> {
                 };
                 init.eval();
                 match init.data {
-                    InitData::ScalarI32(i) => Some(i as usize),
+                    InitData::ScalarI32(i) => Some(i as isize),
                     _ => None,
                 }
             } else {
@@ -188,14 +188,14 @@ pub fn eval(tree: Rc<RefCell<AstNode>>) -> Option<usize> {
                 BinaryOpType::Mul => lhs * rhs,
                 BinaryOpType::Div => lhs / rhs,
                 BinaryOpType::Mod => lhs % rhs,
-                BinaryOpType::Ne => (lhs != rhs) as usize,
-                BinaryOpType::Eq => (lhs == rhs) as usize,
-                BinaryOpType::Lt => (lhs < rhs) as usize,
-                BinaryOpType::Le => (lhs <= rhs) as usize,
-                BinaryOpType::Gt => (lhs > rhs) as usize,
-                BinaryOpType::Ge => (lhs >= rhs) as usize,
-                BinaryOpType::LogAnd => (lhs != 0 && rhs != 0) as usize,
-                BinaryOpType::LogOr => (lhs != 0 || rhs != 0) as usize,
+                BinaryOpType::Ne => (lhs != rhs) as isize,
+                BinaryOpType::Eq => (lhs == rhs) as isize,
+                BinaryOpType::Lt => (lhs < rhs) as isize,
+                BinaryOpType::Le => (lhs <= rhs) as isize,
+                BinaryOpType::Gt => (lhs > rhs) as isize,
+                BinaryOpType::Ge => (lhs >= rhs) as isize,
+                BinaryOpType::LogAnd => (lhs != 0 && rhs != 0) as isize,
+                BinaryOpType::LogOr => (lhs != 0 || rhs != 0) as isize,
                 _ => unreachable!(),
             };
             Some(num)

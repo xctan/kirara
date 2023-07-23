@@ -20,6 +20,10 @@ impl MachineProgram {
                 counter2
             };
 
+            writeln!(writer, "\t.section\t.text")?;
+            writeln!(writer, "\t.align\t4")?;
+            writeln!(writer, "\t.globl\t{}", f.func)?;
+            writeln!(writer, "\t.type\t{}, @function", f.func)?;
             writeln!(writer, "{}:", f.func)?;
 
             let mut bb_names = HashMap::new();
@@ -143,6 +147,9 @@ impl MachineProgram {
         }
 
         for (s, d) in &self.symbols {
+            writeln!(writer, "\t.section\t.data")?;
+            writeln!(writer, "\t.globl\t{}", s)?;
+            writeln!(writer, "\t.type\t{}, @object", s)?;
             writeln!(writer, "{}:", s)?;
             for dd in d {
                 writeln!(writer, "\t{}", dd)?;

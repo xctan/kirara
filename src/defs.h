@@ -11,3 +11,5 @@ void putch(int);
 // void putfarray(int, float a[]);
 
 // putf(char *s, ...)
+
+void memset(void *s, int c, int n);

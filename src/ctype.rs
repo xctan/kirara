@@ -159,9 +159,10 @@ impl Display for Type {
             TypeKind::I1 => write!(f, "i1"),
             TypeKind::I32 => write!(f, "i32"),
             TypeKind::I64 => write!(f, "i64"),
-            TypeKind::Ptr(p) => {
-                write!(f, "{}*", p)
-            },
+            // TypeKind::Ptr(p) => {
+            //     write!(f, "{}*", p)
+            // },
+            TypeKind::Ptr(_p) => write!(f, "ptr"),
             TypeKind::Func(_func) => unimplemented!(),
             TypeKind::Array(arr) => {
                 write!(f, "[{} x {}]", arr.len, arr.base_type)

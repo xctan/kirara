@@ -487,10 +487,16 @@ impl AstContext {
     pub fn find_func(&self, name: &str) -> Option<ObjectId> {
         return if let Some(ScopeVar::Var(id)) = self.scopes.first().unwrap().vars.get(name) {
             let obj = self.objects.get(*id).unwrap();
-            if let AstObjectType::Func(_) = obj.data {
-                Some(*id)
-            } else {
-                None
+            match obj.data {
+                AstObjectType::Func(_) => Some(*id),
+                AstObjectType::Var(_) => {
+                    // declaration only
+                    if obj.ty.is_function() {
+                        Some(*id)
+                    } else {
+                        None
+                    }
+                }
             }
         } else {
             None

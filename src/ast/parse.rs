@@ -415,10 +415,13 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Rc<Type>> {
 fn declarator((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, (Rc<Type>, Option<TokenSpan>)> {
     // "*"* ("(" declarator ")" | identifier) type_suffix
     // let mut ty = ty.clone();
-    let ty = ty.clone();
+    let mut ty = ty.clone();
 
     let (left, _consumed) = many0_count(ttag!(P("*")))(cursor)?;
-    // todo: parse pointer
+    // todo: parse pointer attr
+    for _ in 0.._consumed {
+        ty = Type::ptr_to(ty);
+    }
 
     if let Ok((_cursor, _)) = ttag!(P("("))(left) {
         todo!()
@@ -472,10 +475,6 @@ fn func_params((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, Rc<Typ
     delimited(
         ttag!(P("(")),
         alt((
-            map(
-                ttag!(K("void")),
-                |_| Type::func_type(ty.clone(), vec![]),
-            ),
             map(
                 separated_list1(ttag!(P(",")), param),
                 |params| Type::func_type(ty.clone(), params)
@@ -553,7 +552,16 @@ fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
                 },
                 InitData::ZeroInit => {
                     // todo: memset to zero
-                    println!("warning: zero initialization not implemented");
+                    let memset = find_func("memset").unwrap();
+                    let memset = AstNode::variable(memset, 0..0);
+                    let obj = get_object(object_id).unwrap();
+                    let var = AstNode::variable(object_id, obj.token.clone());
+                    let zero = AstNode::i32_number(0, 0..0);
+                    let len = AstNode::i32_number(obj.ty.size().try_into().unwrap(), 0..0);
+                    let args = vec![var, zero, len];
+                    let call = AstNode::call(memset, args, obj.token.clone());
+                    let node = AstNode::expr_stmt(call, obj.token.clone());
+                    init.push(node);
                 },
                 InitData::Aggregate(data) => {
                     // todo: memcpy from const version
@@ -855,7 +863,7 @@ fn is_function(cursor: TokenSpan) -> bool {
         return ty.is_function();
     } else {
         // ????
-        return false;
+        panic!("cannot determine if function or not");
     }
 }
 
