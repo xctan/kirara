@@ -2,8 +2,14 @@ use std::{fmt::{Display, Debug}, collections::{HashMap, HashSet}};
 
 use super::{MachineOperand, RVGPR, MachineProgram, RV64Instruction, DataLiteral};
 
+impl Display for MachineProgram {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.print(f)
+    }
+}
+
 impl MachineProgram {
-    pub fn print(&self) {
+    pub fn print(&self, writer: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut counter = 0;
 
         for (_, f) in &self.funcs {
@@ -14,7 +20,7 @@ impl MachineProgram {
                 counter2
             };
 
-            println!("{}:", f.func);
+            writeln!(writer, "{}:", f.func)?;
 
             let mut bb_names = HashMap::new();
             for bb in f.bbs.iter() {
@@ -70,7 +76,7 @@ impl MachineProgram {
                 let bb = bbs[i];
                 let next_bb = bbs.get(i + 1);
                 if i != 0 {
-                    println!("{}:", bb_names[&bb]);
+                    writeln!(writer, "{}:", bb_names[&bb])?;
                 }
 
                 let mut iter = self.blocks[bb].insts_head;
@@ -94,16 +100,16 @@ impl MachineProgram {
                         _ => None,
                     };
                     if let Some((op, rs1, rs2, succ, fail)) = cond {
-                        println!("\tb{}\t{}, {}, {}", op, rs1, rs2, bb_names[&succ]);
+                        writeln!(writer, "\tb{}\t{}, {}, {}", op, rs1, rs2, bb_names[&succ])?;
                         if next_bb.is_none() || next_bb.is_some() && *next_bb.unwrap() != fail {
-                            println!("\tj\t{}", bb_names[&fail]);
+                            writeln!(writer, "\tj\t{}", bb_names[&fail])?;
                         }
                         continue;
                     }
 
                     if let RV64Instruction::JUMP { target } = inst.inst {
                         if next_bb.is_none() || next_bb.is_some() && *next_bb.unwrap() != target {
-                            println!("\tj\t{}", bb_names[&target]);
+                            writeln!(writer, "\tj\t{}", bb_names[&target])?;
                         }
                         continue;
                     }
@@ -113,33 +119,37 @@ impl MachineProgram {
                     // }
                     match inst.inst {
                         RV64Instruction::SEQ { rd, rs1, rs2 } => {
-                            println!("\txor\t{}, {}, {}", rd, rs1, rs2);
-                            println!("\tseqz\t{}", rd); // alias for sltiu rd, rd, 1
+                            writeln!(writer, "\txor\t{}, {}, {}", rd, rs1, rs2)?;
+                            writeln!(writer, "\tseqz\t{}", rd)?; // alias for sltiu rd, rd, 1
                         }
                         RV64Instruction::SNE { rd, rs1, rs2 } => {
-                            println!("\txor\t{}, {}, {}", rd, rs1, rs2);
-                            println!("\tsnez\t{}", rd); // alias for sltu rd, zero, rd
+                            writeln!(writer, "\txor\t{}, {}, {}", rd, rs1, rs2)?;
+                            writeln!(writer, "\tsnez\t{}", rd)?; // alias for sltu rd, zero, rd
                         }
                         RV64Instruction::SGE { rd, rs1, rs2 } => {
-                            println!("\tslt\t{}, {}, {}", rd, rs1, rs2);
-                            println!("\txori\t{}, {}, 1", rd, rd);
+                            writeln!(writer, "\tslt\t{}, {}, {}", rd, rs1, rs2)?;
+                            writeln!(writer, "\txori\t{}, {}, 1", rd, rd)?;
                         }
                         RV64Instruction::SGEU { rd, rs1, rs2 } => {
-                            println!("\tsltu\t{}, {}, {}", rd, rs1, rs2);
-                            println!("\txori\t{}, {}, 1", rd, rd);
+                            writeln!(writer, "\tsltu\t{}, {}, {}", rd, rs1, rs2)?;
+                            writeln!(writer, "\txori\t{}, {}, 1", rd, rd)?;
                         }
-                        _ => println!("\t{}", inst.inst),
+                        _ => {
+                            writeln!(writer, "\t{}", inst.inst)?;
+                        }
                     }
                 }
             }
         }
 
         for (s, d) in &self.symbols {
-            println!("{}:", s);
+            writeln!(writer, "{}:", s)?;
             for dd in d {
-                println!("\t{}", dd);
+                writeln!(writer, "\t{}", dd)?;
             }
         }
+
+        Ok(())
     }
 }
 

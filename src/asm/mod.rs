@@ -136,15 +136,15 @@ impl RVGPR {
         unsafe { std::mem::transmute::<u16, RVGPR>(i as u16) }
     }
 
-    pub fn is_caller_saved(&self) -> bool {
-        let id = unsafe { std::mem::transmute::<_, u16>(*self) };
-        // a0-a7
-        id >= 10 && id <= 17 ||
-        // t0-t2
-        id >= 5 && id <= 7 ||
-        // t3-t6
-        id >= 28 && id <= 31
-    }
+    // pub fn is_caller_saved(&self) -> bool {
+    //     let id = unsafe { std::mem::transmute::<_, u16>(*self) };
+    //     // a0-a7
+    //     id >= 10 && id <= 17 ||
+    //     // t0-t2
+    //     id >= 5 && id <= 7 ||
+    //     // t3-t6
+    //     id >= 28 && id <= 31
+    // }
 
     pub fn is_callee_saved(&self) -> bool {
         let id = unsafe { std::mem::transmute::<_, u16>(*self) };

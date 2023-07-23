@@ -369,12 +369,12 @@ impl Initializer {
         }
     }
 
-    pub fn as_array(&self) -> &[Initializer] {
-        match &self.data {
-            InitData::Aggregate(data) => data,
-            _ => unreachable!(),
-        }
-    }
+    // pub fn as_array(&self) -> &[Initializer] {
+    //     match &self.data {
+    //         InitData::Aggregate(data) => data,
+    //         _ => unreachable!(),
+    //     }
+    // }
 
     pub fn as_array_mut(&mut self) -> &mut [Initializer] {
         match &mut self.data {

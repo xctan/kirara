@@ -66,7 +66,7 @@ impl IrFuncBuilder<'_> {
     pub fn start_new_bb(&mut self) -> (BlockId, BlockId) {
         let old = self.cur_bb();
         let name = format!("{}", self.count());
-        println!("new bb: {}", name);
+        // println!("new bb: {}", name);
         let bb = self.unit.blocks.alloc(BasicBlock::new(name));
         self.bbs.push(bb);
         self.cur_bb = Some(bb);

@@ -105,10 +105,10 @@ impl EmitIr for AstNode {
             }
             AstNodeType::Unit => (),
             AstNodeType::IfStmt(ifs) => {
-                println!("if test");
+                // println!("if test");
                 let (tl, fl) = ifs.cond.emit_ir_logical(builder, ctx);
                 tl.iter().for_each(|item| item.backpatch(builder, builder.cur_bb()));
-                println!("if body");
+                // println!("if body");
                 ifs.then.emit_ir(builder, ctx);
                 let cur_bb = &builder.unit.blocks[builder.cur_bb()];
                 let (succ_last, fail) =
@@ -119,7 +119,7 @@ impl EmitIr for AstNode {
                         (None, builder.cur_bb())
                     };
                 fl.iter().for_each(|item| item.backpatch(builder, fail));
-                println!("if else");
+                // println!("if else");
                 ifs.els.emit_ir(builder, ctx);
                 let cur_bb = &builder.unit.blocks[builder.cur_bb()];
                 let (fail_last, finally) =
@@ -135,11 +135,11 @@ impl EmitIr for AstNode {
                 if let Some(fail_last) = fail_last {
                     builder.jump(finally).push_to(fail_last);
                 }
-                println!("if end");
+                // println!("if end");
             }
             AstNodeType::WhileStmt(whiles) => {
                 let cur_bb = &builder.unit.blocks[builder.cur_bb()];
-                println!("while test");
+                // println!("while test");
                 let test = if cur_bb.is_empty() {
                     builder.cur_bb()
                 } else {
@@ -147,7 +147,7 @@ impl EmitIr for AstNode {
                     builder.jump(b).push_to(a);
                     b
                 };
-                println!("while body");
+                // println!("while body");
                 if !matches!(whiles.cond.borrow().node, AstNodeType::I1Number(true)) {
                     let (tl, fl) = whiles.cond.emit_ir_logical(builder, ctx);
                     tl.iter().for_each(|item| item.backpatch(builder, builder.cur_bb()));
@@ -156,14 +156,14 @@ impl EmitIr for AstNode {
                     let fail =
                         if !cur_bb.is_empty() || cur_bb.is_labeled {
                             let (a, b) = builder.start_new_bb();
-                            println!("jump to test");
+                            // println!("jump to test");
                             builder.jump(test).push_to(a);
                             b
                         } else {
                             builder.cur_bb()
                         };
                     fl.iter().for_each(|item| item.backpatch(builder, fail));
-                    println!("while end");
+                    // println!("while end");
                 } else {
                     whiles.body.emit_ir(builder, ctx);
                     let cur_bb = &builder.unit.blocks[builder.cur_bb()];
@@ -174,7 +174,7 @@ impl EmitIr for AstNode {
                 }
             }
             AstNodeType::LabelStmt(labeled) => {
-                print!("label: {} ", labeled.label);
+                // print!("label: {} ", labeled.label);
                 let cur_bb = &builder.unit.blocks[builder.cur_bb()];
                 let labeled_bb = if cur_bb.is_empty() {
                     let bb = builder.cur_bb();
@@ -190,7 +190,7 @@ impl EmitIr for AstNode {
                 };
                 let labeled_bb = &mut builder.unit.blocks[labeled_bb];
                 labeled_bb.is_labeled = true;
-                println!("@ {}", labeled_bb.name);
+                // println!("@ {}", labeled_bb.name);
             }
             AstNodeType::GotoStmt(goto) => {
                 let j = builder.jump(builder.cur_bb()).push_only();

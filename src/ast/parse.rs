@@ -847,6 +847,9 @@ fn is_function(cursor: TokenSpan) -> bool {
     if let Ok(_) = ttag!(P(";"))(cursor) {
         return false;
     }
+    if let Ok(_) = ttag!(P(","))(cursor) {
+        return false;
+    }
 
     if let Ok((_, (ty, _))) = declarator((cursor.clone(), Type::void_type())) {
         return ty.is_function();
