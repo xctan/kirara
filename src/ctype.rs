@@ -247,6 +247,7 @@ pub enum BinaryOpType {
     Index,
     LogOr,
     LogAnd,
+    Xor,
 }
 
 impl Display for BinaryOpType {
@@ -263,6 +264,7 @@ impl Display for BinaryOpType {
             BinaryOpType::Le => "icmp sle",
             BinaryOpType::Gt => "icmp sgt",
             BinaryOpType::Ge => "icmp sge",
+            BinaryOpType::Xor => "xor",
             BinaryOpType::Assign |
             BinaryOpType::Index |
             BinaryOpType::LogOr |

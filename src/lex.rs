@@ -142,6 +142,7 @@ fn punctuation(input: &str) -> IResult<&str, Token> {
                 tag("["),
                 tag("]"),
                 tag(":"),
+                tag("!"),
             ))
         )),
         |s| Token(s, TokenType::Punctuation)

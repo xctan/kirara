@@ -253,21 +253,18 @@ impl<'a> AsmFuncBuilder<'a> {
                                         }
                                     }
                                 }
+                                ConstantValue::I1(i) => {
+                                    match b.op {
+                                        BinaryOpType::Xor => {
+                                            emit!(XORI dst, mo_lhs, i as i32);
+                                        }
+                                        _ => unimplemented!(),
+                                    }
+                                }
                                 _ => unimplemented!(),
                             }
                         } else {
-                            let mo_rhs = if val_rhs.value.is_constant() {
-                                match *val_rhs.value.as_constant() {
-                                    ConstantValue::I32(i) => {
-                                        let reg = self.new_vreg();
-                                        emit!(LIMM reg, i);
-                                        reg
-                                    }
-                                    _ => unimplemented!(),
-                                }
-                            } else {
-                                self.resolve(b.rhs, mbb)
-                            };
+                            let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
                             if let Some(minst_id) = self.prog.vreg_def.get(&mo_rhs) {
                                 self.prog.mark_inline(*minst_id, false);
                             }
@@ -313,6 +310,9 @@ impl<'a> AsmFuncBuilder<'a> {
                                         BinaryOpType::Ge => {
                                             // !(lhs < rhs)
                                             emit!(SGE dst, mo_lhs, mo_rhs);
+                                        }
+                                        BinaryOpType::Xor => {
+                                            emit!(XOR dst, mo_lhs, mo_rhs);
                                         }
                                         _ => unimplemented!(),
                                     }
@@ -867,6 +867,7 @@ fn is_i_type(op: BinaryOpType) -> bool {
     match op {
         BinaryOpType::Add | 
         BinaryOpType::Sub |
+        BinaryOpType::Xor |
         BinaryOpType::Ne |
         BinaryOpType::Eq |
         BinaryOpType::Lt |

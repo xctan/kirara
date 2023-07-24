@@ -28,7 +28,10 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             ast_type_check(expr.clone());
             let common_ty = match op {
                 UnaryOpType::LogNot => Type::i1_type(),
-                UnaryOpType::Neg => expr.borrow().ty.clone().unwrap(),
+                UnaryOpType::Neg => Type::get_common_type(
+                    expr.borrow().ty.clone().unwrap(),
+                    Type::i32_type(),
+                ),
             };
             let expr_new = ast_gen_convert(expr.clone(), common_ty.clone());
             let mut expr_mut = expr.borrow_mut();

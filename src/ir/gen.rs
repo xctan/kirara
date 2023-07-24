@@ -247,10 +247,14 @@ impl EmitIrExpr for AstNodeType {
                                 let zero = builder.const_i32(0);
                                 builder.binary(BinaryOpType::Sub, zero, expr).push()
                             }
-                            _ => unimplemented!(),
+                            _ => unimplemented!("unary op {:?}, ty {}", op, ty),
                         }
                     },
-                    _ => unimplemented!(),
+                    UnaryOpType::LogNot => {
+                        let one = builder.const_i1(true);
+                        builder.binary(BinaryOpType::Xor, expr, one).push()
+                    }
+                    // _ => unimplemented!("unary op {:?}, ty {}", op, ty),
                 }
             }
             AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op }) => {

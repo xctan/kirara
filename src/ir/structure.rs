@@ -360,6 +360,7 @@ impl TransUnit {
             | BinaryOpType::Mul
             | BinaryOpType::Div
             | BinaryOpType::Mod
+            | BinaryOpType::Xor
             | BinaryOpType::Assign => {
                 let lhs = self.values.get(lhs).unwrap();
                 lhs.ty().remove_cv()
