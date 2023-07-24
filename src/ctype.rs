@@ -9,7 +9,6 @@ pub enum TypeKind {
     Ptr(Rc<Type>),
     Func(Func),
     Array(Array),
-    Const(Rc<Type>),
 }
 
 #[derive(Debug, Clone)]
@@ -17,18 +16,31 @@ pub struct Type {
     pub kind: TypeKind,
     pub size: isize,
     pub align: usize,
+    pub is_const: bool,
 }
 
 thread_local! {
     static TYPES: RefCell<Vec<Rc<Type>>> = RefCell::new(vec![]);
 
-    static VOID_TYPE: Rc<Type> = Rc::new(Type{kind: TypeKind::Void, size: 0, align: 0});
-    static I1_TYPE: Rc<Type> = Rc::new(Type{kind: TypeKind::I1, size: 1, align: 1});
-    static I32_TYPE: Rc<Type> = Rc::new(Type{kind: TypeKind::I32, size: 4, align: 4});
-    static I64_TYPE: Rc<Type> = Rc::new(Type{kind: TypeKind::I64, size: 8, align: 8});
+    static VOID_TYPE: Rc<Type> = Type::new(TypeKind::Void, 0, 0);
+    static I1_TYPE: Rc<Type> = Type::new(TypeKind::I1, 1, 1);
+    static I32_TYPE: Rc<Type> = Type::new(TypeKind::I32, 4, 4);
+    static I64_TYPE: Rc<Type> = Type::new(TypeKind::I64, 8, 8);
 }
 
 impl Type {
+    pub fn new(kind: TypeKind, size: isize, align: usize) -> Rc<Type> {
+        let ty = Rc::new(Type{kind, size, align, is_const: false});
+        // TYPES.with(|t| t.borrow_mut().push(ty.clone()));
+        ty
+    }
+
+    pub fn new_const(kind: TypeKind, size: isize, align: usize) -> Rc<Type> {
+        let ty = Rc::new(Type{kind, size, align, is_const: true});
+        // TYPES.with(|t| t.borrow_mut().push(ty.clone()));
+        ty
+    }
+
     pub fn size(&self) -> isize {
         self.size
     }
@@ -77,7 +89,7 @@ impl Type {
     }
 
     pub fn is_const(&self) -> bool {
-        matches!(self.kind, TypeKind::Const(_))
+        self.is_const
     }
 
     pub fn void_type() -> Rc<Type> {
@@ -98,26 +110,26 @@ impl Type {
 
     #[allow(unused)]
     pub fn ptr_to(ty: Rc<Type>) -> Rc<Type> {
-        let ty = Rc::new(Type{kind: TypeKind::Ptr(ty), size: 8, align: 8});
+        let ty = Type::new(TypeKind::Ptr(ty), 8, 8);
         // TYPES.with(|t| t.borrow_mut().push(ty.clone()));
         ty
     }
 
     pub fn func_type(ret_type: Rc<Type>, params: Vec<(String, Rc<Type>)>) -> Rc<Type> {
-        let ty = Rc::new(Type{kind: TypeKind::Func(Func { ret_type, params }), size: 1, align: 1});
+        let ty = Type::new(TypeKind::Func(Func { ret_type, params }), 1, 1);
         // TYPES.with(|t| t.borrow_mut().push(ty.clone()));
         ty
     }
 
     pub fn array_of(ty: Rc<Type>, size: isize) -> Rc<Type> {
-        let ty = Rc::new(Type{kind: TypeKind::Array(Array { base_type: ty.clone(), len: size }), size: ty.size() * size as isize, align: ty.align()});
+        // negative len is reserved for flexible array member
+        let ty = Type::new(TypeKind::Array(Array { base_type: ty.clone(), len: size }), ty.size() * size as isize, ty.align());
         // TYPES.with(|t| t.borrow_mut().push(ty.clone()));
         ty
     }
 
     pub fn const_of(ty: Rc<Type>) -> Rc<Type> {
-        assert!(!matches!(ty.kind, TypeKind::Const(_)));
-        let ty = Rc::new(Type{kind: TypeKind::Const(ty.clone()), size: ty.size(), align: ty.align()});
+        let ty = Type::new_const(ty.kind.clone(), ty.size(), ty.align());
         // TYPES.with(|t| t.borrow_mut().push(ty.clone()));
         ty
     }
@@ -167,32 +179,6 @@ impl Display for Type {
             TypeKind::Array(arr) => {
                 write!(f, "[{} x {}]", arr.len, arr.base_type)
             },
-            TypeKind::Const(ty) => {
-                write!(f, "{}", ty)
-            },
-        }
-    }
-}
-
-pub trait TypePtrHelper {
-    fn get_nocv(&self) -> Rc<Type>;
-
-    fn remove_cv(&self) -> Rc<Type>;
-}
-
-impl TypePtrHelper for Rc<Type> {
-    fn get_nocv(&self) -> Rc<Type> {
-        match &self.kind {
-            TypeKind::Const(ty) => ty.clone(),
-            _ => self.clone(),
-        }
-    }
-
-    fn remove_cv(&self) -> Rc<Type> {
-        match &self.kind {
-            TypeKind::Const(ty) => ty.clone(),
-            TypeKind::Array(arr) => Type::array_of(arr.base_type.remove_cv(), arr.len),
-            _ => self.clone(),
         }
     }
 }
@@ -205,8 +191,6 @@ impl TypePtrCompare for Rc<Type> {
     fn is_same_as(&self, other: &Self) -> bool {
         if self.is_ptr() && other.is_ptr() {
             self.base_type().is_same_as(&other.base_type())
-        } else if self.is_const() && other.is_const() {
-            self.get_nocv().is_same_as(&other.get_nocv())
         } else {
             matches!(
                 (&self.kind, &other.kind), 

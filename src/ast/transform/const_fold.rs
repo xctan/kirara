@@ -22,7 +22,7 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::Variable(var) => {
             let variable = get_object(var).unwrap();
             let var_ty = variable.ty.clone();
-            if let TypeKind::Const(_ty) = var_ty.kind.clone() {
+            if var_ty.is_const {
                 // sysy extension: const variable can be evaluated at compile time
                 let mut init = match variable.data.clone() {
                     AstObjectType::Var(init) => init,
@@ -49,7 +49,9 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
             }
         }
         AstNodeType::UnaryOp(UnaryOp { expr, op }) => {
+            // println!("{expr:#?}");
             ast_const_fold(expr.clone());
+            // println!("{expr:#?}");
             match expr.borrow().node.clone() {
                 AstNodeType::I1Number(num) => {
                     let num = match op {
@@ -160,7 +162,7 @@ pub fn eval(tree: Rc<RefCell<AstNode>>) -> Option<isize> {
         AstNodeType::Variable(var) => {
             let variable = get_object(var).unwrap();
             let var_ty = variable.ty.clone();
-            if let TypeKind::Const(_ty) = var_ty.kind.clone() {
+            if var_ty.is_const {
                 // sysy extension: const variable can be evaluated at compile time
                 let mut init = match variable.data.clone() {
                     AstObjectType::Var(init) => init,

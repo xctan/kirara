@@ -421,7 +421,7 @@ impl<'a> AsmFuncBuilder<'a> {
                         emit!(RET);
                     },
                     InstructionValue::Branch(b) => {
-                        let cond_reg = self.resolve(b.cond, mbb);
+                        let cond_reg = self.resolve_ensure_reg(b.cond, mbb);
                         if let Some(cond_id) = self.prog.vreg_def.get(&cond_reg) {
                             let cond_inst = self.prog.insts[*cond_id].inst.clone();
                             match cond_inst {

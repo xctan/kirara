@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
     ast::*,
-    ctype::{BinaryOpType, Type, TypePtrHelper, TypeKind, UnaryOpType},
+    ctype::{BinaryOpType, Type, TypeKind, UnaryOpType},
 };
 
 pub trait EmitIr {
@@ -225,7 +225,7 @@ impl EmitIrExpr for AstNodeType {
             AstNodeType::I32Number(num) => builder.const_i32(*num),
             AstNodeType::Convert(Convert { from, to }) => {
                 let from_id = from.emit_ir_expr(builder, ctx);
-                match (&from.borrow().ty.clone().unwrap().get_nocv().kind, &to.kind) {
+                match (&from.borrow().ty.clone().unwrap().kind, &to.kind) {
                     (TypeKind::I32, TypeKind::I1) => {
                         let zero = builder.const_i32(0);
                         builder.binary(BinaryOpType::Ne, from_id, zero).push()

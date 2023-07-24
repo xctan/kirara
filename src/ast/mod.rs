@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{alloc::{Arena, Id}, ctype::{TypeKind, TypePtrHelper}};
+use crate::{alloc::{Arena, Id}, ctype::TypeKind};
 
 pub(in crate::ast) mod context;
 pub mod parse;
@@ -106,6 +106,13 @@ impl AstNode {
             ty: None,
         }
     }
+
+    // pub fn is_immediate(&self) -> bool {
+    //     match self.node {
+    //         AstNodeType::I1Number(_) | AstNodeType::I32Number(_) | AstNodeType::I64Number(_) => true,
+    //         _ => false,
+    //     }
+    // }
 
     pub fn i32_number(val: i32, token: TokenRange) -> Rc<RefCell<Self>> {
         let node = Self::new(AstNodeType::I32Number(val), token);
@@ -322,7 +329,7 @@ pub struct Initializer {
 
 impl Initializer {
     pub fn new(ty: Rc<Type>) -> Self {
-        let data = match ty.get_nocv().kind.clone() {
+        let data = match ty.kind.clone() {
             // scalar
             TypeKind::I1 |
             TypeKind::I32 |
@@ -336,7 +343,7 @@ impl Initializer {
                 }
                 InitData::Aggregate(data)
             }
-            _ => unimplemented!("unknown initializer type: {:?}", ty.get_nocv().kind),
+            _ => unimplemented!("unknown initializer type: {:?}", ty.kind),
         };
         Self { ty, data }
     }

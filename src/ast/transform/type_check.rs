@@ -1,6 +1,6 @@
 use std::{rc::Rc, cell::RefCell};
 
-use crate::{ast::*, ctype::{Type, TypePtrCompare, TypePtrHelper}};
+use crate::{ast::*, ctype::{Type, TypePtrCompare}};
 
 use super::AstTransformPass;
 
@@ -25,6 +25,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             to
         },
         AstNodeType::UnaryOp(UnaryOp { expr, op }) => {
+            // println!("+unary {op:?} {expr:#?}");
             ast_type_check(expr.clone());
             let common_ty = match op {
                 UnaryOpType::LogNot => Type::i1_type(),
@@ -38,6 +39,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             expr_mut.node = expr_new;
             expr_mut.ty = Some(common_ty.clone());
             drop(expr_mut);
+            // println!("-unary {op:?} {expr:#?}");
             match op {
                 UnaryOpType::LogNot => Type::i1_type(),
                 UnaryOpType::Neg => common_ty,
@@ -54,8 +56,8 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             let common_ty = match op {
                 BinaryOpType::LogAnd | BinaryOpType::LogOr => Type::i1_type(),
                 _ => Type::get_common_type(
-                    lhs.borrow().ty.clone().unwrap().get_nocv(),
-                    rhs.borrow().ty.clone().unwrap().get_nocv(),
+                    lhs.borrow().ty.clone().unwrap(),
+                    rhs.borrow().ty.clone().unwrap(),
                 )
             };
             let lhs_new = ast_gen_convert(lhs.clone(), common_ty.clone());
@@ -81,7 +83,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
                 BinaryOpType::Gt => Type::i1_type(),
                 BinaryOpType::Ge => Type::i1_type(),
                 BinaryOpType::Assign => {
-                    if lhs.borrow().ty.clone().unwrap().is_same_as(&rhs.borrow().ty.clone().unwrap().get_nocv()) ||
+                    if lhs.borrow().ty.clone().unwrap().is_same_as(&rhs.borrow().ty.clone().unwrap()) ||
                         lhs.borrow().ty.clone().unwrap().is_same_as(&rhs.borrow().ty.clone().unwrap())
                     {
                         lhs.borrow().ty.clone().unwrap().clone()
@@ -164,14 +166,11 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
 }
 
 fn ast_gen_convert(from: Rc<RefCell<AstNode>>, to: Rc<Type>) -> AstNodeType {
-    if from.borrow().ty.clone().unwrap().is_const() {
-        return from.borrow().node.clone();
-    }
-
     if from.borrow().ty.clone().unwrap().is_same_as(&to) {
         return from.borrow().node.clone();
     }
 
     let from = Rc::new(RefCell::new((*from.borrow()).clone()));
-    AstNode::convert(from, to, 0..0).borrow().node.clone()
+    let token = from.borrow().token.clone();
+    AstNode::convert(from, to, token).borrow().node.clone()
 }
