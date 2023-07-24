@@ -54,8 +54,8 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             let common_ty = match op {
                 BinaryOpType::LogAnd | BinaryOpType::LogOr => Type::i1_type(),
                 _ => Type::get_common_type(
-                    lhs.borrow().ty.clone().unwrap().clone(),
-                    rhs.borrow().ty.clone().unwrap().clone(),
+                    lhs.borrow().ty.clone().unwrap().get_nocv(),
+                    rhs.borrow().ty.clone().unwrap().get_nocv(),
                 )
             };
             let lhs_new = ast_gen_convert(lhs.clone(), common_ty.clone());

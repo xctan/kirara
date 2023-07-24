@@ -532,8 +532,8 @@ impl RV64Instruction {
             let uses: Vec<_> = (0..usize::min(8, *params))
                 .map(|i| MachineOperand::PreColored(RVGPR::a(i)))
                 .collect();
-            let defs: Vec<_> = (0..7).map(|i| MachineOperand::PreColored(RVGPR::a(i)))
-                .chain((0..6).map(|i| MachineOperand::PreColored(RVGPR::t(i))))
+            let defs: Vec<_> = (0..=7).map(|i| MachineOperand::PreColored(RVGPR::a(i)))
+                .chain((0..=6).map(|i| MachineOperand::PreColored(RVGPR::t(i))))
                 .collect();
             return (defs, uses);
         }
@@ -608,24 +608,16 @@ macro_rules! builder_impl_rv64 {
         #[allow(non_snake_case)]
         #[allow(unused)]
         pub fn $mnemonic(rd: MachineOperand, rs1: MachineOperand, imm: i32) -> RV64Instruction {
-            // check if imm is a 12-bit signed integer
-            if imm < 4096 && imm >= -4096 {
-                RV64Instruction::$mnemonic { rd, rs1, imm }
-            } else {
-                panic!("immediate value out of range");
-            }
+            // skiping range check to encode %pcrel_hi %perel_lo
+            RV64Instruction::$mnemonic { rd, rs1, imm }
         }
     };
     (s; $mnemonic:ident) => {
         #[allow(non_snake_case)]
         #[allow(unused)]
         pub fn $mnemonic(rs2: MachineOperand, rs1: MachineOperand, imm: i32) -> RV64Instruction {
-            // check if imm is a 12-bit signed integer
-            if imm < 4096 && imm >= -4096 {
-                RV64Instruction::$mnemonic { rs1, rs2, imm }
-            } else {
-                panic!("immediate value out of range")
-            }
+            // same as above
+            RV64Instruction::$mnemonic { rs1, rs2, imm }
         }
     };
     (cj; $mnemonic:ident) => {
@@ -644,12 +636,7 @@ impl RV64InstBuilder {
 
     #[allow(non_snake_case)]
     pub fn LUI(rd: MachineOperand, imm: i32) -> RV64Instruction {
-        // check if imm is a 20-bit signed integer
-        if imm < 1048576 && imm >= -1048576 {
-            RV64Instruction::LUI { rd, imm }
-        } else {
-            panic!("immediate value out of range")
-        }
+        RV64Instruction::LUI { rd, imm }
     }
 
     #[allow(non_snake_case, unused)]

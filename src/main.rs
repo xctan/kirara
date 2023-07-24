@@ -79,7 +79,7 @@ fn main() {
     asm.setup_stack();
     
     if args.output == "-" {
-        println!("{}", asm);
+        print!("{}", asm);
     } else {
         std::fs::write(&args.output, asm.to_string()).unwrap();
     }

@@ -144,6 +144,8 @@ impl MachineProgram {
                     }
                 }
             }
+
+            writeln!(writer)?;
         }
 
         for (s, d) in &self.symbols {
@@ -154,6 +156,7 @@ impl MachineProgram {
             for dd in d {
                 writeln!(writer, "\t{}", dd)?;
             }
+            writeln!(writer)?;
         }
 
         Ok(())

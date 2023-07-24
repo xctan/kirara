@@ -384,12 +384,21 @@ impl<'a> AsmFuncBuilder<'a> {
                         }
                         let object_begin = mfunc.stack_size;
                         mfunc.stack_size += object_size;
+                        // FIXME: sp changed if any register is spilled, so offset should be fixed later
                         if is_imm12(object_begin as i32) {
                             emit!(ADDI dst, pre!(sp), object_begin as i32);
                         } else {
                             emit!(LIMM dst, object_begin as i32);
                             emit!(ADD dst, pre!(sp), dst);
                         }
+                        // // alternative stack layout
+                        // if is_imm12(-(mfunc.stack_size as i32) - 16) {
+                        //     emit!(ADDI dst, pre!(fp), -(mfunc.stack_size as i32) - 16);
+                        // } else {
+                        //     emit!(LIMM dst, -(mfunc.stack_size as i32) - 16);
+                        //     emit!(ADD dst, pre!(fp), dst);
+                        // }
+                        // self.used_regs.insert(RVGPR::fp());
                     },
                     InstructionValue::Return(r) => {
                         if let Some(val) = r.value {
@@ -446,7 +455,12 @@ impl<'a> AsmFuncBuilder<'a> {
                     InstructionValue::Jump(j) => {
                         emit!(JUMP self.bb_map[&j.succ]);
                     },
-                    InstructionValue::Zext(_) => (),
+                    InstructionValue::Zext(c) => {
+                        // todo: this should be a general conversion instruction!
+                        let dst = self.resolve(inst, mbb);
+                        let val = self.resolve_ensure_reg(c.value, mbb);
+                        emit!(MV dst, val);
+                    },
                     InstructionValue::Phi(_) => (),
                     InstructionValue::GetElemPtr(g) => {
                         let dst = self.resolve(inst, mbb);
@@ -711,7 +725,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     ConstantValue::I1(i) => {
                         if i {
                             let reg = self.new_vreg();
-                            self.prog.push_to_begin(_mbb, RV64InstBuilder::LIMM(reg, i as i32));
+                            self.prog.push_to_end(_mbb, RV64InstBuilder::LIMM(reg, i as i32));
                             reg
                         } else {
                             pre!(zero)
@@ -720,7 +734,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     ConstantValue::I32(i) => {
                         if i != 0 {
                             let reg = self.new_vreg();
-                            self.prog.push_to_begin(_mbb, RV64InstBuilder::LIMM(reg, i));
+                            self.prog.push_to_end(_mbb, RV64InstBuilder::LIMM(reg, i));
                             reg
                         } else {
                             pre!(zero)
@@ -797,8 +811,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     self.val_map[&val]
                 } else {
                     let res = self.type_to_reg(value.ty());
-                    let entry = self.bb_map[&self.unit.funcs[self.name.as_str()].entry_bb];
-                    self.prog.push_to_begin(entry, RV64InstBuilder::LADDR(res, g.name.clone()));
+                    self.prog.push_to_end(_mbb, RV64InstBuilder::LADDR(res, g.name.clone()));
 
                     self.val_map.insert(val, res);
                     res
