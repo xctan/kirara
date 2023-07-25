@@ -276,12 +276,14 @@ impl LoopInfo {
             if sub.borrow().header() == this {
                 if sub.borrow().parent.upgrade().is_none() {
                     self.loops.push(sub.clone());
+                    sub.borrow_mut().blocks[1..].reverse();
+                    sub.borrow_mut().sub_loops.reverse();
                 } else {
                     sub.borrow().parent.upgrade().unwrap().borrow_mut().sub_loops.push(sub.clone());
+                    sub.borrow_mut().blocks[1..].reverse();
+                    sub.borrow_mut().sub_loops.reverse();
+                    sub = sub.clone().borrow().parent.upgrade().unwrap();
                 }
-                sub.borrow_mut().blocks[1..].reverse();
-                sub.borrow_mut().sub_loops.reverse();
-                sub = sub.clone().borrow().parent.upgrade().unwrap();
             }
             loop {
                 sub.borrow_mut().blocks.push(this);
