@@ -74,6 +74,10 @@ function compile_test_case() {
     echo "Done"
 }
 
+function file_ends_with_newline() {
+    [[ $(tail -c1 "$1" | wc -l) -gt 0 ]]
+}
+
 function run_test_case() {
     _suite=$1
     _case=$2
@@ -92,10 +96,10 @@ function run_test_case() {
     fi
     # read from _output
     _exit_code=$?
-    _raw=$(cat $_output)
-    # check if _raw is empty
-    if [ ! -z "$_raw" ]; then
-        echo $_raw > $_output # ensure there is a newline at the end
+    if ! file_ends_with_newline $_output; then
+        if [[ ! -z $(cat $_output) ]]; then
+            echo >> $_output
+        fi
     fi
     echo $_exit_code >> $_output
 
