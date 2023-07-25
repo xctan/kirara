@@ -73,6 +73,16 @@ impl IrFuncBuilder<'_> {
         (old, bb)
     }
 
+    pub fn start_new_named_bb(&mut self, name: &str) -> (BlockId, BlockId) {
+        let old = self.cur_bb();
+        let name = format!("{}.{}", name, self.count());
+        // println!("new bb: {}", name);
+        let bb = self.unit.blocks.alloc(BasicBlock::new(name));
+        self.bbs.push(bb);
+        self.cur_bb = Some(bb);
+        (old, bb)
+    }
+
     /// insert at end of bb
     pub fn push_at(&mut self, bb: BlockId, value: ValueId, track: bool) {
         // track preds of bb
@@ -226,5 +236,7 @@ impl BackPatchItem {
         }
         let inst_bb = builder.unit.inst_bb.get(&self.branch).unwrap();
         builder.add_predecessor(bb, *inst_bb);
+        let target_bb = builder.unit.blocks.get_mut(bb).unwrap();
+        target_bb.is_labeled = true;
     }
 }

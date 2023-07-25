@@ -685,6 +685,7 @@ pub struct MachineInst {
 
 pub struct MachineBB {
     pub bb: BlockId,
+    pub name: String,
     pub insts_head: Option<Id<MachineInst>>,
     pub insts_tail: Option<Id<MachineInst>>,
     pub preds: Vec<Id<MachineBB>>,
@@ -697,9 +698,10 @@ pub struct MachineBB {
 }
 
 impl MachineBB {
-    pub fn new(bb: BlockId) -> Self {
+    pub fn new(bb: BlockId, name: &str) -> Self {
         Self {
             bb,
+            name: String::from(name),
             insts_head: None,
             insts_tail: None,
             preds: Vec::new(),

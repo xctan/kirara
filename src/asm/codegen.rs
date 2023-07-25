@@ -94,7 +94,8 @@ impl<'a> AsmFuncBuilder<'a> {
         // 1. create machine bb as per ir bb
         let irfunc = self.unit.funcs[self.name.as_str()].clone();
         for bb in &irfunc.bbs {
-            let mbb = self.prog.blocks.alloc(MachineBB::new(*bb));
+            let block = &self.unit.blocks[*bb];
+            let mbb = self.prog.blocks.alloc(MachineBB::new(*bb, &block.name));
             self.bb_map.insert(*bb, mbb);
             mfunc.bbs.push(mbb);
         }
@@ -163,8 +164,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                             }
                                             BinaryOpType::Ne => {
                                                 if eliminate_cmp {
-                                                    let tmp = self.new_vreg();
-                                                    emit!(LIMM tmp, i);
+                                                    let tmp = self.resolve_ensure_reg(b.rhs, mbb);
                                                     emit!(SNE dst, mo_lhs, tmp);
                                                 } else {
                                                     emit!(XORI dst, mo_lhs, i);
@@ -173,8 +173,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                             }
                                             BinaryOpType::Eq => {
                                                 if eliminate_cmp {
-                                                    let tmp = self.new_vreg();
-                                                    emit!(LIMM tmp, i);
+                                                    let tmp = self.resolve_ensure_reg(b.rhs, mbb);
                                                     emit!(SEQ dst, mo_lhs, tmp);
                                                 } else {
                                                     emit!(XORI dst, mo_lhs, i);
@@ -183,27 +182,23 @@ impl<'a> AsmFuncBuilder<'a> {
                                             }
                                             BinaryOpType::Lt => {
                                                 if eliminate_cmp {
-                                                    let tmp = self.new_vreg();
-                                                    emit!(LIMM tmp, i);
+                                                    let tmp = self.resolve_ensure_reg(b.rhs, mbb);
                                                     emit!(SLT dst, mo_lhs, tmp);
                                                 } else {
                                                     emit!(SLTI dst, mo_lhs, i);
                                                 }
                                             }
                                             BinaryOpType::Le => {
-                                                let tmp = self.new_vreg();
-                                                emit!(LIMM tmp, i);
+                                                let tmp = self.resolve_ensure_reg(b.rhs, mbb);
                                                 emit!(SGE dst, tmp, mo_lhs);
                                             }
                                             BinaryOpType::Gt => {
-                                                let tmp = self.new_vreg();
-                                                emit!(LIMM tmp, i);
+                                                let tmp = self.resolve_ensure_reg(b.rhs, mbb);
                                                 emit!(SLT dst, tmp, mo_lhs);
                                             }
                                             BinaryOpType::Ge => {
                                                 if eliminate_cmp {
-                                                    let tmp = self.new_vreg();
-                                                    emit!(LIMM tmp, i);
+                                                    let tmp = self.resolve_ensure_reg(b.rhs, mbb);
                                                     emit!(SGE dst, mo_lhs, tmp);
                                                 } else {
                                                     emit!(SLTI dst, mo_lhs, i);
@@ -214,9 +209,9 @@ impl<'a> AsmFuncBuilder<'a> {
                                         }
                                     } else {
                                         // fallback to register
-                                        let tmp = self.new_vreg();
                                         match b.op {
                                             BinaryOpType::Add | BinaryOpType::Sub => {
+                                                let tmp = self.new_vreg();
                                                 let (hi, lo) = split_imm32(i);
                                                 emit!(LUI tmp, hi);
                                                 emit!(ADDIW tmp, tmp, lo);
@@ -224,7 +219,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                             }
                                             _ => {}
                                         }
-                                        emit!(LIMM tmp, i);
+                                        let tmp = self.resolve_ensure_reg(b.rhs, mbb);
                                         match b.op {
                                             BinaryOpType::Ne => {
                                                 // emit!(XOR dst, mo_lhs, tmp);
@@ -313,7 +308,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                         _ => unimplemented!(),
                                     }
                                 }
-                                _ => unimplemented!(),
+                                _ => unimplemented!("binop, type: {:?}", b.ty()),
                             }
                         }
                     },
@@ -322,7 +317,7 @@ impl<'a> AsmFuncBuilder<'a> {
                             TypeKind::I32 => RV64InstBuilder::LW,
                             TypeKind::I64 => RV64InstBuilder::LD,
                             TypeKind::Ptr(_) => RV64InstBuilder::LD,
-                            _ => unimplemented!(),
+                            _ => unimplemented!("load type: {:?}", l.ty),
                         };
 
                         let ptr = self.resolve(l.ptr, mbb);
@@ -344,7 +339,7 @@ impl<'a> AsmFuncBuilder<'a> {
                             TypeKind::I32 => RV64InstBuilder::SW,
                             TypeKind::I64 => RV64InstBuilder::SD,
                             TypeKind::Ptr(_) => RV64InstBuilder::SD,
-                            _ => unimplemented!(),
+                            _ => unimplemented!("store type: {:?}", val.ty()),
                         };
 
                         let ptr = self.resolve(s.ptr, mbb);
@@ -806,8 +801,9 @@ impl<'a> AsmFuncBuilder<'a> {
                 if self.val_map.contains_key(&val) {
                     self.val_map[&val]
                 } else {
+                    let entry = self.bb_map[&self.unit.funcs[self.name.as_str()].entry_bb];
                     let res = self.type_to_reg(value.ty());
-                    self.prog.push_to_end(_mbb, RV64InstBuilder::LADDR(res, g.name.clone()));
+                    self.prog.push_to_begin(entry, RV64InstBuilder::LADDR(res, g.name.clone()));
 
                     self.val_map.insert(val, res);
                     res

@@ -1,22 +1,23 @@
 use std::io::Read;
 use clap::Parser;
+use lazy_static::lazy_static;
 
 #[derive(Parser, Default, Debug)]
-struct Arguments {
+pub struct Arguments {
     #[clap(short, long)]
     /// Dump every intermediate representation
-    dump: bool,
+    pub dump: bool,
     #[clap(short = 'O', default_value = "0")]
     /// Optimization level
-    optimize: String,
+    pub optimize: String,
     /// Input file
-    input: String,
+    pub input: String,
     /// Output file
     #[clap(short, long, default_value = "-")]
-    output: String,
+    pub output: String,
     /// Frontend language
     #[clap(short = 'x', long, default_value = "sysy")]
-    language: String,
+    pub language: String,
 }
 
 mod alloc;
@@ -32,25 +33,28 @@ use crate::{
     ir::IrPass,
 };
 
+lazy_static!{
+    pub static ref ARGS: Arguments = Arguments::parse();
+}
+
 fn main() {
-    let args = Arguments::parse();
     macro_rules! debug {
         ($act:expr) => {
-            if args.dump {
+            if ARGS.dump {
                 $act
             }
         };
     }
 
-    let mut input = if args.language == "sysy" {
+    let mut input = if ARGS.language == "sysy" {
         include_str!("defs.h").to_owned()
     } else {
         String::new()
     };
-    if args.input == "-" {
+    if ARGS.input == "-" {
         std::io::stdin().read_to_string(&mut input).unwrap();
     } else {
-        input.push_str(&std::fs::read_to_string(&args.input).unwrap());
+        input.push_str(&std::fs::read_to_string(&ARGS.input).unwrap());
     }
 
     let tokens = tokenize(input.as_str()).unwrap().1;
@@ -66,7 +70,7 @@ fn main() {
     debug!(unit.print());
 
     ir::opt::canonicalize::Canonicalize::run(&mut unit);
-    if args.optimize != "0" {
+    if ARGS.optimize != "0" {
         ir::opt::mem2reg::Mem2Reg::run(&mut unit);
         ir::opt::canonicalize::Canonicalize::run(&mut unit);
     }
@@ -78,9 +82,9 @@ fn main() {
     asm.simplify();
     asm.setup_stack();
     
-    if args.output == "-" {
+    if ARGS.output == "-" {
         print!("{}", asm);
     } else {
-        std::fs::write(&args.output, asm.to_string()).unwrap();
+        std::fs::write(&ARGS.output, asm.to_string()).unwrap();
     }
 }

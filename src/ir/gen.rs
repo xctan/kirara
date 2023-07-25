@@ -138,12 +138,13 @@ impl EmitIr for AstNode {
                 // println!("if end");
             }
             AstNodeType::WhileStmt(whiles) => {
+                let counter = builder.count();
                 let cur_bb = &builder.unit.blocks[builder.cur_bb()];
                 // println!("while test");
                 let test = if cur_bb.is_empty() {
                     builder.cur_bb()
                 } else {
-                    let (a, b) = builder.start_new_bb();
+                    let (a, b) = builder.start_new_named_bb(&format!("while_begin_{counter}"));
                     builder.jump(b).push_to(a);
                     b
                 };
@@ -155,7 +156,7 @@ impl EmitIr for AstNode {
                     let cur_bb = &builder.unit.blocks[builder.cur_bb()];
                     let fail =
                         if !cur_bb.is_empty() || cur_bb.is_labeled {
-                            let (a, b) = builder.start_new_bb();
+                            let (a, b) = builder.start_new_named_bb(&format!("while_end_{counter}"));
                             // println!("jump to test");
                             builder.jump(test).push_to(a);
                             b
@@ -275,7 +276,11 @@ impl EmitIrExpr for AstNodeType {
                     } else {
                         unreachable!("index on non-array: {:?}", lhs.borrow().clone().ty.unwrap());
                     };
-                    builder.load(addr).push()
+                    if lhs.borrow().ty.clone().unwrap().base_type().is_array() {
+                        addr
+                    } else {
+                        builder.load(addr).push()
+                    }
                 } else if matches!(op, &BinaryOpType::LogAnd | &BinaryOpType::LogOr) {
                     self.emit_ir_logical_as_value(builder, ctx)
                 } else {
@@ -286,11 +291,11 @@ impl EmitIrExpr for AstNodeType {
             }
             AstNodeType::Variable(var) => {
                 let var = ctx.get_object(*var).unwrap();
-                if var.ty.is_array() {
-                    var.ir_value.unwrap()
-                } else {
-                    let val = var.ir_value.unwrap();
+                let val = var.ir_value.unwrap();
+                if !var.ty.is_array() {
                     builder.load(val).push()
+                } else {
+                    val
                 }
             }
             AstNodeType::FunCall(func) => {
