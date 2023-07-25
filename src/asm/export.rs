@@ -124,11 +124,11 @@ impl MachineProgram {
                     match inst.inst {
                         RV64Instruction::SEQ { rd, rs1, rs2 } => {
                             writeln!(writer, "\txor\t{}, {}, {}", rd, rs1, rs2)?;
-                            writeln!(writer, "\tseqz\t{}", rd)?; // alias for sltiu rd, rd, 1
+                            writeln!(writer, "\tseqz\t{}, {}", rd, rd)?; // alias for sltiu rd, rd, 1
                         }
                         RV64Instruction::SNE { rd, rs1, rs2 } => {
                             writeln!(writer, "\txor\t{}, {}, {}", rd, rs1, rs2)?;
-                            writeln!(writer, "\tsnez\t{}", rd)?; // alias for sltu rd, zero, rd
+                            writeln!(writer, "\tsnez\t{}, {}", rd, rd)?; // alias for sltu rd, zero, rd
                         }
                         RV64Instruction::SGE { rd, rs1, rs2 } => {
                             writeln!(writer, "\tslt\t{}, {}, {}", rd, rs1, rs2)?;

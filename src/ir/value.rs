@@ -275,11 +275,10 @@ impl_value_trait!(PhiInst);
 #[derive(Debug, Clone)]
 pub struct GetElemPtrInst {
     pub ptr: ValueId,
-    // pub indices: Vec<ValueId>,
-    pub index: ValueId,
+    pub indices: Vec<ValueId>,
     pub name: String,
     pub ty: Rc<Type>,
-    pub aggregate_ty: Rc<Type>,
+    pub base_ty: Rc<Type>,
 }
 
 impl_value_trait!(GetElemPtrInst);
@@ -348,8 +347,10 @@ pub fn calculate_used_by(unit: &mut TransUnit, func: &str) {
                 InstructionValue::GetElemPtr(g) => {
                     let ptr_mut = unit.values.get_mut(g.ptr).unwrap();
                     ptr_mut.used_by.insert(inst);
-                    let index_mut = unit.values.get_mut(g.index).unwrap();
-                    index_mut.used_by.insert(inst);
+                    for idx in &g.indices {
+                        let index_mut = unit.values.get_mut(*idx).unwrap();
+                        index_mut.used_by.insert(inst);
+                    }
                 },
                 InstructionValue::Call(c) => {
                     for arg in c.args.iter() {

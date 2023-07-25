@@ -134,6 +134,13 @@ impl Type {
         ty
     }
 
+    pub fn decay(&self) -> Rc<Type> {
+        match &self.kind {
+            TypeKind::Array(arr) => Self::ptr_to(arr.base_type.clone()),
+            _ => panic!("not an array"),
+        }
+    }
+
     pub fn get_common_type(mut a: Rc<Type>, mut b: Rc<Type>) -> Rc<Type> {
         // todo: a is arr or ptr
 

@@ -41,6 +41,12 @@ impl TransUnit {
         }
     }
 
+    fn print_typed_value(&self, val: ValueId) {
+        let value = self.values.get(val).unwrap();
+        print!("{} ", value.ty());
+        self.print_value(val);
+    }
+
     fn print_func(&self, name: &str, func: &IrFunc) {
         let ty = func.ty.as_function();
         print!("define {} @{}(", ty.ret_type, name);
@@ -142,11 +148,12 @@ impl TransUnit {
                                 println!();
                             }
                             InstructionValue::GetElemPtr(ref gep) => {
-                                print!("{} = getelementptr inbounds {}, ptr ", gep.name, gep.aggregate_ty);
-                                self.print_value(gep.ptr);
-                                let idx_val = arena.get(gep.index).unwrap();
-                                print!(", i64 0, {} ", idx_val.ty());
-                                self.print_value(gep.index);
+                                print!("{} = getelementptr inbounds {}, ", gep.name, gep.base_ty);
+                                self.print_typed_value(gep.ptr);
+                                for idx in &gep.indices {
+                                    print!(", ");
+                                    self.print_typed_value(*idx);
+                                }
                                 println!();
                             }
                             InstructionValue::Call(ref call) => {

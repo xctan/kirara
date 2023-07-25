@@ -264,9 +264,17 @@ impl EmitIrExpr for AstNodeType {
                     builder.store(rhs, lhs).push();
                     rhs
                 } else if matches!(op, &BinaryOpType::Index) {
-                    let lhs = lhs.emit_ir_lvalue(builder, ctx);
                     let rhs = rhs.emit_ir_expr(builder, ctx);
-                    let addr = builder.gep(lhs, rhs).push();
+                    let addr = if lhs.borrow().ty.clone().unwrap().is_array() {
+                        let lhs = lhs.emit_ir_lvalue(builder, ctx);
+                        let zero = builder.const_i32(0);
+                        builder.gep(lhs, vec![zero, rhs]).push()
+                    } else if lhs.borrow().ty.clone().unwrap().is_ptr() {
+                        let lhs = lhs.emit_ir_expr(builder, ctx);
+                        builder.gep(lhs, vec![rhs]).push()
+                    } else {
+                        unreachable!("index on non-array: {:?}", lhs.borrow().clone().ty.unwrap());
+                    };
                     builder.load(addr).push()
                 } else if matches!(op, &BinaryOpType::LogAnd | &BinaryOpType::LogOr) {
                     self.emit_ir_logical_as_value(builder, ctx)
@@ -318,9 +326,17 @@ impl EmitIrLValue for AstNodeType {
     fn emit_ir_lvalue(&self, builder: &mut IrFuncBuilder, ctx: &mut AstContext) -> ValueId {
         match self {
             AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op: BinaryOpType::Index }) => {
-                let lhs = lhs.emit_ir_lvalue(builder, ctx);
                 let rhs = rhs.emit_ir_expr(builder, ctx);
-                builder.gep(lhs, rhs).push()
+                if lhs.borrow().ty.clone().unwrap().is_array() {
+                    let lhs = lhs.emit_ir_lvalue(builder, ctx);
+                    let zero = builder.const_i32(0);
+                    builder.gep(lhs, vec![zero, rhs]).push()
+                } else if lhs.borrow().ty.clone().unwrap().is_ptr() {
+                    let lhs = lhs.emit_ir_expr(builder, ctx);
+                    builder.gep(lhs, vec![rhs]).push()
+                } else {
+                    unreachable!("index on non-array: {:?}", lhs.borrow().ty.clone().unwrap());
+                }
             }
             AstNodeType::Variable(var) => {
                 let var = ctx.get_object(*var).unwrap();
@@ -367,22 +383,24 @@ impl EmitIrLogicalInner for AstNodeType {
         last: bool,
     ) -> (Vec<BackPatchItem>, Vec<BackPatchItem>, Option<ValueId>) {
         match self {
-            AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op }) => {
-                if matches!(op, &BinaryOpType::LogAnd) {
-                    let (t1, f1, _) = lhs.emit_ir_logical_inner(builder, ctx, false);
-                    // current bb is rhs entry; continue if lhs is true
-                    t1.iter().for_each(|item| item.backpatch(builder, builder.cur_bb()));
-                    let (t2, f2, l) = rhs.emit_ir_logical_inner(builder, ctx, last);
-                    return (t2, f1.into_iter().chain(f2.into_iter()).collect(), l);
-                } else if matches!(op, &BinaryOpType::LogOr) {
-                    let (t1, f1, _) = lhs.emit_ir_logical_inner(builder, ctx, false);
-                    // current bb is rhs entry; continue if lhs is false
-                    f1.iter().for_each(|item| item.backpatch(builder, builder.cur_bb()));
-                    let (t2, f2, l) = rhs.emit_ir_logical_inner(builder, ctx, last);
-                    return (t1.into_iter().chain(t2.into_iter()).collect(), f2, l);
-                }
+            AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op: BinaryOpType::LogAnd }) => {
+                let (t1, f1, _) = lhs.emit_ir_logical_inner(builder, ctx, false);
+                // current bb is rhs entry; continue if lhs is true
+                t1.iter().for_each(|item| item.backpatch(builder, builder.cur_bb()));
+                let (t2, f2, l) = rhs.emit_ir_logical_inner(builder, ctx, last);
+                return (t2, f1.into_iter().chain(f2.into_iter()).collect(), l);
             }
-            // LogNot
+            AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op: BinaryOpType::LogOr }) => {
+                let (t1, f1, _) = lhs.emit_ir_logical_inner(builder, ctx, false);
+                // current bb is rhs entry; continue if lhs is false
+                f1.iter().for_each(|item| item.backpatch(builder, builder.cur_bb()));
+                let (t2, f2, l) = rhs.emit_ir_logical_inner(builder, ctx, last);
+                return (t1.into_iter().chain(t2.into_iter()).collect(), f2, l);
+            }
+            AstNodeType::UnaryOp(UnaryOp { expr, op: UnaryOpType::Neg }) => {
+                let (t, f, l) = expr.emit_ir_logical_inner(builder, ctx, last);
+                return (f, t, l);
+            }
             // make clippy happy
             AstNodeType::Unit => (),
             _ => (),

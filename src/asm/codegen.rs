@@ -117,12 +117,14 @@ impl<'a> AsmFuncBuilder<'a> {
             let mbb = self.bb_map[bb];
             let block = &self.unit.blocks[*bb];
             macro_rules! emit {
-                ($mnemonic:ident $($operand:expr),*) => {
-                    self.prog.push_to_end(mbb, RV64InstBuilder::$mnemonic($($operand),*))
-                };
-                ($mnemonic:expr ; $($operand:expr),*) => {
-                    self.prog.push_to_end(mbb, $mnemonic($($operand),*))
-                };
+                ($mnemonic:ident $($operand0:expr)? $(, $($operand:expr),*)?) => {{
+                    $($(self.mark_usage($operand);)*)?
+                    self.prog.push_to_end(mbb, RV64InstBuilder::$mnemonic($($operand0, )? $($($operand),*)?))
+                }};
+                ($mnemonic:expr ; $($operand0:expr)? $(, $($operand:expr),*)?) => {{
+                    $($(self.mark_usage($operand);)*)?
+                    self.prog.push_to_end(mbb, $mnemonic($($operand0, )? $($($operand),*)?))
+                }};
             }
 
             let mut iter = block.insts_start;
@@ -136,9 +138,6 @@ impl<'a> AsmFuncBuilder<'a> {
                         let dst = self.resolve(inst, mbb);
 
                         let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
-                        if let Some(minst_id) = self.prog.vreg_def.get(&mo_lhs) {
-                            self.prog.mark_inline(*minst_id, false);
-                        }
 
                         let val_rhs = self.unit.values[b.rhs].clone();
                         if val_rhs.value.is_constant() && is_i_type(b.op) {
@@ -265,9 +264,6 @@ impl<'a> AsmFuncBuilder<'a> {
                             }
                         } else {
                             let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
-                            if let Some(minst_id) = self.prog.vreg_def.get(&mo_rhs) {
-                                self.prog.mark_inline(*minst_id, false);
-                            }
                             match b.ty().kind {
                                 TypeKind::I32 => {
                                     match b.op {
@@ -325,6 +321,7 @@ impl<'a> AsmFuncBuilder<'a> {
                         let instruction = match l.ty.kind {
                             TypeKind::I32 => RV64InstBuilder::LW,
                             TypeKind::I64 => RV64InstBuilder::LD,
+                            TypeKind::Ptr(_) => RV64InstBuilder::LD,
                             _ => unimplemented!(),
                         };
 
@@ -335,7 +332,6 @@ impl<'a> AsmFuncBuilder<'a> {
                             if let RV64Instruction::ADDI { rs1, imm, .. } = ptr_inst {
                                 emit!(instruction; dst, rs1, imm);
                             } else {
-                                self.prog.mark_inline(*ptr_id, false);
                                 emit!(instruction; dst, ptr, 0);
                             }
                         } else {
@@ -347,6 +343,7 @@ impl<'a> AsmFuncBuilder<'a> {
                         let instruction = match val.ty().kind {
                             TypeKind::I32 => RV64InstBuilder::SW,
                             TypeKind::I64 => RV64InstBuilder::SD,
+                            TypeKind::Ptr(_) => RV64InstBuilder::SD,
                             _ => unimplemented!(),
                         };
 
@@ -367,7 +364,6 @@ impl<'a> AsmFuncBuilder<'a> {
                             if let RV64Instruction::ADDI { rs1, imm, .. } = ptr_inst {
                                 emit!(instruction; src, rs1, imm);
                             } else {
-                                self.prog.mark_inline(*ptr_id, false);
                                 emit!(instruction; src, ptr, 0);
                             }
                         } else {
@@ -444,7 +440,6 @@ impl<'a> AsmFuncBuilder<'a> {
                                     emit!(JGEU rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail]);
                                 },
                                 _ => {
-                                    self.prog.mark_inline(*cond_id, false);
                                     emit!(JNE cond_reg, pre!(zero), self.bb_map[&b.succ], self.bb_map[&b.fail]);
                                 }
                             }
@@ -464,52 +459,56 @@ impl<'a> AsmFuncBuilder<'a> {
                     InstructionValue::Phi(_) => (),
                     InstructionValue::GetElemPtr(g) => {
                         let dst = self.resolve(inst, mbb);
-                        let ptr = self.resolve(g.ptr, mbb);
-                        let elem_size = g.ty.base_type().size() as i32;
-                        if let Some(idx) = self.resolve_constant(g.index) {
-                            let offset = idx * elem_size;
-                            if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
-                                let ptr_inst = self.prog.insts[*ptr_id].inst.clone();
-                                if let RV64Instruction::ADDI { rd, rs1, imm } = ptr_inst {
-                                    let merged = offset + imm;
-                                    if is_imm12(merged) {
-                                        emit!(ADDI dst, rs1, merged);
+                        let mut ptr = self.resolve(g.ptr, mbb);
+                        let mut ty = Type::ptr_to(g.base_ty);
+                        for index in g.indices {
+                            let elem_size = ty.base_type().size() as i32;
+                            ty = ty.base_type();
+                            let constant_index = self.resolve_constant(index);
+                            if let Some(idx) = constant_index {
+                                let offset = idx * elem_size;
+                                if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
+                                    let ptr_inst = self.prog.insts[*ptr_id].inst.clone();
+                                    if let RV64Instruction::ADDI { rd, rs1, imm } = ptr_inst {
+                                        let merged = offset + imm;
+                                        if is_imm12(merged) {
+                                            emit!(ADDI dst, rs1, merged);
+                                        } else {
+                                            emit!(ADDI dst, rd, offset);
+                                        }
                                     } else {
-                                        self.prog.mark_inline(*ptr_id, false);
-                                        emit!(ADDI dst, rd, offset);
+                                        if is_imm12(offset) {
+                                            emit!(ADDI dst, ptr, offset);
+                                        } else {
+                                            let tmp = self.new_vreg64();
+                                            emit!(LIMM tmp, offset);
+                                            emit!(ADD dst, ptr, tmp);
+                                        }
                                     }
                                 } else {
-                                    self.prog.mark_inline(*ptr_id, false);
                                     if is_imm12(offset) {
                                         emit!(ADDI dst, ptr, offset);
                                     } else {
-                                        emit!(LIMM dst, offset);
-                                        emit!(ADD dst, ptr, dst);
+                                        let tmp = self.new_vreg64();
+                                        emit!(LIMM tmp, offset);
+                                        emit!(ADD dst, ptr, tmp);
                                     }
                                 }
                             } else {
-                                if is_imm12(offset) {
-                                    emit!(ADDI dst, ptr, offset);
+                                let idx = self.resolve(index, mbb);
+                                let tmp = self.new_vreg64();
+                                if elem_size.count_ones() == 1 {
+                                    if  elem_size.trailing_zeros() > 0 {
+                                        emit!(SLLI tmp, idx, elem_size.trailing_zeros() as i32);
+                                    }
+                                    emit!(ADD dst, ptr, tmp);
                                 } else {
-                                    emit!(LIMM dst, offset);
-                                    emit!(ADD dst, ptr, dst);
+                                    emit!(LIMM tmp, elem_size);
+                                    emit!(MUL tmp, idx, tmp);
+                                    emit!(ADD dst, ptr, tmp);
                                 }
                             }
-                        } else {
-                            if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
-                                self.prog.mark_inline(*ptr_id, false);
-                            }
-                            let idx = self.resolve(g.index, mbb);
-                            if elem_size.count_ones() == 1 {
-                                if  elem_size.trailing_zeros() > 0 {
-                                    emit!(SLLI dst, idx, elem_size.trailing_zeros() as i32);
-                                }
-                                emit!(ADD dst, ptr, dst);
-                            } else {
-                                emit!(LIMM dst, elem_size);
-                                emit!(MUL dst, idx, dst);
-                                emit!(ADD dst, ptr, dst);
-                            }
+                            ptr = dst;
                         }
                     },
                     InstructionValue::Call(c) => {
@@ -531,9 +530,6 @@ impl<'a> AsmFuncBuilder<'a> {
                                     }
                                     let reg = self.resolve(*arg, mbb);
                                     emit!(MV target, reg);
-                                    if let Some(vreg) = self.prog.vreg_def.get(&reg) {
-                                        self.prog.mark_inline(*vreg, false);
-                                    }
                                 },
                                 _ => unimplemented!("call arg type: {:?}", value.ty()),
                             };
@@ -861,6 +857,46 @@ impl<'a> AsmFuncBuilder<'a> {
             (None, lo12)
         }
     }
+
+    fn mark_usage<R>(&mut self, reg: R)
+    where
+        R: PseudoMachineOperand
+    {
+        if let Some(reg) = reg.as_machopr() {
+            if let Some(reg_id) = self.prog.vreg_def.get(&reg) {
+                self.prog.mark_inline(*reg_id, false);
+            }
+        }
+    }
+}
+
+trait PseudoMachineOperand {
+    fn as_machopr(&self) -> Option<MachineOperand>;
+}
+
+impl PseudoMachineOperand for MachineOperand {
+    fn as_machopr(&self) -> Option<MachineOperand> {
+        Some(self.clone())
+    }
+}
+
+macro_rules! impl_blank_mo {
+    ($($t:ty),+ $(,)?) => {
+        $(
+            impl PseudoMachineOperand for $t {
+                fn as_machopr(&self) -> Option<MachineOperand> {
+                    None
+                }
+            }
+        )*
+    };
+}
+
+impl_blank_mo! {
+    i32,
+    Id<MachineBB>,
+    String,
+    usize,
 }
 
 #[inline(always)]

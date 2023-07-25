@@ -1,6 +1,6 @@
 use nom::{
     IResult,
-    combinator::{map, opt, success},
+    combinator::{map, opt, success, peek},
     sequence::{tuple, delimited},
     multi::{many0, many1, many0_count, separated_list1, separated_list0},
     branch::alt,
@@ -476,8 +476,23 @@ fn func_params((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, Rc<Typ
         ttag!(P("(")),
         alt((
             map(
+                tuple((
+                    ttag!(K("void")),
+                    peek(ttag!(P(")"))),
+                )),
+                |_| Type::func_type(ty.clone(), vec![(gen_unique_name(".anon"), Type::void_type())]),
+            ),
+            map(
                 separated_list1(ttag!(P(",")), param),
-                |params| Type::func_type(ty.clone(), params)
+                |mut params| {
+                    assert!(params.iter().all(|(_, ty)| !ty.is_void()));
+                    params.iter_mut().for_each(|(_, ty)| {
+                        if ty.is_array() {
+                            *ty = ty.decay();
+                        }
+                    });
+                    Type::func_type(ty.clone(), params)
+                }
             ),
             map(
                 success(()),

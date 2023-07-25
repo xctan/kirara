@@ -230,7 +230,19 @@ impl TransUnit {
                 InstructionValue::Jump(_) => unreachable!(),
                 InstructionValue::Zext(ze) => rep!(ze, Zext, ZextInst { value }),
                 InstructionValue::GetElemPtr(gep) => {
-                    rep!(gep, GetElemPtr, GetElemPtrInst { ptr, index })
+                    // rep!(gep, GetElemPtr, GetElemPtrInst { ptr, index })
+                    if gep.ptr == old {
+                        InstructionValue::GetElemPtr(GetElemPtrInst { ptr: new, ..gep })
+                    } else {
+                        let new_indices = gep.indices.iter().map(|&idx| {
+                            if idx == old {
+                                new
+                            } else {
+                                idx
+                            }
+                        }).collect();
+                        InstructionValue::GetElemPtr(GetElemPtrInst { indices: new_indices, ..gep })
+                    }
                 }
                 InstructionValue::Phi(phi) => {
                     let mut new_phi = phi.clone();
@@ -439,21 +451,27 @@ impl TransUnit {
         id
     }
 
-    pub fn gep(&mut self, ptr: ValueId, idx: ValueId) -> ValueId {
+    pub fn gep(&mut self, ptr: ValueId, indices: Vec<ValueId>) -> ValueId {
         let ptr_val = self.values.get(ptr).unwrap().clone();
-        let ty = ptr_val.ty().base_type();
+        // let ty = ptr_val.ty().base_type();
+        let mut ty = ptr_val.ty();
+        for _ in 0..indices.len() {
+            ty = ty.base_type();
+        }
         let inst = GetElemPtrInst {
             name: self.gen_local_name(),
-            ty: Type::ptr_to(ty.base_type()),
-            aggregate_ty: ty,
+            ty: Type::ptr_to(ty),
+            base_ty: ptr_val.ty().base_type(),
             ptr,
-            index: idx,
+            indices: indices.clone(),
         };
         let val = ValueType::Instruction(InstructionValue::GetElemPtr(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
         self.add_used_by(ptr, id);
-        self.add_used_by(idx, id);
+        for idx in indices {
+            self.add_used_by(idx, id);
+        }
         id
     }
 
