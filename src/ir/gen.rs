@@ -235,7 +235,7 @@ impl EmitIrExpr for AstNodeType {
                     (TypeKind::Array(_), TypeKind::Ptr(_)) => {
                         from_id
                     }
-                    _ => unimplemented!("convert {:?} to {:?}", from, to),
+                    _ => unimplemented!("convert {:#?} to {:#?}", from, to),
                 }
             }
             AstNodeType::UnaryOp(UnaryOp { expr, op }) => {

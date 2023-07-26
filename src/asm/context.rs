@@ -68,7 +68,6 @@ impl MachineProgram {
                 if super::codegen::is_imm12(-(rem_stack_size as i32)) {
                     i!(ADDI r!(sp), r!(sp), -(rem_stack_size as i32));
                 } else {
-                    i!(ADDI r!(fp), r!(sp), small_stack_size as i32);
                     i!(LIMM r!(t0), -(rem_stack_size as i32));
                     i!(ADD r!(sp), r!(sp), r!(t0));
                 }
@@ -84,9 +83,12 @@ impl MachineProgram {
                 if super::codegen::is_imm12(rem_stack_size as i32) {
                     i!(ADDI r!(sp), r!(sp), rem_stack_size as i32);
                 } else {
-                    let (hi, lo) = super::codegen::split_imm32(rem_stack_size as i32);
-                    i!(LUI r!(fp), hi);
-                    i!(ADDI r!(sp), r!(fp), lo);
+                    if thin {
+                        i!(LIMM r!(t0), rem_stack_size as i32);
+                        i!(ADD r!(sp), r!(t0), r!(sp));
+                    } else {
+                        i!(ADDI r!(sp), r!(fp), -(small_stack_size as i32));
+                    }
                 }
             }
             for (idx, reg) in callee_saved.iter().enumerate() {

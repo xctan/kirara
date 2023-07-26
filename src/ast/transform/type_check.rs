@@ -166,7 +166,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
 }
 
 fn ast_gen_convert(from: Rc<RefCell<AstNode>>, to: Rc<Type>) -> AstNodeType {
-    if from.borrow().ty.clone().unwrap().is_same_as(&to) {
+    if from.borrow().ty.clone().unwrap() == to {
         return from.borrow().node.clone();
     }
 

@@ -196,8 +196,16 @@ pub trait TypePtrCompare {
 
 impl TypePtrCompare for Rc<Type> {
     fn is_same_as(&self, other: &Self) -> bool {
+        *self == *other
+    }
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
         if self.is_ptr() && other.is_ptr() {
-            self.base_type().is_same_as(&other.base_type())
+            self.base_type() == other.base_type()
+        } else if self.is_array() && other.is_array() {
+            self.base_type() == other.base_type()
         } else {
             matches!(
                 (&self.kind, &other.kind), 

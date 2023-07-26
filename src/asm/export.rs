@@ -94,6 +94,10 @@ impl MachineProgram {
                     let inst = self.insts[inst_id].clone();
                     iter = inst.next;
 
+                    if matches!(inst.inst, RV64Instruction::NOP) {
+                        continue;
+                    }
+
                     let cond = match inst.inst {
                         RV64Instruction::JEQ { rs1, rs2, succ, fail } =>
                             Some(("eq", rs1, rs2, succ, fail)),

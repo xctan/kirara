@@ -464,6 +464,7 @@ fn array_dimensions((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, R
             unimplemented!("variable length array");
         }
     } else {
+        let (cursor, ty) = type_suffix((cursor, ty))?;
         Ok((cursor, Type::array_of(ty, -1)))
     }
 }

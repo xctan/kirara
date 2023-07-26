@@ -340,9 +340,7 @@ pub enum RV64Instruction {
     // prologue and epilogue of a function
     ENTER,
     LEAVE,
-    // prologue and epilogue of subroutine calls
-    // XSAVE
-    // XRSTR
+    NOP,
 }
 
 macro_rules! implement_typed_instruction {
@@ -532,6 +530,9 @@ impl RV64Instruction {
         if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE | RV64Instruction::COMMENT { .. }) {
             return (vec![], vec![]);
         }
+        if let RV64Instruction::NOP = self {
+            return (vec![], vec![]);
+        }
         if let RV64Instruction::CALL { params, .. } = self {
             let uses: Vec<_> = (0..usize::min(8, *params))
                 .map(|i| MachineOperand::PreColored(RVGPR::a(i)))
@@ -585,6 +586,9 @@ impl RV64Instruction {
             return vec![];
         }
         if let RV64Instruction::JUMP { .. } = self {
+            return vec![];
+        }
+        if let RV64Instruction::NOP = self {
             return vec![];
         }
         if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE | RV64Instruction::COMMENT { .. }) {
@@ -794,7 +798,7 @@ impl MachineProgram {
         }
     }
 
-    pub fn push_to_end(&mut self, mbb: Id<MachineBB>, inst: RV64Instruction) {
+    pub fn push_to_end(&mut self, mbb: Id<MachineBB>, inst: RV64Instruction) -> Id<MachineInst> {
         let mblock_tail = self.blocks[mbb].insts_tail;
         let minst = MachineInst {
             inst: inst.clone(),
@@ -815,6 +819,7 @@ impl MachineProgram {
         } else {
             self.insts[mblock_tail.unwrap()].next = Some(minst_id);
         }
+        minst_id
     }
 
     pub fn push_to_begin(&mut self, mbb: Id<MachineBB>, inst: RV64Instruction) {

@@ -6,7 +6,7 @@ use crate::{
     alloc::Id, asm::{RV64InstBuilder, RVGPR}, ctype::{TypeKind, BinaryOpType, Type}, ast::{Initializer, InitData},
 };
 
-use super::{MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction, VRegType, DataLiteral};
+use super::{MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction, VRegType, DataLiteral, MachineInst};
 
 impl TransUnit {
     pub fn emit_asm(&mut self) -> MachineProgram {
@@ -54,6 +54,8 @@ struct AsmFuncBuilder<'a> {
     pub virtual_max: u32,
     pub vreg_types: HashMap<u32, VRegType>,
     pub used_regs: HashSet<RVGPR>,
+
+    entry_marker: Option<Id<MachineInst>>,
 }
 
 macro_rules! pre {
@@ -75,6 +77,7 @@ impl<'a> AsmFuncBuilder<'a> {
             virtual_max: 1,
             vreg_types: HashMap::new(),
             used_regs: HashSet::new(),
+            entry_marker: None,
         }
     }
 
@@ -112,6 +115,11 @@ impl<'a> AsmFuncBuilder<'a> {
             }
         }
         mfunc.entry = Some(self.bb_map[&irfunc.entry_bb]);
+        let entry_marker = self.prog.push_to_end(
+            mfunc.entry.unwrap(),
+            RV64Instruction::NOP,
+        );
+        self.entry_marker = Some(entry_marker);
 
         // 2. translate instructions except phi
         for bb in &irfunc.bbs {
@@ -343,17 +351,7 @@ impl<'a> AsmFuncBuilder<'a> {
                         };
 
                         let ptr = self.resolve(s.ptr, mbb);
-                        let value = self.unit.values[s.value].clone();
-                        let src = if value.value.is_constant() {
-                            let tmp = self.new_vreg();
-                            match *value.value.as_constant() {
-                                ConstantValue::I32(i) => emit!(LIMM tmp, i),
-                                _ => unimplemented!(),
-                            }
-                            tmp
-                        } else {
-                            self.resolve(s.value, mbb)
-                        };
+                        let src = self.resolve_ensure_reg(s.value, mbb);
                         if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
                             let ptr_inst = self.prog.insts[*ptr_id].inst.clone();
                             if let RV64Instruction::ADDI { rs1, imm, .. } = ptr_inst {
@@ -651,20 +649,24 @@ impl<'a> AsmFuncBuilder<'a> {
                 if let Some(last) = self.prog.blocks[mbb].insts_tail {
                     for (lhs, rhs) in insts {
                         match rhs {
-                            ConstantValue::I32(imm) =>
-                                self.prog.insert_before(last, RV64InstBuilder::LIMM(lhs, imm)),
-                            ConstantValue::I1(imm) =>
-                                self.prog.insert_before(last, RV64InstBuilder::LIMM(lhs, imm as i32)),
+                            ConstantValue::I32(imm) => {
+                                self.prog.insert_before(last, RV64InstBuilder::LIMM(lhs, imm));
+                            }
+                            ConstantValue::I1(imm) => {
+                                self.prog.insert_before(last, RV64InstBuilder::LIMM(lhs, imm as i32));
+                            }
                             ConstantValue::Undef => {}
                         }
                     }
                 } else {
                     for (lhs, rhs) in insts {
                         match rhs {
-                            ConstantValue::I32(imm) =>
-                                self.prog.push_to_end(mbb, RV64InstBuilder::LIMM(lhs, imm)),
-                            ConstantValue::I1(imm) =>
-                                self.prog.push_to_end(mbb, RV64InstBuilder::LIMM(lhs, imm as i32)),
+                            ConstantValue::I32(imm) => {
+                                self.prog.push_to_end(mbb, RV64InstBuilder::LIMM(lhs, imm));
+                            },
+                            ConstantValue::I1(imm) => {
+                                self.prog.push_to_end(mbb, RV64InstBuilder::LIMM(lhs, imm as i32));
+                            }
                             ConstantValue::Undef => {}
                         }
                     }
@@ -778,7 +780,10 @@ impl<'a> AsmFuncBuilder<'a> {
                     if idx < 8 {
                         // first 8 params are passed in registers
                         self.used_regs.insert(RVGPR::a(idx));
-                        self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, MachineOperand::PreColored(RVGPR::a(idx))));
+                        // self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, MachineOperand::PreColored(RVGPR::a(idx))));
+                        // NO EXTRA MOVE! A registers cannot be written before used,
+                        // and the extra move causes erroneous register allocation
+                        return MachineOperand::PreColored(RVGPR::a(idx));
                     } else {
                         // extra args are passed on stack, 8 bytes aligned
                         // for i-th arg, it is at [fp + 8 * (i - 8)]
@@ -813,9 +818,9 @@ impl<'a> AsmFuncBuilder<'a> {
                 if self.val_map.contains_key(&val) {
                     self.val_map[&val]
                 } else {
-                    let entry = self.bb_map[&self.unit.funcs[self.name.as_str()].entry_bb];
+                    let marker = self.entry_marker.unwrap();
                     let res = self.type_to_reg(value.ty());
-                    self.prog.push_to_begin(entry, RV64InstBuilder::LADDR(res, g.name.clone()));
+                    self.prog.insert_after(marker, RV64InstBuilder::LADDR(res, g.name.clone()));
 
                     self.val_map.insert(val, res);
                     res
