@@ -253,6 +253,11 @@ impl LoopInfo {
             if child == this {
                 continue;
             }
+            let child_node = &unit.blocks[child];
+            // sdom only
+            if child_node.idom.is_some() && child_node.idom != Some(this) {
+                continue;
+            }
             self.dfs(worklist, unit, child);
         }
         assert!(worklist.is_empty());
