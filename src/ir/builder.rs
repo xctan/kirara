@@ -47,7 +47,9 @@ impl IrFuncBuilder<'_> {
 
     pub fn start(&mut self) {
         let name = format!("{}", self.count());
-        let bb = self.unit.blocks.alloc(BasicBlock::new(name));
+        let mut entry = BasicBlock::new(name);
+        entry.is_labeled = true;
+        let bb = self.unit.blocks.alloc(entry);
         self.bbs.push(bb);
         self.entry_bb = Some(bb);
         self.cur_bb = Some(bb);

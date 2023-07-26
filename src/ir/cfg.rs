@@ -35,7 +35,12 @@ fn reverse_post_order(unit: &mut TransUnit, entry_bb: BlockId) -> Vec<BlockId> {
     ordering
 }
 
-fn intersect(unit: &TransUnit, i: BlockId, j: BlockId) -> BlockId {
+fn intersect(unit: &TransUnit, entry_bb: BlockId, i: BlockId, j: BlockId) -> BlockId {
+    if i == entry_bb {
+        return i;
+    } else if j == entry_bb {
+        return j;
+    }
     let mut finger1 = i;
     let mut finger2 = j;
     while finger1 != finger2 {
@@ -67,7 +72,14 @@ fn compute_idom(unit: &mut TransUnit, func: &str) {
     let func = unit.funcs.get(func).unwrap().clone();
     let entry_bb = func.entry_bb;
     let entry = unit.blocks.get_mut(entry_bb).unwrap();
-    entry.idom = Some(entry_bb);
+    entry.idom = None;
+    // Entry block to function must not have predecessors!
+    assert!(entry.preds.is_empty());
+    let successors = unit.succ(entry_bb);
+    for succ in successors {
+        let succ = unit.blocks.get_mut(succ).unwrap();
+        succ.idom = Some(entry_bb);
+    }
 
     let ordering = reverse_post_order(unit, entry_bb);
 
@@ -81,6 +93,17 @@ fn compute_idom(unit: &mut TransUnit, func: &str) {
     //     i += 1;
     // }
     // println!();
+    // for node in &ordering {
+    //     let n = unit.blocks.get(*node).unwrap();
+    //     let idom = n.idom;
+    //     let idom = if let Some(idom) = idom {
+    //         unit.blocks.get(idom).unwrap().name.clone()
+    //     } else {
+    //         "None".to_owned()
+    //     };
+    //     println!("{} -> {idom}", n.name);
+    // }
+    // println!();
 
     // calculate immediate dominator
     let mut changed = true;
@@ -88,7 +111,7 @@ fn compute_idom(unit: &mut TransUnit, func: &str) {
         changed = false;
         for node in &ordering {
             let n = unit.blocks.get(*node).unwrap();
-            if n.preds.len() == 0 {
+            if n.preds.len() == 0 || *node == entry_bb {
                 continue;
             } else if n.preds.len() == 1 {
                 let n = unit.blocks.get_mut(*node).unwrap();
@@ -101,10 +124,10 @@ fn compute_idom(unit: &mut TransUnit, func: &str) {
                 let new_idom = n.preds
                     .iter()
                     .cloned()
-                    .filter(|p| unit.blocks[*p].idom.is_some())
-                    .reduce(|a, b| intersect(unit, a, b));
+                    .filter(|p| unit.blocks[*p].idom.is_some() || *p == entry_bb)
+                    .reduce(|a, b| intersect(unit, entry_bb, a, b));
 
-                if n.idom != new_idom {
+                if new_idom.is_some() && n.idom != new_idom {
                     let n = unit.blocks.get_mut(*node).unwrap();
                     n.idom = new_idom;
                     changed = true;
@@ -112,6 +135,17 @@ fn compute_idom(unit: &mut TransUnit, func: &str) {
             }
         }
     }
+
+    // for node in &ordering {
+    //     let n = unit.blocks.get(*node).unwrap();
+    //     let idom = n.idom;
+    //     let idom = if let Some(idom) = idom {
+    //         unit.blocks.get(idom).unwrap().name.clone()
+    //     } else {
+    //         "None".to_owned()
+    //     };
+    //     println!("{} -> {idom}", n.name);
+    // }
 }
 
 fn compute_dom(unit: &mut TransUnit, func: &str) {
@@ -123,16 +157,14 @@ fn compute_dom(unit: &mut TransUnit, func: &str) {
         // a block dominates itself
         block.dom.push(bb);
 
-        let mut runner = block.idom.unwrap();
-        loop {
-            let block = &mut unit.blocks[runner];
+        let mut runner = block.idom;
+        while let Some(r) = runner {
+            let upperbound = unit.blocks.capacity();
+            let block = &mut unit.blocks[r];
             block.dom.push(bb);
-
-            // the apex block's idom is init to itself
-            if block.idom == Some(runner) {
-                break;
-            }
-            runner = block.idom.unwrap();
+            // sanity check
+            assert!(block.dom.len() <= upperbound);
+            runner = block.idom;
         }
     }
 }

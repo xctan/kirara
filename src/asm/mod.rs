@@ -151,6 +151,10 @@ impl RVGPR {
         // s0-s11
         id >= 8 && id <= 9 || id >= 18 && id <= 27
     }
+
+    // pub fn idx(&self) -> u16 {
+    //     unsafe { std::mem::transmute::<_, u16>(*self) }
+    // }
 }
 
 impl Debug for RVGPR {
@@ -193,7 +197,7 @@ impl Debug for RVGPR {
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MachineOperand {
     Virtual(u32),
     Allocated(RVGPR),
@@ -525,7 +529,7 @@ impl RV64Instruction {
         if let RV64Instruction::JUMP { .. } = self {
             return (vec![], vec![]);
         }
-        if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE) {
+        if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE | RV64Instruction::COMMENT { .. }) {
             return (vec![], vec![]);
         }
         if let RV64Instruction::CALL { params, .. } = self {
@@ -583,7 +587,7 @@ impl RV64Instruction {
         if let RV64Instruction::JUMP { .. } = self {
             return vec![];
         }
-        if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE) {
+        if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE | RV64Instruction::COMMENT { .. }) {
             return vec![];
         }
         if matches!(self, RV64Instruction::CALL { .. }) {

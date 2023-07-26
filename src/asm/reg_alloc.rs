@@ -1,8 +1,10 @@
+use crate::asm::codegen::split_imm32;
+
 use super::import::*;
 
 /// number of assignable general registers
 /// including: a0-a7, s1-s11, t0-t6
-const KGPR: usize = 26;
+const KGPR: isize = 26;
 
 impl MachineProgram {
     pub fn allocate_registers(&mut self, ir: &mut TransUnit) {
@@ -33,26 +35,26 @@ struct RegisterAllocator<'a> {
     func: &'a str,
     loopinfo: &'a LoopInfo,
 
-    adj_list: HashMap<MachineOperand, HashSet<MachineOperand>>,
-    adj_set: HashSet<(MachineOperand, MachineOperand)>,
-    degree: HashMap<MachineOperand, usize>,
-    alias: HashMap<MachineOperand, MachineOperand>,
-    move_list: HashMap<MachineOperand, HashSet<Move>>,
-    simplify_worklist: HashSet<MachineOperand>,
-    freeze_worklist: HashSet<MachineOperand>,
-    spill_worklist: HashSet<MachineOperand>,
-    spilled_nodes: HashSet<MachineOperand>,
-    coalesced_nodes: HashSet<MachineOperand>,
+    adj_list: BTreeMap<MachineOperand, BTreeSet<MachineOperand>>,
+    adj_set: BTreeSet<(MachineOperand, MachineOperand)>,
+    degree: BTreeMap<MachineOperand, isize>,
+    alias: BTreeMap<MachineOperand, MachineOperand>,
+    move_list: BTreeMap<MachineOperand, BTreeSet<Move>>,
+    simplify_worklist: BTreeSet<MachineOperand>,
+    freeze_worklist: BTreeSet<MachineOperand>,
+    spill_worklist: BTreeSet<MachineOperand>,
+    spilled_nodes: BTreeSet<MachineOperand>,
+    coalesced_nodes: BTreeSet<MachineOperand>,
     select_stack: Vec<MachineOperand>,
-    coalesced_moves: HashSet<Move>,
-    constrained_moves: HashSet<Move>,
-    frozen_moves: HashSet<Move>,
-    worklist_moves: HashSet<Move>,
-    active_moves: HashSet<Move>,
+    coalesced_moves: BTreeSet<Move>,
+    constrained_moves: BTreeSet<Move>,
+    frozen_moves: BTreeSet<Move>,
+    worklist_moves: BTreeSet<Move>,
+    active_moves: BTreeSet<Move>,
     
-    loop_count: HashMap<MachineOperand, usize>,
+    loop_count: BTreeMap<MachineOperand, usize>,
 
-    used_regs: HashSet<RVGPR>,
+    used_regs: BTreeSet<RVGPR>,
 }
 
 impl<'a> RegisterAllocator<'a> {
@@ -61,24 +63,24 @@ impl<'a> RegisterAllocator<'a> {
             unit,
             func,
             loopinfo,
-            adj_list: HashMap::new(),
-            adj_set: HashSet::new(),
-            degree: HashMap::new(),
-            alias: HashMap::new(),
-            move_list: HashMap::new(),
-            simplify_worklist: HashSet::new(),
-            freeze_worklist: HashSet::new(),
-            spill_worklist: HashSet::new(),
-            spilled_nodes: HashSet::new(),
-            coalesced_nodes: HashSet::new(),
+            adj_list: BTreeMap::new(),
+            adj_set: BTreeSet::new(),
+            degree: BTreeMap::new(),
+            alias: BTreeMap::new(),
+            move_list: BTreeMap::new(),
+            simplify_worklist: BTreeSet::new(),
+            freeze_worklist: BTreeSet::new(),
+            spill_worklist: BTreeSet::new(),
+            spilled_nodes: BTreeSet::new(),
+            coalesced_nodes: BTreeSet::new(),
             select_stack: Vec::new(),
-            coalesced_moves: HashSet::new(),
-            constrained_moves: HashSet::new(),
-            frozen_moves: HashSet::new(),
-            worklist_moves: HashSet::new(),
-            active_moves: HashSet::new(),
-            loop_count: HashMap::new(),
-            used_regs: HashSet::new(),
+            coalesced_moves: BTreeSet::new(),
+            constrained_moves: BTreeSet::new(),
+            frozen_moves: BTreeSet::new(),
+            worklist_moves: BTreeSet::new(),
+            active_moves: BTreeSet::new(),
+            loop_count: BTreeMap::new(),
+            used_regs: BTreeSet::new(),
         };
 
         for i in 0..32 {
@@ -138,6 +140,10 @@ impl<'a> RegisterAllocator<'a> {
             fn run(&mut self, allocator: &mut RegisterAllocator) {
                 if let Some(first_use) = self.first_use {
                     assert!(self.vreg != 0);
+                    allocator.unit.insert_before(
+                        first_use,
+                        RV64InstBuilder::COMMENT(format!("reload {}", self.vreg))
+                    );
                     if self.offset < 2048 {
                         allocator.unit.insert_before(
                             first_use,
@@ -146,13 +152,15 @@ impl<'a> RegisterAllocator<'a> {
                                 MachineOperand::PreColored(RVGPR::sp()),
                                 self.offset as i32
                             )
-                        )
+                        );
                     } else {
+                        let (upper, lower) = split_imm32(self.offset as i32);
+
                         allocator.unit.insert_before(
                             first_use,
-                            RV64InstBuilder::LIMM(
+                            RV64InstBuilder::LUI(
                                 MachineOperand::Virtual(self.vreg),
-                                self.offset as i32
+                                upper
                             )
                         );
                         allocator.unit.insert_before(
@@ -168,7 +176,7 @@ impl<'a> RegisterAllocator<'a> {
                             (self.load)(
                                 MachineOperand::Virtual(self.vreg),
                                 MachineOperand::Virtual(self.vreg),
-                                0
+                                lower
                             )
                         );
                     }
@@ -188,30 +196,44 @@ impl<'a> RegisterAllocator<'a> {
                             )
                         )
                     } else {
+                        let vreg = allocator.unit.funcs[allocator.func].virtual_max;
+                        allocator.unit.funcs
+                        .entry(allocator.func.to_owned())
+                        .and_modify(|f| {
+                            f.virtual_max += 1;
+                            f.vreg_types.insert(vreg, VRegType::Int64);
+                        });
+                        let vreg = MachineOperand::Virtual(vreg);
+                        let (upper, lower) = split_imm32(self.offset as i32);
+
                         allocator.unit.insert_after(
                             last_def,
                             (self.save)(
                                 MachineOperand::Virtual(self.vreg),
-                                MachineOperand::Virtual(self.vreg),
-                                0
+                                vreg,
+                                lower
                             )
                         );
                         allocator.unit.insert_after(
                             last_def,
                             RV64InstBuilder::ADD(
-                                MachineOperand::Virtual(self.vreg),
-                                MachineOperand::Virtual(self.vreg),
+                                vreg,
+                                vreg,
                                 MachineOperand::PreColored(RVGPR::sp())
                             )
                         );
                         allocator.unit.insert_after(
                             last_def,
-                            RV64InstBuilder::LIMM(
-                                MachineOperand::Virtual(self.vreg),
-                                self.offset as i32
+                            RV64InstBuilder::LUI(
+                                vreg,
+                                upper
                             )
                         );
                     }
+                    allocator.unit.insert_after(
+                        last_def,
+                        RV64InstBuilder::COMMENT(format!("spill {}", self.vreg))
+                    );
 
                     self.last_def = None;
                 }
@@ -319,11 +341,11 @@ impl<'a> RegisterAllocator<'a> {
             self.adj_set.insert((u, v));
             self.adj_set.insert((v, u));
             if !u.is_precolored() {
-                self.adj_list.entry(u).or_insert(HashSet::new()).insert(v);
+                self.adj_list.entry(u).or_insert(BTreeSet::new()).insert(v);
                 *self.degree.entry(u).or_insert(0) += 1;
             }
             if !v.is_precolored() {
-                self.adj_list.entry(v).or_insert(HashSet::new()).insert(u);
+                self.adj_list.entry(v).or_insert(BTreeSet::new()).insert(u);
                 *self.degree.entry(v).or_insert(0) += 1;
             }
         }
@@ -346,8 +368,8 @@ impl<'a> RegisterAllocator<'a> {
                     if rd.needs_coloring() && rs.needs_coloring() {
                         live.remove(&rs);
                         let inst = Move { id: inst, src: rs, dst: rd };
-                        self.move_list.entry(rs).or_insert(HashSet::new()).insert(inst);
-                        self.move_list.entry(rd).or_insert(HashSet::new()).insert(inst);
+                        self.move_list.entry(rs).or_insert(BTreeSet::new()).insert(inst);
+                        self.move_list.entry(rd).or_insert(BTreeSet::new()).insert(inst);
                         self.worklist_moves.insert(inst);
                     }
                 }
@@ -390,10 +412,10 @@ impl<'a> RegisterAllocator<'a> {
         }
     }
 
-    fn adjacent(&self, n: MachineOperand) -> HashSet<MachineOperand> {
+    fn adjacent(&self, n: MachineOperand) -> BTreeSet<MachineOperand> {
         self.adj_list
             .get(&n)
-            .unwrap_or(&HashSet::new())
+            .unwrap_or(&BTreeSet::new())
             .iter()
             .cloned()
             .filter(|x| {
@@ -403,10 +425,10 @@ impl<'a> RegisterAllocator<'a> {
             .collect()
     }
 
-    fn node_moves(&self, n: MachineOperand) -> HashSet<Move> {
+    fn node_moves(&self, n: MachineOperand) -> BTreeSet<Move> {
         self.move_list
             .get(&n)
-            .unwrap_or(&HashSet::new())
+            .unwrap_or(&BTreeSet::new())
             .iter()
             .cloned()
             .filter(|x| {
@@ -432,7 +454,7 @@ impl<'a> RegisterAllocator<'a> {
 
             let v = MachineOperand::Virtual(i);
             self.degree.entry(v).or_insert(0);
-            self.adj_list.entry(v).or_insert(HashSet::new());
+            self.adj_list.entry(v).or_insert(BTreeSet::new());
             if self.degree[&v] >= KGPR {
                 self.spill_worklist.insert(v);
             } else if self.move_related(v) {
@@ -522,7 +544,7 @@ impl<'a> RegisterAllocator<'a> {
         let move_list_v = self.move_list[&v].clone();
         self.move_list
             .entry(u)
-            .or_insert(HashSet::new())
+            .or_insert(BTreeSet::new())
             .extend(move_list_v);
         for t in self.adjacent(v) {
             self.add_edge(t, u);
@@ -534,13 +556,13 @@ impl<'a> RegisterAllocator<'a> {
         }
     }
 
-    fn conservative(&self, mut adj_u: HashSet<MachineOperand>, adj_v: HashSet<MachineOperand>) -> bool {
+    fn conservative(&self, mut adj_u: BTreeSet<MachineOperand>, adj_v: BTreeSet<MachineOperand>) -> bool {
         adj_u.extend(adj_v);
         adj_u
             .iter()
             .filter(|x| self.degree[x] >= KGPR)
             .count()
-            .lt(&KGPR)
+            .lt(&(KGPR as usize))
     }
 
     fn coalesce(&mut self) {
@@ -638,7 +660,7 @@ impl<'a> RegisterAllocator<'a> {
     }
 
     fn assign_colors(&mut self) {
-        let mut colored: HashMap<MachineOperand, MachineOperand> = HashMap::new();
+        let mut colored: BTreeMap<MachineOperand, MachineOperand> = BTreeMap::new();
         while let Some(n) = self.select_stack.pop() {
             // GPRs
             let mut ok_colors: BTreeSet<_> = (0..=7).map(|x| RVGPR::a(x))
@@ -765,7 +787,7 @@ fn liveness_analysis(unit: &mut MachineProgram, func: &str) {
     }
 }
 
-#[derive(Hash, Eq, PartialEq, Copy, Clone)]
+#[derive(Hash, Eq, PartialEq, Copy, Clone, PartialOrd, Ord)]
 struct Move {
     pub id: Id<MachineInst>,
     pub src: MachineOperand,

@@ -23,12 +23,17 @@ fn canonicalize(unit: &mut TransUnit, func: &str) {
     let func = unit.funcs[func].clone();
     let mut block_map = HashMap::new();
     let mut value_map = HashMap::new();
-    let mut counter = func.params.len();
+    let mut counter = 0;
     let mut count = || {
         let current = counter;
         counter += 1;
         current
     };
+
+    for p in &func.params {
+        let obj = unit.values.get_mut(*p).unwrap();
+        obj.set_name(format!("%{}", count()));
+    }
 
     for_each_bb_and_inst!{
         unit, func(bb, block, inst, insn), {

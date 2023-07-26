@@ -34,6 +34,7 @@ impl MachineProgram {
 
             macro_rules! r {
                 (a0) => { MachineOperand::PreColored(RVGPR::a(0)) };
+                (t0) => { MachineOperand::PreColored(RVGPR::t(0)) };
                 (fp) => { MachineOperand::PreColored(RVGPR::s(0)) };
                 ($ident:ident) => { MachineOperand::PreColored(RVGPR::$ident()) };
             }
@@ -67,9 +68,9 @@ impl MachineProgram {
                 if super::codegen::is_imm12(-(rem_stack_size as i32)) {
                     i!(ADDI r!(sp), r!(sp), -(rem_stack_size as i32));
                 } else {
-                    let (hi, lo) = super::codegen::split_imm32(-(rem_stack_size as i32));
-                    i!(LUI r!(fp), hi);
-                    i!(ADDI r!(sp), r!(fp), lo);
+                    i!(ADDI r!(fp), r!(sp), small_stack_size as i32);
+                    i!(LIMM r!(t0), -(rem_stack_size as i32));
+                    i!(ADD r!(sp), r!(sp), r!(t0));
                 }
             }
 

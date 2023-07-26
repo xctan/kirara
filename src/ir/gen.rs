@@ -141,7 +141,7 @@ impl EmitIr for AstNode {
                 let counter = builder.count();
                 let cur_bb = &builder.unit.blocks[builder.cur_bb()];
                 // println!("while test");
-                let test = if cur_bb.is_empty() {
+                let test = if cur_bb.is_empty() && !cur_bb.is_labeled {
                     builder.cur_bb()
                 } else {
                     let (a, b) = builder.start_new_named_bb(&format!("while_begin_{counter}"));
@@ -406,8 +406,6 @@ impl EmitIrLogicalInner for AstNodeType {
                 let (t, f, l) = expr.emit_ir_logical_inner(builder, ctx, last);
                 return (f, t, l);
             }
-            // make clippy happy
-            AstNodeType::Unit => (),
             _ => (),
         };
         // and everything else

@@ -67,10 +67,10 @@ fn main() {
     // debug!(println!("{:#?}", ast));
 
     let mut unit = ast.emit_ir();
-    debug!(unit.print());
-
+    
     ir::opt::canonicalize::Canonicalize::run(&mut unit);
     if ARGS.optimize != "0" {
+        debug!(unit.print());
         ir::opt::mem2reg::Mem2Reg::run(&mut unit);
         ir::opt::canonicalize::Canonicalize::run(&mut unit);
     }

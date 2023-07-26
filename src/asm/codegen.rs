@@ -381,6 +381,18 @@ impl<'a> AsmFuncBuilder<'a> {
                         } else {
                             emit!(LIMM dst, object_begin as i32);
                             emit!(ADD dst, pre!(sp), dst);
+                            // let mut amount = object_begin as i32;
+                            // let mut first = true;
+                            // while amount > 0 {
+                            //     let chip = i32::min(2032, amount);
+                            //     amount -= chip;
+                            //     if first {
+                            //         emit!(ADDI dst, pre!(sp), chip);
+                            //         first = false;
+                            //     } else {
+                            //         emit!(ADDI dst, dst, chip);
+                            //     }
+                            // }
                         }
                         // // alternative stack layout
                         // if is_imm12(-(mfunc.stack_size as i32) - 16) {
@@ -903,7 +915,9 @@ pub fn is_imm12(imm: i32) -> bool {
 #[inline(always)]
 pub fn split_imm32(imm: i32) -> (i32, i32) {
     let hi20 = (imm + 0x800) >> 12 & 0xfffff;
-    let lo12 = imm & 0xfff;
+    let hi20 = hi20 << 12 >> 12;
+    let lo12 = imm & 0x7ff;
+    let lo12 = lo12 << 20 >> 20;
     (hi20, lo12)
 }
 
