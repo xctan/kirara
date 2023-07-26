@@ -28,6 +28,7 @@ cc=${KIRARA_CC:-$_default_cc}
 cflags=${KIRARA_CFLAGS:-"-L$testbench_root -lsysy"}
 # enabled benchmarks
 benchmarks=(
+    debug
     functional
     # hidden_functional
     # performance
@@ -52,9 +53,21 @@ function make_output_dirs() {
     done
 }
 
-function compile_test_case() {
+function expand_short_case_name() {
     _suite=$1
     _case=$2
+    # expand case name if it is shorter than 5 characters
+    _len=${#_case}
+    if [[ $len -lt 5 ]]; then
+        # expand case number with its name by searching the files starting with the number
+        _case=$(basename -s .sy $(find $testbench_root/$_suite -name "$_case*.sy"))
+    fi
+    echo $_case
+}
+
+function compile_test_case() {
+    _suite=$1
+    _case=$(expand_short_case_name $@)
     _sysyflags=$3
     _source=$testbench_root/$_suite/$_case.sy
     _asm=$testbench_root/$_suite.asm/$_case.S
@@ -80,7 +93,8 @@ function file_ends_with_newline() {
 
 function run_test_case() {
     _suite=$1
-    _case=$2
+    _case=$(expand_short_case_name $@)
+    
     _out=$testbench_root/$_suite.out/$_case.out
     _input=$testbench_root/$_suite/$_case.in
     _ref=$testbench_root/$_suite/${_case/.sy/}.out
@@ -106,7 +120,7 @@ function run_test_case() {
     # compare output
     if [ ! -f $_ref ]; then
         echo "No reference output for $_suite::$_case"
-        exit 1
+        return
     fi
     diff $_ref $_output
     if [ $? -ne 0 ]; then
@@ -126,11 +140,13 @@ case $_command in
         make_output_dirs
         ;;
     compile)
+        cargo build
         make_output_dirs
         shift
         compile_test_case $@
         ;;
     compile_all)
+        cargo build
         make_output_dirs
         for benchmark in ${benchmarks[@]}; do
             for file in $testbench_root/$benchmark/*.sy; do
