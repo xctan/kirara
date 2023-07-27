@@ -75,6 +75,39 @@ fn integer_const(input: &str) -> IResult<&str, Token> {
     )(input)
 }
 
+fn whole_number(input: &str) -> IResult<&str, &str> {
+    recognize(separated_list1(tag("'"), digit1))(input)
+}
+
+fn exponent(input: &str) -> IResult<&str, &str> {
+    recognize(tuple((
+        alt((tag("e"), tag("E"))),
+        opt(alt((tag("+"), tag("-")))),
+        whole_number
+    )))(input)
+}
+
+fn floating_const(input: &str) -> IResult<&str, Token> {
+    map(
+        alt((
+            recognize(tuple((
+                whole_number,
+                opt(tag(".")),
+                exponent))),
+            recognize(tuple((
+                    opt(whole_number),
+                    tag("."),
+                    whole_number,
+                    opt(exponent)))),
+            recognize(tuple((
+                whole_number,
+                tag("."),
+                opt(whole_number)))),
+        )),
+        |s| Token(s, TokenType::FloatConst)
+    )(input)
+}
+
 fn keyword(input: &str) -> IResult<&str, Token> {
     map(
         pair(
@@ -152,6 +185,7 @@ fn punctuation(input: &str) -> IResult<&str, Token> {
 
 fn combined(input: &str) -> IResult<&str, Token> {
     alt((
+        floating_const,
         integer_const,
         word,
         punctuation
