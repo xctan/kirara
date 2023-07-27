@@ -159,11 +159,25 @@ impl<'a> AsmFuncBuilder<'a> {
             let mbb = self.bb_map[bb];
             let block = &self.unit.blocks[*bb];
             macro_rules! emit {
+                // as for the first operand:
+                // - for SW/SD, the first operand is also rs
                 ($mnemonic:ident $($operand0:expr)? $(, $($operand:expr),*)?) => {{
+                    $(if
+                        RV64InstBuilder::$mnemonic as usize == RV64InstBuilder::SD as usize ||
+                        RV64InstBuilder::$mnemonic as usize == RV64InstBuilder::SW as usize
+                    {
+                        self.mark_usage($operand0);
+                    })?
                     $($(self.mark_usage($operand);)*)?
                     self.prog.push_to_end(mbb, RV64InstBuilder::$mnemonic($($operand0, )? $($($operand),*)?))
                 }};
                 ($mnemonic:expr ; $($operand0:expr)? $(, $($operand:expr),*)?) => {{
+                    $(if
+                        $mnemonic as usize == RV64InstBuilder::SD as usize ||
+                        $mnemonic as usize == RV64InstBuilder::SW as usize
+                    {
+                        self.mark_usage($operand0);
+                    })?
                     $($(self.mark_usage($operand);)*)?
                     self.prog.push_to_end(mbb, $mnemonic($($operand0, )? $($($operand),*)?))
                 }};
@@ -587,11 +601,14 @@ impl<'a> AsmFuncBuilder<'a> {
                             };
                             // already so many arguments!
                             assert!(stack_size <= 2032);
-                            emit!(ADDI pre!(sp), pre!(sp), -(stack_size as i32));
+                            
                             for i in 0..extra {
                                 let reg = self.resolve_ensure_reg(c.args[8 + i], mbb);
-                                emit!(SD reg, pre!(sp), (i * 8) as i32);
+                                emit!(SD reg, pre!(sp), (i * 8) as i32 - stack_size as i32);
                             }
+
+                            let inst = emit!(ADDI pre!(sp), pre!(sp), -(stack_size as i32));
+                            self.prog.mark_inline(inst, false);
                         }
 
                         emit!(CALL c.func.clone(), c.args.len());
@@ -605,7 +622,8 @@ impl<'a> AsmFuncBuilder<'a> {
                                 stack_size + 8
                             };
                             assert!(stack_size <= 2032);
-                            emit!(ADDI pre!(sp), pre!(sp), stack_size as i32);
+                            let inst = emit!(ADDI pre!(sp), pre!(sp), stack_size as i32);
+                            self.prog.mark_inline(inst, false);
                         }
                         if let Some(dst) = dst {
                             emit!(MV dst, pre!(a0));
