@@ -5,6 +5,7 @@ use nom::{Compare, InputTake, InputLength};
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TokenType {
     IntegerConst,
+    FloatConst,
     Keyword,
     Identifier,
     Punctuation,
@@ -91,47 +92,34 @@ impl<'a> From<&'a std::vec::Vec<Token<'_>>> for TokenSpan<'a> {
 
 // useful parsers for a single token
 
-impl TryInto<i64> for TokenSpan<'_> {
-    type Error = ();
+macro_rules! impl_integer {
+    ($int:ty) => {
+        impl TryInto<$int> for TokenSpan<'_> {
+            type Error = ();
 
-    fn try_into(self) -> Result<i64, Self::Error> {
-        if self.0.len() != 1 {
-            return Err(());
-        }
-        if !matches!(self.0[0].1, TokenType::IntegerConst) {
-            return Err(())
-        }
-        let s = self.0[0].0;
-        if s.starts_with("0x") || s.starts_with("0X") {
-            i64::from_str_radix(&s[2..], 16).map_err(|_| ())
-        } else if s.starts_with('0') {
-            i64::from_str_radix(s, 8).map_err(|_| ())
-        } else {
-            s.parse().map_err(|_| ())
+            fn try_into(self) -> Result<$int, Self::Error> {
+                if self.0.len() != 1 {
+                    return Err(());
+                }
+                if !matches!(self.0[0].1, TokenType::IntegerConst) {
+                    return Err(())
+                }
+                let s = self.0[0].0.replace("'", "");
+                if s.starts_with("0x") || s.starts_with("0X") {
+                    <$int>::from_str_radix(&s[2..], 16).map_err(|_| ())
+                } else if s.starts_with('0') {
+                    <$int>::from_str_radix(&s, 8).map_err(|_| ())
+                } else {
+                    s.parse().map_err(|_| ())
+                }
+            }
         }
     }
 }
 
-impl TryInto<i32> for TokenSpan<'_> {
-    type Error = ();
+impl_integer!(i64);
 
-    fn try_into(self) -> Result<i32, Self::Error> {
-        if self.0.len() != 1 {
-            return Err(());
-        }
-        if !matches!(self.0[0].1, TokenType::IntegerConst) {
-            return Err(())
-        }
-        let s = self.0[0].0;
-        if s.starts_with("0x") || s.starts_with("0X") {
-            i32::from_str_radix(&s[2..], 16).map_err(|_| ())
-        } else if s.starts_with('0') {
-            i32::from_str_radix(s, 8).map_err(|_| ())
-        } else {
-            s.parse().map_err(|_| ())
-        }
-    }
-}
+impl_integer!(i32);
 
 pub type TokenRange = Range<usize>;
 

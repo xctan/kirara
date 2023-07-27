@@ -1,9 +1,9 @@
 use nom::{
     branch::alt,
     bytes::complete::{tag, is_not, take_until},
-    character::complete::{digit0, one_of, satisfy, multispace1, alpha1, alphanumeric1},
-    combinator::{recognize, value, opt, map, not},
-    multi::{many1, many0_count},
+    character::complete::{one_of, satisfy, multispace1, alpha1, alphanumeric1, digit1},
+    combinator::{recognize, value, opt, map, not, peek},
+    multi::{many0_count, separated_list1, many1},
     sequence::{pair, tuple},
     IResult,
 };
@@ -48,29 +48,29 @@ fn junk(input: &str) -> IResult<&str, ()> {
 
 fn decimal_const(input: &str) -> IResult<&str, &str> {
     recognize(pair(
-        one_of("123456789"), // non-zero digit
-        digit0,              // zero or more digits
+        peek(one_of("123456789")), // non-zero digit
+        separated_list1(tag("'"), digit1)
     ))(input)
 }
 
 fn octal_const(input: &str) -> IResult<&str, &str> {
-    recognize(many1(one_of("01234567")))(input)
+    recognize(separated_list1(tag("'"), many1(one_of("01234567"))))(input)
 }
 
 fn hexadecimal_const(input: &str) -> IResult<&str, &str> {
     recognize(pair(
         alt((tag("0x"), tag("0X"))),
         recognize(
-                many1(satisfy(|c: char| c.is_ascii_hexdigit())))
+            separated_list1(tag("'"), many1(satisfy(|c: char| c.is_ascii_hexdigit()))))
     ))(input)
 }
 
 fn integer_const(input: &str) -> IResult<&str, Token> {
     map(
         alt((
-            decimal_const,
             hexadecimal_const,
-            octal_const,)),
+            decimal_const,
+            octal_const)),
         |s| Token(s, TokenType::IntegerConst)
     )(input)
 }
@@ -81,6 +81,7 @@ fn keyword(input: &str) -> IResult<&str, Token> {
             alt((
                 tag("return"),
                 tag("int"),
+                tag("float"),
                 tag("void"),
                 tag("if"),
                 tag("else"),
