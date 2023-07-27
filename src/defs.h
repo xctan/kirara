@@ -13,3 +13,4 @@ void putarray(int, int a[]);
 // putf(char *s, ...)
 
 void memset(void *s, int c, int n);
+void memcpy(void *dest, void *src, int n);

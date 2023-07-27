@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::alloc::{Id, Arena};
 use crate::ast::Initializer;
-use crate::ctype::{Type, BinaryOpType};
+use crate::ctype::{Type, BinaryOpType, Linkage};
 use crate::ir::value::{
     InstructionValue, ReturnInst, StoreInst, LoadInst, BinaryInst, BranchInst, 
     ZextInst, GetElemPtrInst, ValueType, PhiInst
@@ -70,7 +70,7 @@ pub struct TransUnit {
     pub blocks: Arena<BasicBlock>,
     pub inst_bb: HashMap<ValueId, BlockId>,
     // global variable defs
-    pub globals: HashMap<String, Initializer>,
+    pub globals: HashMap<String, GlobalObject>,
 
     // funcs
     pub funcs: HashMap<String, IrFunc>,
@@ -78,6 +78,11 @@ pub struct TransUnit {
     counter: usize,
 }
 
+#[derive(Debug)]
+pub struct GlobalObject {
+    pub init: Initializer,
+    pub linkage: Linkage,
+}
 
 impl TransUnit {
     pub fn new() -> Self {

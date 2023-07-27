@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use crate::{token::TokenSpan, ctype::Type};
+use crate::{token::TokenSpan, ctype::{Type, Linkage}};
 
 use super::{AstContext, ObjectId, AstObject, ScopeVar};
 
@@ -88,11 +88,11 @@ pub fn new_local_var(id: &str, ty: Rc<Type>) -> ObjectId {
     instance.new_local_var(id, ty)
 }
 
-pub fn new_global_var(id: &str, ty: Rc<Type>) -> ObjectId {
+pub fn new_global_var(id: &str, ty: Rc<Type>, link: Linkage) -> ObjectId {
     let instance = unsafe {
         CTX.as_mut().unwrap()
     };
-    instance.new_global_var(id, ty)
+    instance.new_global_var(id, ty, link)
 }
 
 pub fn get_object(id: ObjectId) -> Option<&'static AstObject> {

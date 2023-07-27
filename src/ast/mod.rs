@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{alloc::{Arena, Id}, ctype::TypeKind};
+use crate::{alloc::{Arena, Id}, ctype::{TypeKind, Linkage}};
 
 pub(in crate::ast) mod context;
 pub mod parse;
@@ -114,6 +114,10 @@ impl AstNode {
     //     }
     // }
 
+    pub fn ty(&self) -> Rc<Type> {
+        self.ty.clone().unwrap()
+    }
+
     pub fn i32_number(val: i32, token: TokenRange) -> Rc<RefCell<Self>> {
         let node = Self::new(AstNodeType::I32Number(val), token);
         Rc::new(RefCell::new(node))
@@ -201,6 +205,14 @@ impl AstNode {
     pub fn goto(label: String, token: TokenRange) -> Rc<RefCell<Self>> {
         let node = Self::new(AstNodeType::GotoStmt(GotoStmt { label }), token);
         Rc::new(RefCell::new(node))
+    }
+
+    pub fn deep_clone(&self) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(AstNode {
+            ty: None,
+            node: self.node.clone(),
+            token: self.token.clone(),
+        }))
     }
 }
 
@@ -311,6 +323,36 @@ impl InitData {
         }
     }
 
+    pub fn const_ratio(&self) -> f64 {
+        match self {
+            Self::Expr(_) => 0.0,
+            Self::ScalarI32(_) => 1.0,
+            Self::Aggregate(data) => {
+                let mut sum = 0.0;
+                for init in data.iter() {
+                    sum += init.data.const_ratio();
+                }
+                sum / data.len() as f64
+            },
+            Self::ZeroInit => 1.0,
+        }
+    }
+
+    pub fn retain_const(&self) -> Self {
+        match self {
+            Self::Expr(_) => Self::ZeroInit,
+            a @ Self::ScalarI32(_) => a.clone(),
+            Self::Aggregate(data) => {
+                let mut new_data = Vec::new();
+                for init in data.iter() {
+                    new_data.push(init.retain_const());
+                }
+                Self::Aggregate(new_data)
+            },
+            Self::ZeroInit => Self::ZeroInit,
+        }
+    }
+
     fn is_all_zeroinit(&self) -> bool {
         match self {
             Self::Expr(_) => false,
@@ -319,6 +361,7 @@ impl InitData {
             Self::ZeroInit => true,
         }
     }
+
 }
 
 #[derive(Debug, Clone)]
@@ -376,6 +419,13 @@ impl Initializer {
         }
     }
 
+    pub fn retain_const(&self) -> Self {
+        Self {
+            ty: self.ty.clone(),
+            data: self.data.retain_const(),
+        }
+    }
+
     // pub fn as_array(&self) -> &[Initializer] {
     //     match &self.data {
     //         InitData::Aggregate(data) => data,
@@ -407,7 +457,7 @@ pub struct Scope {
 #[derive(Debug)]
 pub struct AstContext {
     pub objects: Arena<AstObject>,
-    pub globals: Vec<ObjectId>,
+    pub globals: Vec<(ObjectId, Linkage)>,
     pub scopes: Vec<Scope>,
 
     pub locals: Vec<ObjectId>,
@@ -528,7 +578,7 @@ impl AstContext {
         id
     }
 
-    pub fn new_global_var(&mut self, name: &str, ty: Rc<Type>) -> ObjectId {
+    pub fn new_global_var(&mut self, name: &str, ty: Rc<Type>, link: Linkage) -> ObjectId {
         let name = name.to_string();
         let obj = AstObject::new(
             name.clone(),
@@ -537,7 +587,7 @@ impl AstContext {
             AstObjectType::Var(Initializer { ty: ty.clone(), data: InitData::ZeroInit })
         );
         let id = self.objects.alloc(obj);
-        self.globals.push(id);
+        self.globals.push((id, link));
         self.scopes
             .first_mut()
             .unwrap()

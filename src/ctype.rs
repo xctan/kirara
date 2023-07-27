@@ -88,9 +88,9 @@ impl Type {
         matches!(self.kind, TypeKind::Void)
     }
 
-    pub fn is_const(&self) -> bool {
-        self.is_const
-    }
+    // pub fn is_const(&self) -> bool {
+    //     self.is_const
+    // }
 
     pub fn void_type() -> Rc<Type> {
         VOID_TYPE.with(|t| t.clone())
@@ -277,4 +277,12 @@ impl Display for BinaryOpType {
 pub enum UnaryOpType {
     Neg,
     LogNot,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[allow(unused)]
+pub enum Linkage {
+    Static,
+    Global,
+    Extern,
 }

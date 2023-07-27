@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use super::{
     builder::{BackPatchItem, BackPatchType, LocalInstExt, IrFuncBuilder},
-    structure::TransUnit,
+    structure::{TransUnit, GlobalObject},
     value::ValueId,
 };
 use crate::{
@@ -17,7 +17,7 @@ pub trait EmitIr {
 impl AstContext {
     pub fn emit_ir(&mut self) -> TransUnit {
         let mut unit = TransUnit::new();
-        for var in self.globals.clone() {
+        for (var, link) in self.globals.clone() {
             let var = self.get_object_mut(var).unwrap();
             if let AstObjectType::Var(init) = var.data.clone() {
                 if var.is_decl {
@@ -26,10 +26,10 @@ impl AstContext {
                 let name = var.name.clone();
                 let ty = Type::ptr_to(var.ty.clone());
                 var.ir_value = Some(unit.global(&name, ty));
-                unit.globals.insert(name, init);
+                unit.globals.insert(name, GlobalObject{ init, linkage: link });
             }
         }
-        for var in self.globals.clone() {
+        for (var, _) in self.globals.clone() {
             let var = self.get_object(var).unwrap();
             match var.data.clone() {
                 AstObjectType::Func(ref func) => {

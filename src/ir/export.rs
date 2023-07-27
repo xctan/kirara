@@ -1,8 +1,8 @@
-use crate::ast::{Initializer, InitData};
+use crate::{ast::{Initializer, InitData}, ctype::Linkage};
 
 use super::{
     value::{ValueType, ValueId, ConstantValue, InstructionValue, ValueTrait},
-    structure::TransUnit, structure::IrFunc
+    structure::{TransUnit, GlobalObject}, structure::IrFunc
 };
 
 impl TransUnit {
@@ -16,10 +16,17 @@ impl TransUnit {
         }
     }
 
-    fn print_global(&self, name: &str, init: &Initializer) {
-        print!("@{} = dso_local global ", name);
-        self.print_initializer(init);
-        println!(", align {}", init.ty.align());
+    fn print_global(&self, name: &str, init: &GlobalObject) {
+        print!(
+            "@{name} = {} ", 
+            match init.linkage {
+                Linkage::Global => "global",
+                Linkage::Static => "internal global",
+                Linkage::Extern => "external global"
+            }
+        );
+        self.print_initializer(&init.init);
+        println!(", align {}", init.init.ty.align());
     }
 
     fn print_initializer(&self, init: &Initializer) {

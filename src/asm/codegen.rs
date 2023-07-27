@@ -6,14 +6,20 @@ use crate::{
     alloc::Id, asm::{RV64InstBuilder, RVGPR}, ctype::{TypeKind, BinaryOpType, Type}, ast::{Initializer, InitData},
 };
 
-use super::{MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction, VRegType, DataLiteral, MachineInst};
+use super::{
+    MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction, VRegType,
+    DataLiteral, MachineInst, AsmGlobalObject
+};
 
 impl TransUnit {
     pub fn emit_asm(&mut self) -> MachineProgram {
         let mut program = MachineProgram::new();
 
         for (global, init) in &self.globals {
-            program.symbols.insert(global.clone(), flatten_initializer(init));
+            program.symbols.insert(global.clone(), AsmGlobalObject {
+                data: compress(flatten_initializer(&init.init)),
+                linkage: init.linkage,
+            });
         }
 
         for func in self.funcs() {
@@ -38,6 +44,33 @@ fn flatten_initializer(init: &Initializer) -> Vec<DataLiteral> {
         InitData::ZeroInit => vec![DataLiteral::Zero(init.ty.size as u32)],
         _ => unimplemented!("flatten_initializer"),
     }
+}
+
+fn compress(data: Vec<DataLiteral>) -> Vec<DataLiteral> {
+    let mut res = Vec::new();
+    let mut zero_counter = 0;
+    for d in data {
+        match d {
+            DataLiteral::Word(w) => {
+                if w != 0 {
+                    if zero_counter > 0 {
+                        res.push(DataLiteral::Zero(zero_counter));
+                        zero_counter = 0;
+                    }
+                    res.push(DataLiteral::Word(w));
+                } else {
+                    zero_counter += 4;
+                }
+            }
+            DataLiteral::Zero(z) => {
+                zero_counter += z;
+            }
+        }
+    }
+    if zero_counter > 0 {
+        res.push(DataLiteral::Zero(zero_counter));
+    }
+    res
 }
 
 struct AsmFuncBuilder<'a> {
@@ -478,8 +511,12 @@ impl<'a> AsmFuncBuilder<'a> {
                                         let merged = offset + imm;
                                         if is_imm12(merged) {
                                             emit!(ADDI dst, rs1, merged);
-                                        } else {
+                                        } else if is_imm12(offset) {
                                             emit!(ADDI dst, rd, offset);
+                                        } else {
+                                            let tmp = self.new_vreg64();
+                                            emit!(LIMM tmp, offset);
+                                            emit!(ADD dst, rd, tmp);
                                         }
                                     } else {
                                         if is_imm12(offset) {

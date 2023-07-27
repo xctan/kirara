@@ -1,6 +1,8 @@
 use std::{fmt::{Display, Debug}, collections::{HashMap, HashSet}};
 
-use super::{MachineOperand, RVGPR, MachineProgram, RV64Instruction, DataLiteral};
+use crate::ctype::Linkage;
+
+use super::{MachineOperand, RVGPR, MachineProgram, RV64Instruction, DataLiteral, AsmGlobalObject};
 
 impl Display for MachineProgram {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -158,12 +160,24 @@ impl MachineProgram {
             writeln!(writer)?;
         }
 
-        for (s, d) in &self.symbols {
-            writeln!(writer, "\t.section\t.data")?;
-            writeln!(writer, "\t.globl\t{}", s)?;
+        for (s, AsmGlobalObject{ data, linkage }) in &self.symbols {
+            match linkage {
+                Linkage::Global => {
+                    writeln!(writer, "\t.globl\t{}", s)?;
+                }
+                Linkage::Static => {},
+                Linkage::Extern => {
+                    continue;
+                }
+            }
+            if data.iter().all(|d| matches!(d, DataLiteral::Zero(_))) {
+                writeln!(writer, "\t.section\t.bss")?;
+            } else {
+                writeln!(writer, "\t.section\t.data")?;
+            }
             writeln!(writer, "\t.type\t{}, @object", s)?;
             writeln!(writer, "{}:", s)?;
-            for dd in d {
+            for dd in data {
                 writeln!(writer, "\t{}", dd)?;
             }
             writeln!(writer)?;

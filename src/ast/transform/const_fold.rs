@@ -91,6 +91,7 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
                         BinaryOpType::Le => Bool(lhs <= rhs),
                         BinaryOpType::Gt => Bool(lhs > rhs),
                         BinaryOpType::Ge => Bool(lhs >= rhs),
+                        BinaryOpType::Assign => Int(rhs),
                         _ => unreachable!("op {:?}, lhs {:?}, rhs {:?}", op, lhs, rhs),
                     };
                     Some(num)

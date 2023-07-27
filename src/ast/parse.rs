@@ -14,7 +14,7 @@ use crate::{
     ctype::{BinaryOpType, Type, TypePtrCompare},
 };
 
-use super::transform::AstPassManager;
+use super::transform::{AstPassManager, type_check::ast_type_check};
 
 macro_rules! ttag {
     (IntCn) => {
@@ -515,6 +515,99 @@ fn param(cursor: TokenSpan) -> IResult<TokenSpan, (String, Rc<Type>)> {
     ))
 }
 
+fn local_initializer(init: &mut Vec<Rc<RefCell<AstNode>>>, mut this: Rc<RefCell<AstNode>>, initializer: &Initializer, mut expr_only: bool) {
+    match &initializer.data {
+        InitData::ScalarI32(int) => {
+            if expr_only {
+                return;
+            }
+            let rhs = AstNode::i32_number(*int, 0..0);
+            let assign = 
+                AstNode::binary(this.clone(), rhs, BinaryOpType::Assign, this.borrow().token.clone());
+            let node = AstNode::expr_stmt(assign, this.borrow().token.clone());
+            init.push(node);
+        },
+        InitData::Expr(expr) => {
+            let assign = 
+                AstNode::binary(this.clone(), expr.clone(), BinaryOpType::Assign, this.borrow().token.clone());
+            let node = AstNode::expr_stmt(assign, this.borrow().token.clone());
+            init.push(node);
+        },
+        InitData::ZeroInit => {
+            if expr_only {
+                return;
+            }
+            ast_type_check(this.clone());
+            if !this.borrow().ty().is_array() {
+                // todo: float 0.0f?
+                let rhs = AstNode::i32_number(0, 0..0);
+                let assign = 
+                    AstNode::binary(this.clone(), rhs, BinaryOpType::Assign, this.borrow().token.clone());
+                let node = AstNode::expr_stmt(assign, this.borrow().token.clone());
+                init.push(node);
+            } else {
+                let memset = find_func("memset").unwrap();
+                let memset = AstNode::variable(memset, 0..0);
+                let zero = AstNode::i32_number(0, 0..0);
+                let len = AstNode::i32_number(this.borrow().ty().size().try_into().unwrap(), 0..0);
+                let args = vec![this.clone(), zero, len];
+                let call = AstNode::call(memset, args, this.borrow().token.clone());
+                let node = AstNode::expr_stmt(call, this.borrow().token.clone());
+                init.push(node);
+            }
+        },
+        InitData::Aggregate(data) => {
+            // think twice before expanding all stuff to assignment
+            let is_const = initializer.data.is_const();
+            let const_ratio = if is_const {
+                1.0
+            } else {
+                initializer.data.const_ratio()
+            };
+            if !expr_only && (is_const || const_ratio > 0.5) {
+                ast_type_check(this.clone());
+                let var_name = match &this.borrow().node {
+                    AstNodeType::Variable(v) => {
+                        let var_obj = get_object(*v).unwrap();
+                        var_obj.name.clone()
+                    }
+                    _ => "".to_string()
+                };
+                let const_init = initializer.retain_const();
+                let object_id = new_global_var(
+                    &gen_unique_name(&format!("__const_init.{var_name}.")),
+                    this.borrow().ty(),
+                    Linkage::Static
+                );
+                let init_obj = get_object_mut(object_id).unwrap();
+                init_obj.data = AstObjectType::Var(const_init);
+                let memcpy = find_func("memcpy").unwrap();
+                let memcpy = AstNode::variable(memcpy, 0..0);
+                let args = vec![
+                    this.clone(),
+                    AstNode::variable(object_id, 0..0),
+                    AstNode::i32_number(this.borrow().ty().size().try_into().unwrap(), 0..0),
+                ];
+                let call = AstNode::call(memcpy, args, this.borrow().token.clone());
+                let node = AstNode::expr_stmt(call, this.borrow().token.clone());
+                init.push(node);
+                expr_only = true;
+
+                let newnode = this.borrow().deep_clone();
+                this = newnode;
+            }
+            if !is_const {
+                for (index, d) in data.iter().enumerate() {
+                    let idx = AstNode::i32_number(index.try_into().unwrap(), 0..0);
+                    let member = 
+                        AstNode::binary(this.clone(), idx, BinaryOpType::Index, this.borrow().token.clone());
+                    local_initializer(init, member, &d, expr_only);
+                }
+            }
+        }
+    }
+}
+
 fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     // declspec declarator ("=" initializer)? ("," declarator ("=" initializer)?)* ";"
     let (mut cursor0, ty) = declspec(cursor)?;
@@ -548,84 +641,8 @@ fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
             let mut initializer = Initializer::new(ty);
             (cursor0, _) = initializer2(cursor0, &mut initializer)?;
             initializer.eval();
-            match initializer.data.clone() {
-                InitData::ScalarI32(int) => {
-                    let obj = get_object(object_id).unwrap();
-                    if !obj.ty.is_const() {
-                        let rhs = AstNode::i32_number(int, 0..0);
-                        let var = AstNode::variable(object_id, obj.token.clone());
-                        let assign = AstNode::binary(var, rhs, BinaryOpType::Assign, obj.token.clone());
-                        let node = AstNode::expr_stmt(assign, obj.token.clone());
-                        init.push(node);
-                    }
-                },
-                InitData::Expr(expr) => {
-                    let obj = get_object(object_id).unwrap();
-                    let var = AstNode::variable(object_id, obj.token.clone());
-                    let assign = AstNode::binary(var, expr, BinaryOpType::Assign, obj.token.clone());
-                    let node = AstNode::expr_stmt(assign, obj.token.clone());
-                    init.push(node);
-                },
-                InitData::ZeroInit => {
-                    // todo: memset to zero
-                    let memset = find_func("memset").unwrap();
-                    let memset = AstNode::variable(memset, 0..0);
-                    let obj = get_object(object_id).unwrap();
-                    let var = AstNode::variable(object_id, obj.token.clone());
-                    let zero = AstNode::i32_number(0, 0..0);
-                    let len = AstNode::i32_number(obj.ty.size().try_into().unwrap(), 0..0);
-                    let args = vec![var, zero, len];
-                    let call = AstNode::call(memset, args, obj.token.clone());
-                    let node = AstNode::expr_stmt(call, obj.token.clone());
-                    init.push(node);
-                },
-                InitData::Aggregate(data) => {
-                    // todo: memcpy from const version
-                    // if initializer.data.is_const() {
-                    // }
-                    fn fill(init: &mut Vec<Rc<RefCell<AstNode>>>, this: Rc<RefCell<AstNode>>, initializer: Initializer) {
-                        match initializer.data.clone() {
-                            InitData::ScalarI32(int) => {
-                                let rhs = AstNode::i32_number(int, 0..0);
-                                let assign = 
-                                    AstNode::binary(this.clone(), rhs, BinaryOpType::Assign, this.borrow().token.clone());
-                                let node = AstNode::expr_stmt(assign, this.borrow().token.clone());
-                                init.push(node);
-                            },
-                            InitData::Expr(expr) => {
-                                let assign = 
-                                    AstNode::binary(this.clone(), expr, BinaryOpType::Assign, this.borrow().token.clone());
-                                let node = AstNode::expr_stmt(assign, this.borrow().token.clone());
-                                init.push(node);
-                            },
-                            InitData::ZeroInit => {
-                                let rhs = AstNode::i32_number(0, 0..0);
-                                let assign = 
-                                    AstNode::binary(this.clone(), rhs, BinaryOpType::Assign, this.borrow().token.clone());
-                                let node = AstNode::expr_stmt(assign, this.borrow().token.clone());
-                                init.push(node);
-                            },
-                            InitData::Aggregate(data) => {
-                                for (index, d) in data.iter().enumerate() {
-                                    let idx = AstNode::i32_number(index.try_into().unwrap(), 0..0);
-                                    let member = 
-                                        AstNode::binary(this.clone(), idx, BinaryOpType::Index, this.borrow().token.clone());
-                                    fill(init, member, d.clone());
-                                }
-                            }
-                        }
-                    }
-
-                    let obj = get_object(object_id).unwrap();
-                    let var = AstNode::variable(object_id, obj.token.clone());
-                    for (index, d) in data.iter().enumerate() {
-                        let idx = AstNode::i32_number(index.try_into().unwrap(), 0..0);
-                        let member = 
-                            AstNode::binary(var.clone(), idx, BinaryOpType::Index, obj.token.clone());
-                        fill(&mut init, member, d.clone());
-                    }
-                }
-            }
+            let var = AstNode::variable(object_id, range_between(&cursor2.as_range(), &cursor0.as_range()));
+            local_initializer(&mut init, var, &initializer, false);
             let obj = get_object_mut(object_id).unwrap();
             obj.data = AstObjectType::Var(initializer);
         }
@@ -825,7 +842,7 @@ fn function((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, ()> {
         }
         old_id
     } else {
-        new_global_var(&name, ty.clone())
+        new_global_var(&name, ty.clone(), Linkage::Global)
     };
 
     if let Ok((cursor, _)) = ttag!(P(";"))(cursor) {
@@ -906,7 +923,7 @@ fn global_declaration((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan,
             input: cursor0,
             code: nom::error::ErrorKind::Tag,
         }))?;
-        let object_id = new_global_var(id.as_str(), ty.clone());
+        let object_id = new_global_var(id.as_str(), ty.clone(), Linkage::Global);
 
         if let Ok((cursor2, _)) = ttag!(P("="))(cursor0) {
             cursor0 = cursor2;

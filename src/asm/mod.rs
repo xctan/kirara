@@ -1,6 +1,6 @@
 use std::{collections::{HashSet, HashMap, BTreeSet}, fmt::Debug};
 
-use crate::{ir::structure::BlockId, alloc::{Id, Arena}};
+use crate::{ir::structure::BlockId, alloc::{Id, Arena}, ctype::Linkage};
 
 pub mod codegen;
 pub mod export;
@@ -755,11 +755,17 @@ pub enum DataLiteral {
     Zero(u32),
 }
 
+#[derive(Debug)]
+pub struct AsmGlobalObject {
+    pub data: Vec<DataLiteral>,
+    pub linkage: Linkage,
+}
+
 pub struct MachineProgram {
     pub funcs: HashMap<String, MachineFunc>,
 
     /// data of global variables (functions are not included)
-    pub symbols: HashMap<String, Vec<DataLiteral>>,
+    pub symbols: HashMap<String, AsmGlobalObject>,
 
     // global_decl
 

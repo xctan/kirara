@@ -10,6 +10,9 @@ impl MachineProgram {
     pub fn allocate_registers(&mut self, ir: &mut TransUnit) {
         let funcs = self.funcs.keys().cloned().collect::<Vec<_>>();
         for func in funcs {
+            // let vmax = self.funcs[&func].virtual_max;
+            // assert!(vmax <= 2048, "todo: use another allocation algorithm for large functions");
+
             let loopinfo = LoopInfo::compute(ir, func.as_str());
             let mut done = false;
 
