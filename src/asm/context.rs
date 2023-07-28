@@ -33,10 +33,10 @@ impl MachineProgram {
             };
 
             macro_rules! r {
-                (a0) => { MachineOperand::PreColored(RVGPR::a(0)) };
-                (t0) => { MachineOperand::PreColored(RVGPR::t(0)) };
-                (fp) => { MachineOperand::PreColored(RVGPR::s(0)) };
-                ($ident:ident) => { MachineOperand::PreColored(RVGPR::$ident()) };
+                (a0) => { GPOperand::PreColored(RVGPR::a(0)) };
+                (t0) => { GPOperand::PreColored(RVGPR::t(0)) };
+                (fp) => { GPOperand::PreColored(RVGPR::s(0)) };
+                ($ident:ident) => { GPOperand::PreColored(RVGPR::$ident()) };
             }
 
             let mut prologue = vec![];
@@ -61,7 +61,7 @@ impl MachineProgram {
                 2
             };
             for (idx, reg) in callee_saved.iter().enumerate() {
-                i!(SD MachineOperand::PreColored(**reg), r!(sp), saved_offset(idx as u32 + save_adj));
+                i!(SD GPOperand::PreColored(**reg), r!(sp), saved_offset(idx as u32 + save_adj));
             }
             let rem_stack_size = stack_size - small_stack_size;
             if rem_stack_size != 0 {
@@ -92,7 +92,7 @@ impl MachineProgram {
                 }
             }
             for (idx, reg) in callee_saved.iter().enumerate() {
-                i!(LD MachineOperand::PreColored(**reg), r!(sp), saved_offset(idx as u32 + save_adj));
+                i!(LD GPOperand::PreColored(**reg), r!(sp), saved_offset(idx as u32 + save_adj));
             }
             if !thin {
                 i!(LD r!(fp), r!(sp), saved_offset(1));

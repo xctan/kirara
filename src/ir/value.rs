@@ -152,6 +152,7 @@ pub enum ConstantValue {
     Undef,
     I1(bool),
     I32(i32),
+    F32(f32),
 }
 
 impl ValueTrait for ConstantValue {
@@ -160,6 +161,7 @@ impl ValueTrait for ConstantValue {
             ConstantValue::Undef => Type::void_type(),
             ConstantValue::I1(_) => Type::i1_type(),
             ConstantValue::I32(_) => Type::i32_type(),
+            ConstantValue::F32(_) => Type::f32_type(),
         }
     }
 }

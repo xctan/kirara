@@ -149,6 +149,9 @@ impl IrFuncBuilder<'_> {
     pub fn const_i1(&mut self, val: bool) -> ValueId {
         self.unit.const_i1(val)
     }
+    pub fn const_f32(&mut self, val: f32) -> ValueId {
+        self.unit.const_f32(val)
+    }
 
     // proxy to inst builders
     inst_proxy!(alloca(ty: Rc<Type>));

@@ -312,7 +312,7 @@ impl EmitIrExpr for AstNodeType {
                     _ => unimplemented!("try to call non-variable: {:?}", func.func.borrow().node),
                 }
             }
-            _ => unimplemented!(),
+            _ => unimplemented!("emit_ir_expr: {:#?}", self),
         }
     }
 }

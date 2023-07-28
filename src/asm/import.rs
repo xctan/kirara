@@ -2,4 +2,7 @@ pub use std::{collections::{HashMap, HashSet, BTreeSet, BTreeMap}, ops::AddAssig
 
 pub use crate::{alloc::Id, ir::{cfg::LoopInfo, structure::TransUnit}, asm::RV64InstBuilder};
 
-pub use super::{MachineOperand, MachineInst, MachineProgram, RVGPR, RV64Instruction, VRegType};
+pub use super::{
+    GPOperand, MachineInst, MachineProgram, RVGPR, RV64Instruction,
+    Operand, PhysicalRegister, VirtGPR, round_up,
+};

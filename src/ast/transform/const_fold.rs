@@ -19,6 +19,7 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::I1Number(_) => None,
         AstNodeType::I32Number(_) => None,
         AstNodeType::I64Number(_) => None,
+        AstNodeType::F32Number(_) => None,
         AstNodeType::Variable(var) => {
             let variable = get_object(var).unwrap();
             let var_ty = variable.ty.clone();
@@ -45,6 +46,11 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
                 (AstNodeType::I32Number(num), &TypeKind::I32) => Some(AstNodeType::I32Number(num)),
                 (AstNodeType::I32Number(num), &TypeKind::I1) => Some(AstNodeType::I1Number(num != 0)),
                 (AstNodeType::I1Number(num), &TypeKind::I1) => Some(AstNodeType::I1Number(num)),
+                (AstNodeType::F32Number(num), &TypeKind::F32) => Some(AstNodeType::F32Number(num)),
+                (AstNodeType::F32Number(num), &TypeKind::I32) => Some(AstNodeType::I32Number(num as i32)),
+                (AstNodeType::F32Number(num), &TypeKind::I1) => Some(AstNodeType::I1Number(num != 0.0)),
+                (AstNodeType::I32Number(num), &TypeKind::F32) => Some(AstNodeType::F32Number(num as f32)),
+                (AstNodeType::I1Number(num), &TypeKind::F32) => Some(AstNodeType::F32Number(num as i32 as f32)),
                 _ => None,
             }
         }

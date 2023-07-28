@@ -6,6 +6,7 @@ pub enum TypeKind {
     I1,
     I32,
     I64,
+    F32,
     Ptr(Rc<Type>),
     Func(Func),
     Array(Array),
@@ -26,6 +27,7 @@ thread_local! {
     static I1_TYPE: Rc<Type> = Type::new(TypeKind::I1, 1, 1);
     static I32_TYPE: Rc<Type> = Type::new(TypeKind::I32, 4, 4);
     static I64_TYPE: Rc<Type> = Type::new(TypeKind::I64, 8, 8);
+    static F32_TYPE: Rc<Type> = Type::new(TypeKind::F32, 4, 4);
 }
 
 impl Type {
@@ -108,6 +110,10 @@ impl Type {
         I64_TYPE.with(|t| t.clone())
     }
 
+    pub fn f32_type() -> Rc<Type> {
+        F32_TYPE.with(|t| t.clone())
+    }
+
     #[allow(unused)]
     pub fn ptr_to(ty: Rc<Type>) -> Rc<Type> {
         let ty = Type::new(TypeKind::Ptr(ty), 8, 8);
@@ -144,9 +150,20 @@ impl Type {
     pub fn get_common_type(mut a: Rc<Type>, mut b: Rc<Type>) -> Rc<Type> {
         // todo: a is arr or ptr
 
-        // todo: func ptr
+        // func ptr
+        if a.is_function() {
+            return Self::ptr_to(a);
+        }
+        if b.is_function() {
+            return Self::ptr_to(b);
+        }
 
-        // todo: float types
+        // float types
+        // long double?
+        // double?
+        if matches!(a.kind, TypeKind::F32) || matches!(b.kind, TypeKind::F32) {
+            return Type::f32_type();
+        }
 
         if a.size() < 4 {
             a = Type::i32_type();
@@ -178,6 +195,7 @@ impl Display for Type {
             TypeKind::I1 => write!(f, "i1"),
             TypeKind::I32 => write!(f, "i32"),
             TypeKind::I64 => write!(f, "i64"),
+            TypeKind::F32 => write!(f, "f32"),
             // TypeKind::Ptr(p) => {
             //     write!(f, "{}*", p)
             // },
@@ -211,7 +229,9 @@ impl PartialEq for Type {
                 (&self.kind, &other.kind), 
                 (&TypeKind::Void, &TypeKind::Void) | 
                 (&TypeKind::I1, &TypeKind::I1) | 
-                (&TypeKind::I32, &TypeKind::I32)
+                (&TypeKind::I32, &TypeKind::I32) |
+                (&TypeKind::I64, &TypeKind::I64) |
+                (&TypeKind::F32, &TypeKind::F32)
             )
         }
     }

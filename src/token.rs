@@ -121,6 +121,27 @@ impl_integer!(i64);
 
 impl_integer!(i32);
 
+macro_rules! impl_float {
+    ($float:ty) => {
+        impl TryInto<$float> for TokenSpan<'_> {
+            type Error = ();
+
+            fn try_into(self) -> Result<$float, Self::Error> {
+                if self.0.len() != 1 {
+                    return Err(());
+                }
+                if !matches!(self.0[0].1, TokenType::FloatConst) {
+                    return Err(())
+                }
+                let s = self.0[0].0.replace("'", "");
+                s.parse().map_err(|_| ())
+            }
+        }
+    }
+}
+
+impl_float!(f32);
+
 pub type TokenRange = Range<usize>;
 
 impl TokenSpan<'_> {

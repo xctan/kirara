@@ -32,6 +32,7 @@ pub trait AstRewriteVisitor {
     fn visit_i1_number(&mut self, _num: bool) -> Option<Rc<RefCell<AstNode>>> { None }
     fn visit_i32_number(&mut self, _num: i32) -> Option<Rc<RefCell<AstNode>>> { None }
     fn visit_i64_number(&mut self, _num: i64) -> Option<Rc<RefCell<AstNode>>> { None }
+    fn visit_f32_number(&mut self, _num: f32) -> Option<Rc<RefCell<AstNode>>> { None }
     fn visit_variable(&mut self, _id: ObjectId) -> Option<Rc<RefCell<AstNode>>> { None }
     // expression constructs
     fn visit_convert(&mut self, _from: Rc<RefCell<AstNode>>, _to: Rc<Type>) -> Option<Rc<RefCell<AstNode>>> { 
@@ -111,6 +112,7 @@ pub trait AstRewriteVisitor {
             crate::ast::AstNodeType::I1Number(num) => self.visit_i1_number(num),
             crate::ast::AstNodeType::I32Number(num) => self.visit_i32_number(num),
             crate::ast::AstNodeType::I64Number(num) => self.visit_i64_number(num),
+            crate::ast::AstNodeType::F32Number(num) => self.visit_f32_number(num),
             crate::ast::AstNodeType::Variable(id) => self.visit_variable(id),
             crate::ast::AstNodeType::Convert(convert) => self.visit_convert(convert.from, convert.to),
             crate::ast::AstNodeType::FunCall(funcall) => self.visit_funcall(funcall.func, funcall.args),

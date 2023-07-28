@@ -7,8 +7,8 @@ use crate::{
 };
 
 use super::{
-    MachineProgram, MachineFunc, MachineBB, MachineOperand, RV64Instruction, VRegType,
-    DataLiteral, MachineInst, AsmGlobalObject
+    MachineProgram, MachineFunc, MachineBB, GPOperand, RV64Instruction,
+    DataLiteral, MachineInst, AsmGlobalObject, Operand, VirtGPR, VirtGPRType,
 };
 
 impl TransUnit {
@@ -34,6 +34,7 @@ impl TransUnit {
 fn flatten_initializer(init: &Initializer) -> Vec<DataLiteral> {
     match init.data {
         InitData::ScalarI32(i) => vec![DataLiteral::Word(i as u32)],
+        InitData::ScalarF32(f) => vec![DataLiteral::WordHex(f.to_bits())],
         InitData::Aggregate(ref aggr) => {
             let mut res = Vec::new();
             for init in aggr.iter() {
@@ -62,6 +63,17 @@ fn compress(data: Vec<DataLiteral>) -> Vec<DataLiteral> {
                     zero_counter += 4;
                 }
             }
+            DataLiteral::WordHex(w) => {
+                if w != 0 {
+                    if zero_counter > 0 {
+                        res.push(DataLiteral::Zero(zero_counter));
+                        zero_counter = 0;
+                    }
+                    res.push(DataLiteral::WordHex(w));
+                } else {
+                    zero_counter += 4;
+                }
+            }
             DataLiteral::Zero(z) => {
                 zero_counter += z;
             }
@@ -81,22 +93,22 @@ struct AsmFuncBuilder<'a> {
     pub bb_map: HashMap<Id<BasicBlock>, Id<MachineBB>>,
 
     // mappings from ir entity to asm entity
-    pub val_map: HashMap<Id<Value>, MachineOperand>,
+    pub val_map: HashMap<Id<Value>, GPOperand>,
     // todo: global decl
 
     pub virtual_max: u32,
-    pub vreg_types: HashMap<u32, VRegType>,
     pub used_regs: HashSet<RVGPR>,
+    pub virtual_gprs: HashSet<VirtGPR>,
 
     entry_marker: Option<Id<MachineInst>>,
 }
 
 macro_rules! pre {
-    (zero) => { MachineOperand::PreColored(RVGPR::zero()) };
-    (a0) => { MachineOperand::PreColored(RVGPR::a(0)) };
-    (fp) => { MachineOperand::PreColored(RVGPR::fp()) };
-    (sp) => { MachineOperand::PreColored(RVGPR::sp()) };
-    (a $i:expr) => { MachineOperand::PreColored(RVGPR::a($i)) };
+    (zero) => { GPOperand::PreColored(RVGPR::zero()) };
+    (a0) => { GPOperand::PreColored(RVGPR::a(0)) };
+    (fp) => { GPOperand::PreColored(RVGPR::fp()) };
+    (sp) => { GPOperand::PreColored(RVGPR::sp()) };
+    (a $i:expr) => { GPOperand::PreColored(RVGPR::a($i)) };
 }
 
 impl<'a> AsmFuncBuilder<'a> {
@@ -108,8 +120,8 @@ impl<'a> AsmFuncBuilder<'a> {
             bb_map: HashMap::new(),
             val_map: HashMap::new(),
             virtual_max: 1,
-            vreg_types: HashMap::new(),
             used_regs: HashSet::new(),
+            virtual_gprs: HashSet::new(),
             entry_marker: None,
         }
     }
@@ -117,8 +129,8 @@ impl<'a> AsmFuncBuilder<'a> {
     pub fn build(mut self) -> MachineFunc {
         let mut mfunc = self.build_inner();
         mfunc.virtual_max = self.virtual_max;
-        mfunc.vreg_types = self.vreg_types;
         mfunc.used_regs.extend(self.used_regs);
+        mfunc.virtual_gprs.extend(self.virtual_gprs);
 
         mfunc
     }
@@ -701,30 +713,23 @@ impl<'a> AsmFuncBuilder<'a> {
             }
             for (pred, insts) in outgoing_imm {
                 let mbb = self.bb_map[&pred];
+                let mut loads = vec![];
+                for (lhs, rhs) in insts {
+                    match rhs {
+                        ConstantValue::I32(imm) => loads.push(RV64InstBuilder::LIMM(lhs, imm)),
+                        ConstantValue::I1(imm) => loads.push(RV64InstBuilder::LIMM(lhs, imm as i32)),
+                        ConstantValue::F32(imm) => {
+                            let tmp = self.new_vreg64();
+                            loads.push(RV64InstBuilder::LIMM(tmp, imm.to_bits() as i32));
+                            // FMV.S.X lhs, tmp
+                        }
+                        ConstantValue::Undef => continue,
+                    }
+                }
                 if let Some(last) = self.prog.blocks[mbb].insts_tail {
-                    for (lhs, rhs) in insts {
-                        match rhs {
-                            ConstantValue::I32(imm) => {
-                                self.prog.insert_before(last, RV64InstBuilder::LIMM(lhs, imm));
-                            }
-                            ConstantValue::I1(imm) => {
-                                self.prog.insert_before(last, RV64InstBuilder::LIMM(lhs, imm as i32));
-                            }
-                            ConstantValue::Undef => {}
-                        }
-                    }
+                    todo!("phi node with imm");
                 } else {
-                    for (lhs, rhs) in insts {
-                        match rhs {
-                            ConstantValue::I32(imm) => {
-                                self.prog.push_to_end(mbb, RV64InstBuilder::LIMM(lhs, imm));
-                            },
-                            ConstantValue::I1(imm) => {
-                                self.prog.push_to_end(mbb, RV64InstBuilder::LIMM(lhs, imm as i32));
-                            }
-                            ConstantValue::Undef => {}
-                        }
-                    }
+                    todo!("phi node with imm");
                 }
             }
         }
@@ -753,21 +758,23 @@ impl<'a> AsmFuncBuilder<'a> {
         mfunc
     }
 
-    fn new_vreg(&mut self) -> MachineOperand {
+    fn new_vreg(&mut self) -> GPOperand {
         let old = self.virtual_max;
-        self.vreg_types.insert(old, VRegType::Int32);
         self.virtual_max += 1;
-        MachineOperand::Virtual(old)
+        let v = VirtGPR::new(old, VirtGPRType::Int32);
+        self.virtual_gprs.insert(v);
+        GPOperand::Virtual(v)
     }
 
-    fn new_vreg64(&mut self) -> MachineOperand {
+    fn new_vreg64(&mut self) -> GPOperand {
         let old = self.virtual_max;
-        self.vreg_types.insert(old, VRegType::Int64);
         self.virtual_max += 1;
-        MachineOperand::Virtual(old)
+        let v = VirtGPR::new(old, VirtGPRType::Int64);
+        self.virtual_gprs.insert(v);
+        GPOperand::Virtual(v)
     }
 
-    fn type_to_reg(&mut self, ty: Rc<Type>) -> MachineOperand {
+    fn type_to_reg(&mut self, ty: Rc<Type>) -> GPOperand {
         match ty.kind {
             TypeKind::I1 => self.new_vreg(),
             TypeKind::I32 => self.new_vreg(),
@@ -777,7 +784,7 @@ impl<'a> AsmFuncBuilder<'a> {
         }
     }
 
-    fn resolve_ensure_reg(&mut self, val: Id<Value>, _mbb: Id<MachineBB>) -> MachineOperand {
+    fn resolve_ensure_reg(&mut self, val: Id<Value>, _mbb: Id<MachineBB>) -> GPOperand {
         let value = self.unit.values[val].clone();
         match value.value {
             ValueType::Constant(_c) => {
@@ -807,7 +814,7 @@ impl<'a> AsmFuncBuilder<'a> {
         }
     }
 
-    fn resolve(&mut self, val: Id<Value>, _mbb: Id<MachineBB>) -> MachineOperand {
+    fn resolve(&mut self, val: Id<Value>, _mbb: Id<MachineBB>) -> GPOperand {
         let value = self.unit.values[val].clone();
         match value.value {
             ValueType::Constant(_c) => {
@@ -838,14 +845,14 @@ impl<'a> AsmFuncBuilder<'a> {
                         // self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, MachineOperand::PreColored(RVGPR::a(idx))));
                         // NO EXTRA MOVE! A registers cannot be written before used,
                         // and the extra move causes erroneous register allocation
-                        return MachineOperand::PreColored(RVGPR::a(idx));
+                        return GPOperand::PreColored(RVGPR::a(idx));
                     } else {
                         // extra args are passed on stack, 8 bytes aligned
                         // for i-th arg, it is at [fp + 8 * (i - 8)]
                         self.used_regs.insert(RVGPR::fp());
                         let offset = 8 * (idx - 8) as i32;
                         if is_imm12(offset) {
-                            self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, MachineOperand::PreColored(RVGPR::fp()), offset));
+                            self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, GPOperand::PreColored(RVGPR::fp()), offset));
                         } else {
                             // try to use itself as scratch register; should it cause any problem?
                             let (load_high, lo12) = AsmFuncBuilder::load_imm32_hi20(res, offset);
@@ -853,7 +860,7 @@ impl<'a> AsmFuncBuilder<'a> {
                             if let Some(minst) = load_high {
                                 // pushed in reverse order
                                 self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, res, lo12));
-                                self.prog.push_to_begin(entry, RV64InstBuilder::ADD(res, res, MachineOperand::PreColored(RVGPR::fp())));
+                                self.prog.push_to_begin(entry, RV64InstBuilder::ADD(res, res, GPOperand::PreColored(RVGPR::fp())));
                                 self.prog.push_to_begin(entry, minst);
                             } else {
                                 // hi20 cannot be zero, or we can use LD directly
@@ -915,7 +922,7 @@ impl<'a> AsmFuncBuilder<'a> {
     //     ret
     // }
 
-    fn load_imm32_hi20(reg: MachineOperand, imm: i32) -> (Option<RV64Instruction>, i32) {
+    fn load_imm32_hi20(reg: GPOperand, imm: i32) -> (Option<RV64Instruction>, i32) {
         let hi20 = (imm + 0x800) >> 12 & 0xfffff;
         let lo12 = imm & 0xfff;
 
@@ -939,11 +946,11 @@ impl<'a> AsmFuncBuilder<'a> {
 }
 
 trait PseudoMachineOperand {
-    fn as_machopr(&self) -> Option<MachineOperand>;
+    fn as_machopr(&self) -> Option<GPOperand>;
 }
 
-impl PseudoMachineOperand for MachineOperand {
-    fn as_machopr(&self) -> Option<MachineOperand> {
+impl PseudoMachineOperand for GPOperand {
+    fn as_machopr(&self) -> Option<GPOperand> {
         Some(self.clone())
     }
 }
@@ -952,7 +959,7 @@ macro_rules! impl_blank_mo {
     ($($t:ty),+ $(,)?) => {
         $(
             impl PseudoMachineOperand for $t {
-                fn as_machopr(&self) -> Option<MachineOperand> {
+                fn as_machopr(&self) -> Option<GPOperand> {
                     None
                 }
             }

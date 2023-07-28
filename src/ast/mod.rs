@@ -53,6 +53,7 @@ pub enum AstNodeType {
     I1Number(bool),
     I32Number(i32),
     I64Number(i64),
+    F32Number(f32),
     Variable(ObjectId),
     UnaryOp(UnaryOp),
     BinaryOp(BinaryOp),
@@ -128,6 +129,11 @@ impl AstNode {
         Rc::new(RefCell::new(node))
     }
 
+    pub fn f32_number(val: f32, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::F32Number(val), token);
+        Rc::new(RefCell::new(node))
+    }
+    
     pub fn convert(from: Rc<RefCell<Self>>, to: Rc<Type>, token: TokenRange) -> Rc<RefCell<Self>> {
         let node = Self::new(AstNodeType::Convert(Convert { from, to }), token);
         Rc::new(RefCell::new(node))
@@ -277,7 +283,7 @@ pub enum AstObjectType {
 pub enum InitData {
     Expr(Rc<RefCell<AstNode>>),
     ScalarI32(i32),
-    // ScalarF32(f32),
+    ScalarF32(f32),
     Aggregate(Vec<Initializer>),
     ZeroInit,
 }
@@ -300,6 +306,9 @@ impl InitData {
                     AstNodeType::I32Number(num) => {
                         Self::ScalarI32(num)
                     },
+                    AstNodeType::F32Number(num) => {
+                        Self::ScalarF32(num)
+                    }
                     _ => return,
                 }
             },
@@ -318,6 +327,7 @@ impl InitData {
         match self {
             Self::Expr(_) => false,
             Self::ScalarI32(_) => true,
+            Self::ScalarF32(_) => true,
             Self::Aggregate(data) => data.iter().all(|init| init.data.is_const()),
             Self::ZeroInit => true,
         }
@@ -327,6 +337,7 @@ impl InitData {
         match self {
             Self::Expr(_) => 0.0,
             Self::ScalarI32(_) => 1.0,
+            Self::ScalarF32(_) => 1.0,
             Self::Aggregate(data) => {
                 let mut sum = 0.0;
                 for init in data.iter() {
@@ -341,7 +352,8 @@ impl InitData {
     pub fn retain_const(&self) -> Self {
         match self {
             Self::Expr(_) => Self::ZeroInit,
-            a @ Self::ScalarI32(_) => a.clone(),
+            a @ Self::ScalarI32(_) |
+            a @ Self::ScalarF32(_) => a.clone(),
             Self::Aggregate(data) => {
                 let mut new_data = Vec::new();
                 for init in data.iter() {
@@ -357,6 +369,7 @@ impl InitData {
         match self {
             Self::Expr(_) => false,
             Self::ScalarI32(_) => false,
+            Self::ScalarF32(_) => false,
             Self::Aggregate(data) => data.iter().all(|init| init.data.is_all_zeroinit()),
             Self::ZeroInit => true,
         }
@@ -377,6 +390,7 @@ impl Initializer {
             TypeKind::I1 |
             TypeKind::I32 |
             TypeKind::I64 |
+            TypeKind::F32 |
             TypeKind::Ptr(_) => InitData::ZeroInit,
             // aggregate
             TypeKind::Array(arr) => {

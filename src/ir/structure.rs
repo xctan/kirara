@@ -314,6 +314,13 @@ impl TransUnit {
         self.values.alloc(val)
     }
 
+    pub fn const_f32(&mut self, val: f32) -> ValueId {
+        let val = ConstantValue::F32(val);
+        let val = ValueType::Constant(val);
+        let val = Value::new(val);
+        self.values.alloc(val)
+    }
+
     pub fn global(&mut self, name: &str, ty: Rc<Type>) -> ValueId {
         let ty = ty;
         let val = ValueType::Global(GlobalValue{ name: name.to_string(), ty });

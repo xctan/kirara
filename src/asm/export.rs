@@ -2,7 +2,7 @@ use std::{fmt::{Display, Debug}, collections::{HashMap, HashSet}};
 
 use crate::ctype::Linkage;
 
-use super::{MachineOperand, RVGPR, MachineProgram, RV64Instruction, DataLiteral, AsmGlobalObject};
+use super::{GPOperand, RVGPR, MachineProgram, RV64Instruction, DataLiteral, AsmGlobalObject};
 
 impl Display for MachineProgram {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -312,17 +312,21 @@ impl Display for RV64Instruction {
                 write!(f, "enter"),
             RV64Instruction::LEAVE =>
                 write!(f, "leave"),
+            RV64Instruction::JUMP { target } =>
+                write!(f, "j\tid:{:?}", target),
+            RV64Instruction::NOP =>
+                write!(f, "nop"),
             _ => panic!("unimplemented instruction: {:?}", self),
         }
     }
 }
 
-impl Display for MachineOperand {
+impl Display for GPOperand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MachineOperand::Virtual(reg) => write!(f, "%{}", reg),
-            MachineOperand::PreColored(reg) => write!(f, "{}", reg),
-            MachineOperand::Allocated(reg) => write!(f, "{}", reg),
+            GPOperand::Virtual(reg) => write!(f, "{}", reg),
+            GPOperand::PreColored(reg) => write!(f, "{}", reg),
+            GPOperand::Allocated(reg) => write!(f, "{}", reg),
         }
     }
 }
@@ -337,6 +341,15 @@ impl Display for DataLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DataLiteral::Word(w) => write!(f, ".word\t{}", w),
+            DataLiteral::WordHex(w) => write!(
+                f,
+                ".word\t0x{:08x}                        # float {}",
+                w,
+                unsafe {
+                    let f: f32 = std::mem::transmute(*w);
+                    f
+                }
+            ),
             DataLiteral::Zero(size) => write!(f, ".zero\t{}", size),
         }
     }

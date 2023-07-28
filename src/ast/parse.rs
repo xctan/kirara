@@ -22,6 +22,11 @@ macro_rules! ttag {
             $crate::token::TokenType::IntegerConst
         )
     };
+    (FpCn) => {
+        nom::bytes::complete::tag(
+            $crate::token::TokenType::FloatConst
+        )
+    };
     (I) => {
         nom::bytes::complete::tag::<
             $crate::token::TokenType,
@@ -47,7 +52,7 @@ macro_rules! ttag {
     };
 }
 
-fn number_constant(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+fn integer_constant(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     map(
         ttag!(IntCn),
         |token: TokenSpan<'_>| {
@@ -56,7 +61,20 @@ fn number_constant(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>
             } else if let Ok(num) = TryInto::<i64>::try_into(token) {
                 AstNode::i64_number(num, token.as_range())
             } else {
-                panic!("integer constant overflow");
+                panic!("malformed integer constant: {}", token.as_str());
+            }
+        }
+    )(cursor)
+}
+
+fn float_constant(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    map(
+        ttag!(FpCn),
+        |token: TokenSpan<'_>| {
+            if let Ok(num) = TryInto::<f32>::try_into(token) {
+                AstNode::f32_number(num, token.as_range())
+            } else {
+                panic!("malformed float constant: {}", token.as_str());
             }
         }
     )(cursor)
@@ -86,7 +104,8 @@ fn primary(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
                 expr
             }),
         identifier,
-        number_constant,
+        integer_constant,
+        float_constant,
     ))(cursor)
 }
 
@@ -379,10 +398,12 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Rc<Type>> {
             ttag!(K("int")),
             ttag!(K("void")),
             ttag!(K("const")),
+            ttag!(K("float")),
         ))),
         |decl: Vec<TokenSpan>| {
             const VOID: i32 = 1 << 0;
             const INT: i32 = 1 << 8;
+            const FLOAT: i32 = 1 << 12;
             let mut ty = Type::i32_type();
             let mut counter = 0;
             let mut is_const = false;
@@ -392,6 +413,7 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Rc<Type>> {
                     "void" => counter += VOID,
                     "int" => counter += INT,
                     "const" => is_const = true,
+                    "float" => counter += FLOAT,
                     _ => unreachable!(),
                 }
 
@@ -399,6 +421,7 @@ fn declspec(cursor: TokenSpan) -> IResult<TokenSpan, Rc<Type>> {
                     0 => continue,
                     VOID => ty = Type::void_type(),
                     INT => ty = Type::i32_type(),
+                    FLOAT => ty = Type::f32_type(),
                     _ => panic!("invalid type"),
                 }
             }
@@ -527,6 +550,16 @@ fn local_initializer(init: &mut Vec<Rc<RefCell<AstNode>>>, mut this: Rc<RefCell<
             let node = AstNode::expr_stmt(assign, this.borrow().token.clone());
             init.push(node);
         },
+        InitData::ScalarF32(float) => {
+            if expr_only {
+                return;
+            }
+            let rhs = AstNode::f32_number(*float, 0..0);
+            let assign = 
+                AstNode::binary(this.clone(), rhs, BinaryOpType::Assign, this.borrow().token.clone());
+            let node = AstNode::expr_stmt(assign, this.borrow().token.clone());
+            init.push(node);
+        }
         InitData::Expr(expr) => {
             let assign = 
                 AstNode::binary(this.clone(), expr.clone(), BinaryOpType::Assign, this.borrow().token.clone());

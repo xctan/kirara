@@ -69,10 +69,10 @@ impl TransUnit {
         for bb in &func.bbs {
             let bb = *bb;
             let bb0 = self.blocks.get(bb).unwrap();
-            print!("{}:", bb0.name);
+            print!("{:<40}", format!("{}:", bb0.name));
             bb0.preds.iter().enumerate().for_each(|(idx, bb)| {
                 if idx == 0 {
-                    print!("                                  ; preds: ");
+                    print!("; preds: ");
                 } else {
                     print!(", ");
                 }
@@ -201,6 +201,7 @@ impl TransUnit {
                     ConstantValue::Undef => print!("undef"),
                     ConstantValue::I1(b) => print!("{}", b),
                     ConstantValue::I32(i) => print!("{}", i),
+                    ConstantValue::F32(f) => print!("{}", f),
                 }
             }
             ValueType::Instruction(ref insn) => {
