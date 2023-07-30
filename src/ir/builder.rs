@@ -161,7 +161,7 @@ impl IrFuncBuilder<'_> {
     inst_proxy!(binary(op: BinaryOpType, lhs: ValueId, rhs: ValueId));
     inst_proxy!(branch(cond: ValueId, succ: BlockId, fail: BlockId));
     inst_proxy!(jump(succ: BlockId));
-    inst_proxy!(zext(val: ValueId, ty: Rc<Type>));
+    inst_proxy!(unary(val: ValueId, op: UnaryOp));
     inst_proxy!(phi(args: Vec<(ValueId, BlockId)>, ty: Rc<Type>));
     inst_proxy!(gep(ptr: ValueId, idx: Vec<ValueId>));
     inst_proxy!(call(func: &str, ret: Rc<Type>, args: Vec<ValueId>));

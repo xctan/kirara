@@ -1,6 +1,6 @@
 use std::{rc::Rc, cell::RefCell};
 
-use crate::{ast::*, ctype::{Type, TypePtrCompare}};
+use crate::{ast::*, ctype::Type};
 
 use super::AstTransformPass;
 
@@ -51,14 +51,26 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             ast_type_check(rhs.clone());
             lhs.borrow().ty.clone().unwrap().base_type()
         }
+        AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op: BinaryOpType::Assign }) => {
+            ast_type_check(lhs.clone());
+            ast_type_check(rhs.clone());
+
+            let rhs_new = ast_gen_convert(rhs.clone(), lhs.borrow().ty());
+            let mut rhs_mut = rhs.borrow_mut();
+            rhs_mut.node = rhs_new;
+            rhs_mut.ty = Some(lhs.borrow().ty());
+            drop(rhs_mut);
+
+            lhs.borrow().ty()
+        }
         AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op }) => {
             ast_type_check(lhs.clone());
             ast_type_check(rhs.clone());
             let common_ty = match op {
                 BinaryOpType::LogAnd | BinaryOpType::LogOr => Type::i1_type(),
                 _ => Type::get_common_type(
-                    lhs.borrow().ty.clone().unwrap(),
-                    rhs.borrow().ty.clone().unwrap(),
+                    lhs.borrow().ty(),
+                    rhs.borrow().ty(),
                 )
             };
             let lhs_new = ast_gen_convert(lhs.clone(), common_ty.clone());
@@ -83,18 +95,9 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
                 BinaryOpType::Le => Type::i1_type(),
                 BinaryOpType::Gt => Type::i1_type(),
                 BinaryOpType::Ge => Type::i1_type(),
-                BinaryOpType::Assign => {
-                    if lhs.borrow().ty.clone().unwrap().is_same_as(&rhs.borrow().ty.clone().unwrap()) ||
-                        lhs.borrow().ty.clone().unwrap().is_same_as(&rhs.borrow().ty.clone().unwrap())
-                    {
-                        lhs.borrow().ty.clone().unwrap().clone()
-                    } else {
-                        panic!("type mismatch: left {}, right {}", lhs.borrow().ty.clone().unwrap(), rhs.borrow().ty.clone().unwrap());
-                    }
-                },
                 BinaryOpType::LogAnd => Type::i1_type(),
                 BinaryOpType::LogOr => Type::i1_type(),
-                _ => unreachable!(),
+                _ => unimplemented!("type check binary op {:?}", op),
             }
         },
         AstNodeType::FunCall(funcall) => {
@@ -166,7 +169,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
     (*tree).borrow_mut().ty = Some(new_type);
 }
 
-fn ast_gen_convert(from: Rc<RefCell<AstNode>>, to: Rc<Type>) -> AstNodeType {
+pub fn ast_gen_convert(from: Rc<RefCell<AstNode>>, to: Rc<Type>) -> AstNodeType {
     if from.borrow().ty.clone().unwrap() == to {
         return from.borrow().node.clone();
     }

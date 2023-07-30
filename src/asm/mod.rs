@@ -7,7 +7,8 @@ pub mod export;
 pub mod reg_alloc;
 pub mod simplify;
 pub mod context;
-mod import;
+mod include;
+mod operand;
 
 pub trait PhysicalRegister: Clone + Copy + Ord
 where
@@ -371,12 +372,34 @@ impl RVFPR {
         unsafe { std::mem::transmute::<u16, RVFPR>(i as u16 + 10) }
     }
 
-    pub fn fx(i: usize) -> Self {
-        if i > 31 {
-            panic!("invalid FP register index");
+    // pub fn fx(i: usize) -> Self {
+    //     if i > 31 {
+    //         panic!("invalid FP register index");
+    //     }
+    //     unsafe { std::mem::transmute::<u16, RVFPR>(i as u16) }
+    // }
+
+    pub fn ft(i: usize) -> Self {
+        if i > 11 {
+            panic!("invalid FT register index");
         }
-        unsafe { std::mem::transmute::<u16, RVFPR>(i as u16) }
+        if i <= 7 {
+            unsafe { std::mem::transmute::<u16, RVFPR>(i as u16) }
+        } else {
+            unsafe { std::mem::transmute::<u16, RVFPR>(i as u16 + 20)}
+        }
     }
+
+    // pub fn fs(i: usize) -> Self {
+    //     if i > 11 {
+    //         panic!("invalid FS register index");
+    //     }
+    //     if i <= 1 {
+    //         unsafe { std::mem::transmute::<u16, RVFPR>(i as u16 + 8) }
+    //     } else {
+    //         unsafe { std::mem::transmute::<u16, RVFPR>(i as u16 + 16)}
+    //     }
+    // }
 }
 
 impl Debug for RVFPR {
@@ -436,7 +459,7 @@ impl Display for VirtFPR {
             VirtFPRType::Fp32 => write!(f, "f32")?,
             VirtFPRType::Fp64 => write!(f, "f64")?,
         };
-        write!(f, " %{}", self.id())
+        write!(f, " %{}f", self.id())
     }
 }
 
@@ -615,12 +638,6 @@ impl Operand<RVFPR, VirtFPR> for FPOperand {
     }
 }
 
-impl Display for FPOperand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
-}
-
 #[derive(Debug, Clone)]
 #[allow(unused)]
 pub enum RV64Instruction {
@@ -710,14 +727,89 @@ pub enum RV64Instruction {
     REMW { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
     REMUW { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
 
-    // todo: RV32F
+    // RV32F
+    FLW { rd: FPOperand, rs1: GPOperand, imm: i32 },
+    FSW { rs1: GPOperand, rs2: FPOperand, imm: i32 },
+    FMADDS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand, rs3: FPOperand },
+    FMSUBS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand, rs3: FPOperand },
+    FNMSUBS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand, rs3: FPOperand },
+    FNMADDS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand, rs3: FPOperand },
+    FADDS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FSUBS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FMULS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FDIVS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FSQRTS { rd: FPOperand, rs1: FPOperand },
+    FSGNJS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FSGNJNS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FSGNJXS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FMINS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FMAXS { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FCVTWS { rd: GPOperand, rs1: FPOperand },
+    FCVTWUS { rd: GPOperand, rs1: FPOperand },
+    FMVXW { rd: GPOperand, rs1: FPOperand },
+    FEQS { rd: GPOperand, rs1: FPOperand, rs2: FPOperand },
+    FLTS { rd: GPOperand, rs1: FPOperand, rs2: FPOperand },
+    FLES { rd: GPOperand, rs1: FPOperand, rs2: FPOperand },
+    FCLASSS { rd: GPOperand, rs1: FPOperand },
+    FCVTSW { rd: FPOperand, rs1: GPOperand },
+    FCVTSWU { rd: FPOperand, rs1: GPOperand },
+    FMVWX { rd: FPOperand, rs1: GPOperand },
+
+    // RV64F extends RV32F
+    FCVTLS { rd: GPOperand, rs1: FPOperand },
+    FCVTLUS { rd: GPOperand, rs1: FPOperand },
+    FCVTSL { rd: FPOperand, rs1: GPOperand },
+    FCVTSLU { rd: FPOperand, rs1: GPOperand },
+
+    // RV32D
+    FLD { rd: FPOperand, rs1: GPOperand, imm: i32 },
+    FSD { rs1: GPOperand, rs2: FPOperand, imm: i32 },
+    FMADDD { rd: FPOperand, rs1: FPOperand, rs2: FPOperand, rs3: FPOperand },
+    FMSUBD { rd: FPOperand, rs1: FPOperand, rs2: FPOperand, rs3: FPOperand },
+    FNMSUBD { rd: FPOperand, rs1: FPOperand, rs2: FPOperand, rs3: FPOperand },
+    FNMADDD { rd: FPOperand, rs1: FPOperand, rs2: FPOperand, rs3: FPOperand },
+    FADDD { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FSUBD { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FMULD { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FDIVD { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FSQRTD { rd: FPOperand, rs1: FPOperand },
+    FSGNJD { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FSGNJND { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FSGNJXD { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FMIND { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FMAXD { rd: FPOperand, rs1: FPOperand, rs2: FPOperand },
+    FCVTSD { rd: FPOperand, rs1: FPOperand },
+    FCVTDS { rd: FPOperand, rs1: FPOperand },
+    FEQD { rd: GPOperand, rs1: FPOperand, rs2: FPOperand },
+    FLTD { rd: GPOperand, rs1: FPOperand, rs2: FPOperand },
+    FLED { rd: GPOperand, rs1: FPOperand, rs2: FPOperand },
+    FCLASSD { rd: GPOperand, rs1: FPOperand },
+    FCVTWD { rd: GPOperand, rs1: FPOperand },
+    FCVTWUD { rd: GPOperand, rs1: FPOperand },
+    FCVTDW { rd: FPOperand, rs1: GPOperand },
+    FCVTDWU { rd: FPOperand, rs1: GPOperand },
+    // RV64D extends RV32D
+    FCVTLD { rd: GPOperand, rs1: FPOperand },
+    FCVTLUD { rd: GPOperand, rs1: FPOperand },
+    FMVXD { rd: GPOperand, rs1: FPOperand },
+    FCVTDL { rd: FPOperand, rs1: GPOperand },
+    FCVTDLU { rd: FPOperand, rs1: GPOperand },
+    FMVDX { rd: FPOperand, rs1: GPOperand },
 
     // pseudo instructions for convenience
     COMMENT { comment: String },
-    CALL { callee: String, params: usize },
+    CALL { callee: String, params: Vec<bool> },
     RET,
     // alias for addi
     MV { rd: GPOperand, rs: GPOperand },
+    // alias for fsgnj.s
+    FMVSS { rd: FPOperand, rs: FPOperand },
+    // alias for fsgnj.d
+    FMVDD { rd: FPOperand, rs: FPOperand },
+    // alias for fsgnjn.s
+    FNEGS { rd: FPOperand, rs1: FPOperand },
+    // alias for fsgnjn.d
+    FNEGD { rd: FPOperand, rs1: FPOperand },
     // fused branch instructions with logical targets
     JEQ { rs1: GPOperand, rs2: GPOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
     JNE { rs1: GPOperand, rs2: GPOperand, succ: Id<MachineBB>, fail: Id<MachineBB> },
@@ -739,6 +831,7 @@ pub enum RV64Instruction {
     NOP,
 }
 
+#[macro_export]
 macro_rules! implement_typed_instruction {
     ($implementer:ident) => {
         $implementer!(i; LB);
@@ -813,6 +906,53 @@ macro_rules! implement_typed_instruction {
     };
 }
 
+#[macro_export]
+macro_rules! implement_typed_float_instruction {
+    ($implementer:ident) => {
+        $implementer!(fi; FLW);
+        $implementer!(fi; FLD);
+        $implementer!(fs; FSW);
+        $implementer!(fs; FSD);
+
+        $implementer!(fma; FMADDS);
+        $implementer!(fma; FMSUBS);
+        $implementer!(fma; FNMSUBS);
+        $implementer!(fma; FNMADDS);
+        $implementer!(fma; FMADDD);
+        $implementer!(fma; FMSUBD);
+        $implementer!(fma; FNMSUBD);
+        $implementer!(fma; FNMADDD);
+
+        $implementer!(fr; FADDS);
+        $implementer!(fr; FSUBS);
+        $implementer!(fr; FMULS);
+        $implementer!(fr; FDIVS);
+        // $implementer!(fr; FSQRTS);
+        $implementer!(fr; FSGNJS);
+        $implementer!(fr; FSGNJNS);
+        $implementer!(fr; FSGNJXS);
+        $implementer!(fr; FMINS);
+        $implementer!(fr; FMAXS);
+        $implementer!(fr; FADDD);
+        $implementer!(fr; FSUBD);
+        $implementer!(fr; FMULD);
+        $implementer!(fr; FDIVD);
+        // $implementer!(fr; FSQRTD);
+        $implementer!(fr; FSGNJD);
+        $implementer!(fr; FSGNJND);
+        $implementer!(fr; FSGNJXD);
+        $implementer!(fr; FMIND);
+        $implementer!(fr; FMAXD);
+
+        $implementer!(fcmp; FEQS);
+        $implementer!(fcmp; FLTS);
+        $implementer!(fcmp; FLES);
+        $implementer!(fcmp; FEQD);
+        $implementer!(fcmp; FLTD);
+        $implementer!(fcmp; FLED);
+    }
+}
+
 impl RV64Instruction {
     /// Get destination vreg for peephole optimization on the fly
     pub fn get_rd(&self) -> Option<GPOperand> {
@@ -881,218 +1021,22 @@ impl RV64Instruction {
     }
 }
 
-pub trait OperandInfo<O, R, V>
-where
-    O: Operand<R, V>,
-    R: PhysicalRegister,
-    V: VirtualRegister,
-{
-    /// Returns Some(dst, src) if the instruction is a move
-    fn get_move(&self) -> Option<(O, O)>;
-    /// Returns register (definitions, usages) of the instruction
-    fn get_def_use(&self) -> (Vec<O>, Vec<O>);
-    fn get_def_mut(&mut self) -> Vec<&mut O>;
-    fn get_use_mut(&mut self) -> Vec<&mut O>;
-}
-
-impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
-    fn get_move(&self) -> Option<(GPOperand, GPOperand)> {
-        if let RV64Instruction::MV{ rd, rs } = self {
-            Some((*rd, *rs))
-        } else {
-            None
-        }
-    }
-
-    fn get_def_use(&self) -> (Vec<GPOperand>, Vec<GPOperand>) {
-        macro_rules! extract {
-            (r ; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { rd, rs1, rs2 } = self {
-                    return (vec![*rd], vec![*rs1, *rs2])
-                }
-            };
-            (i ; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { rd, rs1, .. } = self {
-                    return (vec![*rd], vec![*rs1])
-                }
-            };
-            (s; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
-                    return (vec![], vec![*rs1, *rs2])
-                }
-            };
-            (cj; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
-                    return (vec![], vec![*rs1, *rs2])
-                }
-            };
-        }
-
-        implement_typed_instruction!(extract);
-        
-        if let RV64Instruction::LUI { rd, .. } = self {
-            return (vec![*rd], vec![])
-        }
-        if let RV64Instruction::MV { rd, rs } = self {
-            return (vec![*rd], vec![*rs])
-        }
-        if let RV64Instruction::LIMM { rd, .. } = self {
-            return (vec![*rd], vec![])
-        }
-        if let RV64Instruction::LADDR { rd, .. } = self {
-            return (vec![*rd], vec![])
-        }
-        if let RV64Instruction::RET = self {
-            return (vec![], vec![GPOperand::PreColored(RVGPR::a(0))]);
-        }
-        if let RV64Instruction::JUMP { .. } = self {
-            return (vec![], vec![]);
-        }
-        if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE | RV64Instruction::COMMENT { .. }) {
-            return (vec![], vec![]);
-        }
-        if let RV64Instruction::NOP = self {
-            return (vec![], vec![]);
-        }
-        if let RV64Instruction::CALL { params, .. } = self {
-            let uses: Vec<_> = (0..usize::min(8, *params))
-                .map(|i| GPOperand::PreColored(RVGPR::a(i)))
-                .collect();
-            let defs: Vec<_> = (0..=7).map(|i| GPOperand::PreColored(RVGPR::a(i)))
-                .chain((0..=6).map(|i| GPOperand::PreColored(RVGPR::t(i))))
-                .collect();
-            return (defs, uses);
-        }
-
-        panic!("unimplemented: {:?}", self)
-    }
-
-    fn get_def_mut(&mut self) -> Vec<&mut GPOperand> {
-        macro_rules! extract {
-            (r ; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { rd, .. } = self {
-                    return vec![rd]
-                }
-            };
-            (i ; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { rd, .. } = self {
-                    return vec![rd]
-                }
-            };
-            (s; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { .. } = self {
-                    return vec![]
-                }
-            };
-            (cj; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { .. } = self {
-                    return vec![]
-                }
-            };
-        }
-        implement_typed_instruction!(extract);
-
-        if let RV64Instruction::LUI { rd, .. } = self {
-            return vec![rd];
-        }
-        if let RV64Instruction::MV { rd, rs } = self {
-            return vec![rd];
-        }
-        if let RV64Instruction::LIMM { rd, .. } = self {
-            return vec![rd];
-        }
-        if let RV64Instruction::LADDR { rd, .. } = self {
-            return vec![rd]
-        }
-
-        macro_rules! nop {
-            ($mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { .. } = self {
-                    return vec![];
-                }
-            };
-        }
-        nop!(RET);
-        nop!(JUMP);
-        nop!(NOP);
-        nop!(ENTER);
-        nop!(LEAVE);
-        nop!(COMMENT);
-        nop!(CALL);
-
-        panic!("unimplemented: {:?}", self)
-    }
-
-    fn get_use_mut(&mut self) -> Vec<&mut GPOperand> {
-        macro_rules! extract {
-            (r ; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
-                    return vec![rs1, rs2]
-                }
-            };
-            (i ; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { rs1, .. } = self {
-                    return vec![rs1]
-                }
-            };
-            (s; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
-                    return vec![rs1, rs2]
-                }
-            };
-            (cj; $mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
-                    return vec![rs1, rs2]
-                }
-            };
-        }
-        implement_typed_instruction!(extract);
-
-        if let RV64Instruction::MV { rs, .. } = self {
-            return vec![rs];
-        }
-
-        macro_rules! nop {
-            ($mnemonic:ident) => {
-                if let RV64Instruction::$mnemonic { .. } = self {
-                    return vec![];
-                }
-            };
-        }
-        nop!(LUI);
-        nop!(LIMM);
-        nop!(LADDR);
-        nop!(RET);
-        nop!(JUMP);
-        nop!(NOP);
-        nop!(ENTER);
-        nop!(LEAVE);
-        nop!(COMMENT);
-        nop!(CALL);
-
-        panic!("unimplemented: {:?}", self)
-    }
-}
-
 macro_rules! builder_impl_rv64 {
     (r ; $mnemonic:ident) => {
-        #[allow(non_snake_case)]
-        #[allow(unused)]
+        #[allow(non_snake_case, unused)]
         pub fn $mnemonic(rd: GPOperand, rs1: GPOperand, rs2: GPOperand) -> RV64Instruction {
             RV64Instruction::$mnemonic { rd, rs1, rs2 }
         }
     };
     (i ; $mnemonic:ident) => {
-        #[allow(non_snake_case)]
-        #[allow(unused)]
+        #[allow(non_snake_case, unused)]
         pub fn $mnemonic(rd: GPOperand, rs1: GPOperand, imm: i32) -> RV64Instruction {
             // skiping range check to encode %pcrel_hi %perel_lo
             RV64Instruction::$mnemonic { rd, rs1, imm }
         }
     };
     (s; $mnemonic:ident) => {
-        #[allow(non_snake_case)]
-        #[allow(unused)]
+        #[allow(non_snake_case, unused)]
         #[inline(never)]
         pub fn $mnemonic(rs2: GPOperand, rs1: GPOperand, imm: i32) -> RV64Instruction {
             // same as above
@@ -1100,10 +1044,42 @@ macro_rules! builder_impl_rv64 {
         }
     };
     (cj; $mnemonic:ident) => {
-        #[allow(non_snake_case)]
-        #[allow(unused)]
+        #[allow(non_snake_case, unused)]
         pub fn $mnemonic(rs1: GPOperand, rs2: GPOperand, succ: Id<MachineBB>, fail: Id<MachineBB>) -> RV64Instruction {
             RV64Instruction::$mnemonic { rs1, rs2, succ, fail }
+        }
+    };
+    (fi; $mnemonic:ident) => {
+        #[allow(non_snake_case, unused)]
+        pub fn $mnemonic(rd: FPOperand, rs1: GPOperand, imm: i32) -> RV64Instruction {
+            // skiping range check to encode %pcrel_hi %perel_lo
+            RV64Instruction::$mnemonic { rd, rs1, imm }
+        }
+    };
+    (fs; $mnemonic:ident) => {
+        #[allow(non_snake_case, unused)]
+        #[inline(never)]
+        pub fn $mnemonic(rs2: FPOperand, rs1: GPOperand, imm: i32) -> RV64Instruction {
+            // same as above
+            RV64Instruction::$mnemonic { rs1, rs2, imm }
+        }
+    };
+    (fma; $mnemonic:ident) => {
+        #[allow(non_snake_case, unused)]
+        pub fn $mnemonic(rd: FPOperand, rs1: FPOperand, rs2: FPOperand, rs3: FPOperand) -> RV64Instruction {
+            RV64Instruction::$mnemonic { rd, rs1, rs2, rs3 }
+        }
+    };
+    (fr; $mnemonic:ident) => {
+        #[allow(non_snake_case, unused)]
+        pub fn $mnemonic(rd: FPOperand, rs1: FPOperand, rs2: FPOperand) -> RV64Instruction {
+            RV64Instruction::$mnemonic { rd, rs1, rs2 }
+        }
+    };
+    (fcmp; $mnemonic:ident) => {
+        #[allow(non_snake_case, unused)]
+        pub fn $mnemonic(rd: GPOperand, rs1: FPOperand, rs2: FPOperand) -> RV64Instruction {
+            RV64Instruction::$mnemonic { rd, rs1, rs2 }
         }
     };
 }
@@ -1112,10 +1088,36 @@ pub struct RV64InstBuilder;
 
 impl RV64InstBuilder {
     implement_typed_instruction!(builder_impl_rv64);
+    implement_typed_float_instruction!(builder_impl_rv64);
 
     #[allow(non_snake_case)]
     pub fn LUI(rd: GPOperand, imm: i32) -> RV64Instruction {
         RV64Instruction::LUI { rd, imm }
+    }
+
+    #[allow(non_snake_case, unused)]
+    pub fn FMVWX(rd: FPOperand, rs1: GPOperand) -> RV64Instruction {
+        RV64Instruction::FMVWX { rd, rs1 }
+    }
+    #[allow(non_snake_case, unused)]
+    pub fn FMVXW(rd: GPOperand, rs1: FPOperand) -> RV64Instruction {
+        RV64Instruction::FMVXW { rd, rs1 }
+    }
+    #[allow(non_snake_case, unused)]
+    pub fn FCVTSW(rd: FPOperand, rs1: GPOperand) -> RV64Instruction {
+        RV64Instruction::FCVTSW { rd, rs1 }
+    }
+    #[allow(non_snake_case, unused)]
+    pub fn FCVTWS(rd: GPOperand, rs1: FPOperand) -> RV64Instruction {
+        RV64Instruction::FCVTWS { rd, rs1 }
+    }
+    #[allow(non_snake_case, unused)]
+    pub fn FNEGS(rd: FPOperand, rs1: FPOperand) -> RV64Instruction {
+        RV64Instruction::FNEGS { rd, rs1 }
+    }
+    #[allow(non_snake_case, unused)]
+    pub fn FMVSS(rd: FPOperand, rs: FPOperand) -> RV64Instruction {
+        RV64Instruction::FMVSS { rd, rs }
     }
 
     #[allow(non_snake_case, unused)]
@@ -1127,7 +1129,7 @@ impl RV64InstBuilder {
         RV64Instruction::JUMP { target }
     }
     #[allow(non_snake_case, unused)]
-    pub fn CALL(callee: String, params: usize) -> RV64Instruction {
+    pub fn CALL(callee: String, params: Vec<bool>) -> RV64Instruction {
         RV64Instruction::CALL { callee, params }
     }
     #[allow(non_snake_case)]
@@ -1192,7 +1194,9 @@ pub struct MachineFunc {
     pub virtual_max: u32,
     pub stack_size: u32,
     pub used_regs: BTreeSet<RVGPR>,
+    pub used_regsf: BTreeSet<RVFPR>,
     pub virtual_gprs: BTreeSet<VirtGPR>,
+    pub virtual_fprs: BTreeSet<VirtFPR>,
 
     // use_lr?
 
@@ -1209,6 +1213,12 @@ where
 impl FuncVirtReg<VirtGPR> for MachineFunc {
     fn get_vreg(&self) -> &BTreeSet<VirtGPR> {
         &self.virtual_gprs
+    }
+}
+
+impl FuncVirtReg<VirtFPR> for MachineFunc {
+    fn get_vreg(&self) -> &BTreeSet<VirtFPR> {
+        &self.virtual_fprs
     }
 }
 
@@ -1270,7 +1280,9 @@ impl MachineProgram {
             virtual_max: 0,
             stack_size: 0,
             used_regs: BTreeSet::new(),
+            used_regsf: BTreeSet::new(),
             virtual_gprs: BTreeSet::new(),
+            virtual_fprs: BTreeSet::new(),
         }
     }
 

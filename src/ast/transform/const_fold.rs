@@ -29,9 +29,10 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
                     AstObjectType::Var(init) => init,
                     _ => unreachable!(),
                 };
-                init.eval();
+                init.eval(var_ty.clone());
                 match init.data {
                     InitData::ScalarI32(i) => Some(AstNodeType::I32Number(i)),
+                    InitData::ScalarF32(f) => Some(AstNodeType::F32Number(f)),
                     _ => None,
                 }
             } else {
@@ -73,6 +74,13 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
                     };
                     Some(num)
                 },
+                AstNodeType::F32Number(num) => {
+                    let num = match op {
+                        UnaryOpType::Neg => AstNodeType::F32Number(-num),
+                        _ => unreachable!("op {:?}, num {:?}", op, num),
+                    };
+                    Some(num)
+                }
                 _ => None,
             }
         },
@@ -80,6 +88,7 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
             use {
                 AstNodeType::I32Number as Int,
                 AstNodeType::I1Number as Bool,
+                AstNodeType::F32Number as Float,
             };
             ast_const_fold(lhs.clone());
             ast_const_fold(rhs.clone());
@@ -107,6 +116,24 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
                         BinaryOpType::LogAnd => Bool(lhs && rhs),
                         BinaryOpType::LogOr => Bool(lhs || rhs),
                         _ => unreachable!(),
+                    };
+                    Some(num)
+                }
+                (AstNodeType::F32Number(lhs), AstNodeType::F32Number(rhs)) => {
+                    let num = match op {
+                        BinaryOpType::Add => Float(lhs + rhs),
+                        BinaryOpType::Sub => Float(lhs - rhs),
+                        BinaryOpType::Mul => Float(lhs * rhs),
+                        BinaryOpType::Div => Float(lhs / rhs),
+                        BinaryOpType::Mod => Float(lhs % rhs),
+                        BinaryOpType::Ne => Bool(lhs != rhs),
+                        BinaryOpType::Eq => Bool(lhs == rhs),
+                        BinaryOpType::Lt => Bool(lhs < rhs),
+                        BinaryOpType::Le => Bool(lhs <= rhs),
+                        BinaryOpType::Gt => Bool(lhs > rhs),
+                        BinaryOpType::Ge => Bool(lhs >= rhs),
+                        BinaryOpType::Assign => Float(rhs),
+                        _ => unreachable!("op {:?}, lhs {:?}, rhs {:?}", op, lhs, rhs),
                     };
                     Some(num)
                 }
@@ -175,7 +202,7 @@ pub fn eval(tree: Rc<RefCell<AstNode>>) -> Option<isize> {
                     AstObjectType::Var(init) => init,
                     _ => unreachable!(),
                 };
-                init.eval();
+                init.eval(var_ty.clone());
                 match init.data {
                     InitData::ScalarI32(i) => Some(i as isize),
                     _ => None,

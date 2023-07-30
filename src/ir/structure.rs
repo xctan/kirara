@@ -6,11 +6,11 @@ use crate::ast::Initializer;
 use crate::ctype::{Type, BinaryOpType, Linkage};
 use crate::ir::value::{
     InstructionValue, ReturnInst, StoreInst, LoadInst, BinaryInst, BranchInst, 
-    ZextInst, GetElemPtrInst, ValueType, PhiInst
+    UnaryInst, GetElemPtrInst, ValueType, PhiInst
 };
 
 use super::builder::IrFuncBuilder;
-use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue, CallInst};
+use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue, CallInst, UnaryOp};
 
 #[derive(Debug, Clone)]
 pub struct IrFunc {
@@ -233,7 +233,7 @@ impl TransUnit {
                 InstructionValue::Binary(bin) => rep!(bin, Binary, BinaryInst { lhs, rhs }),
                 InstructionValue::Branch(br) => rep!(br, Branch, BranchInst { cond }),
                 InstructionValue::Jump(_) => unreachable!(),
-                InstructionValue::Zext(ze) => rep!(ze, Zext, ZextInst { value }),
+                InstructionValue::Unary(ze) => rep!(ze, Unary, UnaryInst { value }),
                 InstructionValue::GetElemPtr(gep) => {
                     // rep!(gep, GetElemPtr, GetElemPtrInst { ptr, index })
                     if gep.ptr == old {
@@ -433,15 +433,14 @@ impl TransUnit {
         id
     }
 
-    pub fn zext(&mut self, value: ValueId, ty: Rc<Type>) -> ValueId {
-        let from = self.values.get(value).unwrap().ty();
-        let inst = ZextInst {
+    pub fn unary(&mut self, value: ValueId, op: UnaryOp) -> ValueId {
+        let inst = UnaryInst {
             name: self.gen_local_name(),
             value,
-            ty,
-            from,
+            ty: op.dst_ty(),
+            op: op,
         };
-        let val = ValueType::Instruction(InstructionValue::Zext(inst));
+        let val = ValueType::Instruction(InstructionValue::Unary(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
         self.add_used_by(value, id);

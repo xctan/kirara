@@ -20,7 +20,7 @@ use crate::{
     token::TokenRange,
 };
 
-use self::transform::const_fold::ast_const_fold;
+use self::transform::{const_fold::ast_const_fold, type_check::{ast_type_check, ast_gen_convert}};
 
 #[derive(Debug, Clone)]
 pub struct UnaryOp {
@@ -295,10 +295,18 @@ impl Default for InitData {
 }
 
 impl InitData {
-    pub fn eval(&mut self) {
+    pub fn eval(&mut self, ty: Rc<Type>) {
         let new_self = match self {
             Self::Expr(expr) => {
+                ast_type_check(expr.clone());
+                let expr_new = ast_gen_convert(expr.clone(), ty.clone());
+                let mut expr_mut = expr.borrow_mut();
+                expr_mut.node = expr_new;
+                drop(expr_mut);
+
+                ast_type_check(expr.clone());
                 ast_const_fold(expr.clone());
+                ast_type_check(expr.clone());
                 match expr.borrow().node.clone() {
                     AstNodeType::I1Number(num) => {
                         Self::ScalarI32(num as i32)
@@ -314,7 +322,7 @@ impl InitData {
             },
             Self::Aggregate(data) => {
                 for init in data.iter_mut() {
-                    init.data.eval();
+                    init.data.eval(ty.base_type());
                 }
                 return;
             },
@@ -405,8 +413,8 @@ impl Initializer {
         Self { ty, data }
     }
 
-    pub fn eval(&mut self) {
-        self.data.eval();
+    pub fn eval(&mut self, ty: Rc<Type>) {
+        self.data.eval(ty);
         if self.data.is_all_zeroinit() {
             self.data = InitData::ZeroInit;
         } else {

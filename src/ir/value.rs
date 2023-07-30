@@ -2,13 +2,35 @@ use std::rc::Rc;
 use std::collections::HashSet;
 
 use crate::alloc::Id;
-
-use crate::ctype::{Type, BinaryOpType as BinaryOp};
+use crate::ctype::Type;
 use crate::for_each_bb_and_inst;
 
 use super::structure::{BlockId, TransUnit};
 
 pub type ValueId = Id<Value>;
+pub use crate::ctype::BinaryOpType as BinaryOp;
+
+/// Unary Operations in IR
+/// 
+/// Op, RdTy, RsTy
+#[derive(Debug, Clone, Copy)]
+pub enum UnaryOp {
+    NegF32,
+    ZextI32I1,
+    CvtF32I32,
+    CvtI32F32,
+}
+
+impl UnaryOp {
+    pub fn dst_ty(&self) -> Rc<Type> {
+        match self {
+            UnaryOp::NegF32 => Type::f32_type(),
+            UnaryOp::ZextI32I1 => Type::i32_type(),
+            UnaryOp::CvtF32I32 => Type::f32_type(),
+            UnaryOp::CvtI32F32 => Type::i32_type(),
+        }
+    }
+}
 
 pub trait ValueTrait {
     fn name(&self) -> String { String::new() }
@@ -175,7 +197,7 @@ pub enum InstructionValue {
     Return(ReturnInst),
     Branch(BranchInst),
     Jump(JumpInst),
-    Zext(ZextInst),
+    Unary(UnaryInst),
     Phi(PhiInst),
     GetElemPtr(GetElemPtrInst),
     Call(CallInst),
@@ -189,7 +211,7 @@ impl_value_trait!{InstructionValue{
     Return,
     Branch,
     Jump,
-    Zext,
+    Unary,
     Phi,
     GetElemPtr,
     Call,
@@ -256,14 +278,14 @@ pub struct JumpInst {
 impl ValueTrait for JumpInst {}
 
 #[derive(Debug, Clone)]
-pub struct ZextInst {
+pub struct UnaryInst {
     pub value: ValueId,
-    pub from: Rc<Type>,
+    pub op: UnaryOp,
     pub ty: Rc<Type>,
     pub name: String,
 }
 
-impl_value_trait!(ZextInst);
+impl_value_trait!(UnaryInst);
 
 #[derive(Debug, Clone)]
 pub struct PhiInst {
@@ -336,7 +358,7 @@ pub fn calculate_used_by(unit: &mut TransUnit, func: &str) {
                     cond_mut.used_by.insert(inst);
                 },
                 InstructionValue::Jump(_) => (),
-                InstructionValue::Zext(z) => {
+                InstructionValue::Unary(z) => {
                     let value_mut = unit.values.get_mut(z.value).unwrap();
                     value_mut.used_by.insert(inst);
                 },

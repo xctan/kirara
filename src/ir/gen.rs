@@ -224,6 +224,7 @@ impl EmitIrExpr for AstNodeType {
         match self {
             AstNodeType::I1Number(num) => builder.const_i1(*num),
             AstNodeType::I32Number(num) => builder.const_i32(*num),
+            AstNodeType::F32Number(num) => builder.const_f32(*num),
             AstNodeType::Convert(Convert { from, to }) => {
                 let from_id = from.emit_ir_expr(builder, ctx);
                 match (&from.borrow().ty.clone().unwrap().kind, &to.kind) {
@@ -231,10 +232,15 @@ impl EmitIrExpr for AstNodeType {
                         let zero = builder.const_i32(0);
                         builder.binary(BinaryOpType::Ne, from_id, zero).push()
                     }
-                    (TypeKind::I1, TypeKind::I32) => builder.zext(from_id, Type::i32_type()).push(),
+                    (TypeKind::I1, TypeKind::I32) =>
+                        builder.unary(from_id, super::value::UnaryOp::ZextI32I1).push(),
                     (TypeKind::Array(_), TypeKind::Ptr(_)) => {
                         from_id
                     }
+                    (TypeKind::F32, TypeKind::I32) =>
+                        builder.unary(from_id, super::value::UnaryOp::CvtI32F32).push(),
+                    (TypeKind::I32, TypeKind::F32) =>
+                        builder.unary(from_id, super::value::UnaryOp::CvtF32I32).push(),
                     _ => unimplemented!("convert {:#?} to {:#?}", from, to),
                 }
             }
@@ -247,6 +253,9 @@ impl EmitIrExpr for AstNodeType {
                             TypeKind::I32 => {
                                 let zero = builder.const_i32(0);
                                 builder.binary(BinaryOpType::Sub, zero, expr).push()
+                            }
+                            TypeKind::F32 => {
+                                builder.unary(expr, super::value::UnaryOp::NegF32).push()
                             }
                             _ => unimplemented!("unary op {:?}, ty {}", op, ty),
                         }
@@ -347,7 +356,7 @@ impl EmitIrLValue for AstNodeType {
                 let var = ctx.get_object(*var).unwrap();
                 var.ir_value.unwrap()
             }
-            _ => unimplemented!("is this a lvalue? {:?}", self),
+            _ => unimplemented!("is this an lvalue?\n{:#?}", self),
         }
     }
 }

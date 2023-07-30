@@ -1,4 +1,4 @@
-use super::import::*;
+use super::include::*;
 
 impl MachineProgram {
     pub fn setup_stack(&mut self) {
@@ -23,7 +23,14 @@ impl MachineProgram {
             } else {
                 callee_saved.len() as u32 * 8 + 16
             };
-            let stack_size = local_size + saved_size;
+
+            let callee_savedf = mfunc.used_regsf
+                .iter()
+                .filter(|reg| reg.is_callee_saved())
+                .collect::<Vec<_>>();
+            let saved_sizef = callee_savedf.len() as u32 * 8;
+
+            let stack_size = local_size + saved_size + saved_sizef;
 
             // alignment requirement
             let stack_size = if stack_size % 16 == 0 {
@@ -63,6 +70,9 @@ impl MachineProgram {
             for (idx, reg) in callee_saved.iter().enumerate() {
                 i!(SD GPOperand::PreColored(**reg), r!(sp), saved_offset(idx as u32 + save_adj));
             }
+            for (idx, reg) in callee_savedf.iter().enumerate() {
+                i!(FSD FPOperand::PreColored(**reg), r!(sp), saved_offset(idx as u32 + save_adj + callee_saved.len() as u32));
+            }
             let rem_stack_size = stack_size - small_stack_size;
             if rem_stack_size != 0 {
                 if super::codegen::is_imm12(-(rem_stack_size as i32)) {
@@ -93,6 +103,9 @@ impl MachineProgram {
             }
             for (idx, reg) in callee_saved.iter().enumerate() {
                 i!(LD GPOperand::PreColored(**reg), r!(sp), saved_offset(idx as u32 + save_adj));
+            }
+            for (idx, reg) in callee_savedf.iter().enumerate() {
+                i!(FLD FPOperand::PreColored(**reg), r!(sp), saved_offset(idx as u32 + save_adj + callee_saved.len() as u32));
             }
             if !thin {
                 i!(LD r!(fp), r!(sp), saved_offset(1));

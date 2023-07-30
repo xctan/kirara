@@ -90,6 +90,14 @@ impl Type {
         matches!(self.kind, TypeKind::Void)
     }
 
+    pub fn is_int(&self) -> bool {
+        matches!(self.kind, TypeKind::I1 | TypeKind::I32 | TypeKind::I64 | TypeKind::Ptr(_))
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self.kind, TypeKind::F32)
+    }
+
     // pub fn is_const(&self) -> bool {
     //     self.is_const
     // }
@@ -277,12 +285,12 @@ impl Display for BinaryOpType {
             BinaryOpType::Mul => "mul",
             BinaryOpType::Div => "sdiv",
             BinaryOpType::Mod => "srem",
-            BinaryOpType::Ne => "icmp ne",
-            BinaryOpType::Eq => "icmp eq",
-            BinaryOpType::Lt => "icmp slt",
-            BinaryOpType::Le => "icmp sle",
-            BinaryOpType::Gt => "icmp sgt",
-            BinaryOpType::Ge => "icmp sge",
+            BinaryOpType::Ne => "???ne",
+            BinaryOpType::Eq => "???eq",
+            BinaryOpType::Lt => "???lt",
+            BinaryOpType::Le => "???le",
+            BinaryOpType::Gt => "???gt",
+            BinaryOpType::Ge => "???ge",
             BinaryOpType::Xor => "xor",
             BinaryOpType::Assign |
             BinaryOpType::Index |

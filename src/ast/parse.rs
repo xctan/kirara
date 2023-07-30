@@ -671,9 +671,9 @@ fn declaration(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
         if let Ok((cursor2, _)) = ttag!(P("="))(cursor0) {
             cursor0 = cursor2;
 
-            let mut initializer = Initializer::new(ty);
+            let mut initializer = Initializer::new(ty.clone());
             (cursor0, _) = initializer2(cursor0, &mut initializer)?;
-            initializer.eval();
+            initializer.eval(ty.clone());
             let var = AstNode::variable(object_id, range_between(&cursor2.as_range(), &cursor0.as_range()));
             local_initializer(&mut init, var, &initializer, false);
             let obj = get_object_mut(object_id).unwrap();
@@ -961,11 +961,11 @@ fn global_declaration((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan,
         if let Ok((cursor2, _)) = ttag!(P("="))(cursor0) {
             cursor0 = cursor2;
             
-            let mut initializer = Initializer::new(ty);
+            let mut initializer = Initializer::new(ty.clone());
             (cursor0, _) = initializer2(cursor0, &mut initializer)?;
-            initializer.eval();
+            initializer.eval(ty.clone());
             if !initializer.data.is_const() {
-                panic!("initializer element is not constant");
+                panic!("initializer element is not constant: {}, {:#?}", id.as_str(), initializer.data);
             }
             let obj = get_object_mut(object_id).unwrap();
             obj.data = AstObjectType::Var(initializer);

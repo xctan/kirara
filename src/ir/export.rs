@@ -1,7 +1,7 @@
-use crate::{ast::{Initializer, InitData}, ctype::Linkage};
+use crate::{ast::{Initializer, InitData}, ctype::{Linkage, TypeKind}, ir::value::UnaryInst};
 
 use super::{
-    value::{ValueType, ValueId, ConstantValue, InstructionValue, ValueTrait},
+    value::{ValueType, ValueId, ConstantValue, InstructionValue, ValueTrait, BinaryOp},
     structure::{TransUnit, GlobalObject}, structure::IrFunc
 };
 
@@ -91,7 +91,48 @@ impl TransUnit {
                         match *insn {
                             InstructionValue::Binary(ref insn) => {
                                 let lhs = arena.get(insn.lhs).unwrap();
-                                print!("{} = {} {} ", insn.name, insn.op, lhs.ty());
+                                let op_name = match lhs.ty().kind {
+                                    TypeKind::I32 => {
+                                        match insn.op {
+                                            BinaryOp::Add => "add",
+                                            BinaryOp::Sub => "sub",
+                                            BinaryOp::Mul => "mul",
+                                            BinaryOp::Div => "sdiv",
+                                            BinaryOp::Mod => "srem",
+                                            BinaryOp::Ne => "icmp ne",
+                                            BinaryOp::Lt => "icmp slt",
+                                            BinaryOp::Eq => "icmp eq",
+                                            BinaryOp::Le => "icmp sle",
+                                            BinaryOp::Gt => "icmp sgt",
+                                            BinaryOp::Ge => "icmp sge",
+                                            BinaryOp::Xor => "xor",
+                                            _ => unreachable!("i32 op {:?}", insn.op),
+                                        }
+                                    }
+                                    TypeKind::F32 => {
+                                        match insn.op {
+                                            BinaryOp::Add => "fadd",
+                                            BinaryOp::Sub => "fsub",
+                                            BinaryOp::Mul => "fmul",
+                                            BinaryOp::Div => "fdiv",
+                                            BinaryOp::Ne => "fcmp one",
+                                            BinaryOp::Lt => "fcmp olt",
+                                            BinaryOp::Eq => "fcmp oeq",
+                                            BinaryOp::Le => "fcmp ole",
+                                            BinaryOp::Gt => "fcmp ogt",
+                                            BinaryOp::Ge => "fcmp oge",
+                                            _ => unreachable!("f32 op {:?}", insn.op),
+                                        }
+                                    }
+                                    TypeKind::I1 => {
+                                        match insn.op {
+                                            BinaryOp::Xor => "xor",
+                                            _ => unreachable!("i1 op {:?}", insn.op),
+                                        }
+                                    }
+                                    _ => unimplemented!("binary op for type {:?}", lhs.ty().kind),
+                                };
+                                print!("{} = {} {} ", insn.name, op_name, lhs.ty());
                                 self.print_value(insn.lhs);
                                 print!(", ");
                                 self.print_value(insn.rhs);
@@ -137,8 +178,19 @@ impl TransUnit {
                                 let succ = self.blocks.get(insn.succ).unwrap();
                                 println!("br label %{}", succ.name);
                             }
-                            InstructionValue::Zext(ref insn) => {
-                                print!("{} = zext {} ", insn.name, arena.get(insn.value).unwrap().ty());
+                            InstructionValue::Unary(ref insn @ UnaryInst { op: super::value::UnaryOp::NegF32, .. }) => {
+                                print!("{} = fneg {} ", insn.name, arena.get(insn.value).unwrap().ty());
+                                self.print_value(insn.value);
+                                println!();
+                            }
+                            InstructionValue::Unary(ref insn) => {
+                                let op_name = match insn.op {
+                                    super::value::UnaryOp::CvtF32I32 => "sitofp",
+                                    super::value::UnaryOp::CvtI32F32 => "fptosi",
+                                    super::value::UnaryOp::ZextI32I1 => "zext",
+                                    _ => unimplemented!("ir export unary op {:?}", insn.op)
+                                };
+                                print!("{} = {} {} ", insn.name, op_name, arena.get(insn.value).unwrap().ty());
                                 self.print_value(insn.value);
                                 print!(" to {}", insn.ty);
                                 println!();

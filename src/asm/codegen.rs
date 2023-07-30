@@ -2,13 +2,13 @@ use std::{collections::{HashMap, HashSet}, rc::Rc};
 
 use crate::{
     ir::{structure::{BasicBlock, TransUnit},
-    value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue, calculate_used_by}},
+    value::{Value, ValueType, InstructionValue, ValueTrait, ConstantValue, calculate_used_by, UnaryOp}},
     alloc::Id, asm::{RV64InstBuilder, RVGPR}, ctype::{TypeKind, BinaryOpType, Type}, ast::{Initializer, InitData},
 };
 
 use super::{
     MachineProgram, MachineFunc, MachineBB, GPOperand, RV64Instruction,
-    DataLiteral, MachineInst, AsmGlobalObject, Operand, VirtGPR, VirtGPRType,
+    DataLiteral, MachineInst, AsmGlobalObject, VirtGPR, VirtGPRType, FPOperand, VirtFPRType, VirtFPR, RVFPR,
 };
 
 impl TransUnit {
@@ -94,11 +94,13 @@ struct AsmFuncBuilder<'a> {
 
     // mappings from ir entity to asm entity
     pub val_map: HashMap<Id<Value>, GPOperand>,
+    pub val_mapf: HashMap<Id<Value>, FPOperand>,
     // todo: global decl
 
     pub virtual_max: u32,
     pub used_regs: HashSet<RVGPR>,
     pub virtual_gprs: HashSet<VirtGPR>,
+    pub virtual_fprs: HashSet<VirtFPR>,
 
     entry_marker: Option<Id<MachineInst>>,
 }
@@ -109,6 +111,8 @@ macro_rules! pre {
     (fp) => { GPOperand::PreColored(RVGPR::fp()) };
     (sp) => { GPOperand::PreColored(RVGPR::sp()) };
     (a $i:expr) => { GPOperand::PreColored(RVGPR::a($i)) };
+    (fa0) => { FPOperand::PreColored(RVFPR::fa(0)) };
+    (fa $i:expr) => { FPOperand::PreColored(RVFPR::fa($i)) };
 }
 
 impl<'a> AsmFuncBuilder<'a> {
@@ -119,9 +123,11 @@ impl<'a> AsmFuncBuilder<'a> {
             unit,
             bb_map: HashMap::new(),
             val_map: HashMap::new(),
+            val_mapf: HashMap::new(),
             virtual_max: 1,
             used_regs: HashSet::new(),
             virtual_gprs: HashSet::new(),
+            virtual_fprs: HashSet::new(),
             entry_marker: None,
         }
     }
@@ -131,6 +137,7 @@ impl<'a> AsmFuncBuilder<'a> {
         mfunc.virtual_max = self.virtual_max;
         mfunc.used_regs.extend(self.used_regs);
         mfunc.virtual_gprs.extend(self.virtual_gprs);
+        mfunc.virtual_fprs.extend(self.virtual_fprs);
 
         mfunc
     }
@@ -202,7 +209,7 @@ impl<'a> AsmFuncBuilder<'a> {
 
                 let iv = insn.value.as_inst().clone();
                 match iv {
-                    InstructionValue::Binary(b) => {
+                    InstructionValue::Binary(b) if self.is_integral(b.lhs) => {
                         let dst = self.resolve(inst, mbb);
 
                         let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
@@ -379,47 +386,146 @@ impl<'a> AsmFuncBuilder<'a> {
                             }
                         }
                     },
+                    InstructionValue::Binary(b) if self.is_floating(b.lhs) => {
+                        let mo_lhs = self.resolve_fp(b.lhs, mbb);
+                        let mo_rhs = self.resolve_fp(b.rhs, mbb);
+                        match b.op {
+                            BinaryOpType::Add |
+                            BinaryOpType::Sub |
+                            BinaryOpType::Mul |
+                            BinaryOpType::Div => {
+                                let dst = self.resolve_fp(inst, mbb);
+                                match b.op {
+                                    BinaryOpType::Add => {
+                                        emit!(FADDS dst, mo_lhs, mo_rhs);
+                                    },
+                                    BinaryOpType::Sub => {
+                                        emit!(FSUBS dst, mo_lhs, mo_rhs);
+                                    },
+                                    BinaryOpType::Mul => {
+                                        emit!(FMULS dst, mo_lhs, mo_rhs);
+                                    },
+                                    BinaryOpType::Div => {
+                                        emit!(FDIVS dst, mo_lhs, mo_rhs);
+                                    },
+                                    _ => unreachable!(),
+                                }
+                            },
+                            BinaryOpType::Ne |
+                            BinaryOpType::Eq |
+                            BinaryOpType::Lt |
+                            BinaryOpType::Le |
+                            BinaryOpType::Gt |
+                            BinaryOpType::Ge => {
+                                let dst = self.resolve(inst, mbb);
+                                match b.op {
+                                    BinaryOpType::Ne => {
+                                        emit!(FEQS dst, mo_lhs, mo_rhs);
+                                        emit!(XORI dst, dst, 1);
+                                    },
+                                    BinaryOpType::Eq => {
+                                        emit!(FEQS dst, mo_lhs, mo_rhs);
+                                    },
+                                    BinaryOpType::Lt => {
+                                        emit!(FLTS dst, mo_lhs, mo_rhs);
+                                    },
+                                    BinaryOpType::Le => {
+                                        emit!(FLES dst, mo_lhs, mo_rhs);
+                                    },
+                                    BinaryOpType::Gt => {
+                                        emit!(FLTS dst, mo_rhs, mo_lhs);
+                                    },
+                                    BinaryOpType::Ge => {
+                                        emit!(FLES dst, mo_rhs, mo_lhs);
+                                    },
+                                    _ => unreachable!(),
+                                }
+                            },
+                            _ => unreachable!(),
+                        }
+                    },
+                    InstructionValue::Binary(b) => {
+                        unreachable!("binop, type: {:?}", b.ty());
+                    }
                     InstructionValue::Load(l) => {
-                        let instruction = match l.ty.kind {
-                            TypeKind::I32 => RV64InstBuilder::LW,
-                            TypeKind::I64 => RV64InstBuilder::LD,
-                            TypeKind::Ptr(_) => RV64InstBuilder::LD,
-                            _ => unimplemented!("load type: {:?}", l.ty),
-                        };
-
-                        let ptr = self.resolve(l.ptr, mbb);
-                        let dst = self.resolve(inst, mbb);
-                        if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
-                            let ptr_inst = self.prog.insts[*ptr_id].inst.clone();
-                            if let RV64Instruction::ADDI { rs1, imm, .. } = ptr_inst {
-                                emit!(instruction; dst, rs1, imm);
-                            } else {
-                                emit!(instruction; dst, ptr, 0);
+                        match l.ty().kind {
+                            TypeKind::I32 | TypeKind::I64 | TypeKind::Ptr(_) => {
+                                let instruction = match l.ty.kind {
+                                    TypeKind::I32 => RV64InstBuilder::LW,
+                                    TypeKind::I64 => RV64InstBuilder::LD,
+                                    TypeKind::Ptr(_) => RV64InstBuilder::LD,
+                                    _ => unimplemented!("load type: {:?}", l.ty),
+                                };
+        
+                                let ptr = self.resolve(l.ptr, mbb);
+                                let dst = self.resolve(inst, mbb);
+                                if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
+                                    let ptr_inst = self.prog.insts[*ptr_id].inst.clone();
+                                    if let RV64Instruction::ADDI { rs1, imm, .. } = ptr_inst {
+                                        emit!(instruction; dst, rs1, imm);
+                                    } else {
+                                        emit!(instruction; dst, ptr, 0);
+                                    }
+                                } else {
+                                    emit!(instruction; dst, ptr, 0);
+                                }
                             }
-                        } else {
-                            emit!(instruction; dst, ptr, 0);
+                            TypeKind::F32 => {
+                                let ptr = self.resolve(l.ptr, mbb);
+                                let dst = self.resolve_fp(inst, mbb);
+                                if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
+                                    let ptr_inst = self.prog.insts[*ptr_id].inst.clone();
+                                    if let RV64Instruction::ADDI { rs1, imm, .. } = ptr_inst {
+                                        emit!(FLW dst, rs1, imm);
+                                    } else {
+                                        emit!(FLW dst, ptr, 0);
+                                    }
+                                } else {
+                                    emit!(FLW dst, ptr, 0);
+                                }
+                            }
+                            _ => unimplemented!("store type: {:?}", l.ty()),
                         }
                     },
                     InstructionValue::Store(s) => {
                         let val = self.unit.values[s.value].clone();
-                        let instruction = match val.ty().kind {
-                            TypeKind::I32 => RV64InstBuilder::SW,
-                            TypeKind::I64 => RV64InstBuilder::SD,
-                            TypeKind::Ptr(_) => RV64InstBuilder::SD,
-                            _ => unimplemented!("store type: {:?}", val.ty()),
-                        };
-
-                        let ptr = self.resolve(s.ptr, mbb);
-                        let src = self.resolve_ensure_reg(s.value, mbb);
-                        if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
-                            let ptr_inst = self.prog.insts[*ptr_id].inst.clone();
-                            if let RV64Instruction::ADDI { rs1, imm, .. } = ptr_inst {
-                                emit!(instruction; src, rs1, imm);
-                            } else {
-                                emit!(instruction; src, ptr, 0);
+                        match val.ty().kind {
+                            TypeKind::I32 | TypeKind::I64 | TypeKind::Ptr(_) => {
+                                let instruction = match val.ty().kind {
+                                    TypeKind::I32 => RV64InstBuilder::SW,
+                                    TypeKind::I64 => RV64InstBuilder::SD,
+                                    TypeKind::Ptr(_) => RV64InstBuilder::SD,
+                                    _ => unreachable!("store type: {:?}", val.ty()),
+                                };
+        
+                                let ptr = self.resolve(s.ptr, mbb);
+                                let src = self.resolve_ensure_reg(s.value, mbb);
+                                if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
+                                    let ptr_inst = self.prog.insts[*ptr_id].inst.clone();
+                                    if let RV64Instruction::ADDI { rs1, imm, .. } = ptr_inst {
+                                        emit!(instruction; src, rs1, imm);
+                                    } else {
+                                        emit!(instruction; src, ptr, 0);
+                                    }
+                                } else {
+                                    emit!(instruction; src, ptr, 0);
+                                }
                             }
-                        } else {
-                            emit!(instruction; src, ptr, 0);
+                            TypeKind::F32 => {
+                                let ptr = self.resolve(s.ptr, mbb);
+                                let src = self.resolve_fp(s.value, mbb);
+                                if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
+                                    let ptr_inst = self.prog.insts[*ptr_id].inst.clone();
+                                    if let RV64Instruction::ADDI { rs1, imm, .. } = ptr_inst {
+                                        emit!(FSW src, rs1, imm);
+                                    } else {
+                                        emit!(FSW src, ptr, 0);
+                                    }
+                                } else {
+                                    emit!(FSW src, ptr, 0);
+                                }
+                            }
+                            _ => unimplemented!("store type: {:?}", val.ty()),
                         }
                     },
                     InstructionValue::Alloca(a) => {
@@ -474,6 +580,10 @@ impl<'a> AsmFuncBuilder<'a> {
                                         emit!(MV pre!(a0), src);
                                     }
                                 },
+                                TypeKind::F32 => {
+                                    let src = self.resolve_fp(val, mbb);
+                                    emit!(FMVSS pre!(fa0), src);
+                                },
                                 _ => unimplemented!("return type: {:?}", value.ty()),
                             }
                         }
@@ -514,11 +624,30 @@ impl<'a> AsmFuncBuilder<'a> {
                     InstructionValue::Jump(j) => {
                         emit!(JUMP self.bb_map[&j.succ]);
                     },
-                    InstructionValue::Zext(c) => {
+                    InstructionValue::Unary(c) => {
                         // todo: this should be a general conversion instruction!
-                        let dst = self.resolve(inst, mbb);
-                        let val = self.resolve_ensure_reg(c.value, mbb);
-                        emit!(MV dst, val);
+                        match c.op {
+                            UnaryOp::ZextI32I1 => {
+                                let dst = self.resolve(inst, mbb);
+                                let val = self.resolve_ensure_reg(c.value, mbb);
+                                emit!(MV dst, val);
+                            }
+                            UnaryOp::CvtF32I32 => {
+                                let dst = self.resolve_fp(inst, mbb);
+                                let val = self.resolve_ensure_reg(c.value, mbb);
+                                emit!(FCVTSW dst, val);
+                            }
+                            UnaryOp::CvtI32F32 => {
+                                let dst = self.resolve(inst, mbb);
+                                let val = self.resolve_fp(c.value, mbb);
+                                emit!(FCVTWS dst, val);
+                            }
+                            UnaryOp::NegF32 => {
+                                let dst = self.resolve_fp(inst, mbb);
+                                let val = self.resolve_fp(c.value, mbb);
+                                emit!(FNEGS dst, val);
+                            }
+                        }
                     },
                     InstructionValue::Phi(_) => (),
                     InstructionValue::GetElemPtr(g) => {
@@ -580,12 +709,22 @@ impl<'a> AsmFuncBuilder<'a> {
                         }
                     },
                     InstructionValue::Call(c) => {
+                        enum ReturnValue {
+                            GPR(GPOperand),
+                            F32(FPOperand),
+                            Void,
+                        }
                         let dst = if c.ty.is_void() {
-                            None
+                            ReturnValue::Void
+                        } else if c.ty.is_int() {
+                            ReturnValue::GPR(self.resolve(inst, mbb))
                         } else {
-                            self.resolve(inst, mbb).into()
+                            assert!(c.ty.is_float());
+                            ReturnValue::F32(self.resolve_fp(inst, mbb))
                         };
                         self.used_regs.insert(RVGPR::ra());
+                        // record parameter type
+                        let mut args = Vec::new();
 
                         for (idx, arg) in c.args.iter().take(8).enumerate() {
                             let value = self.unit.values[*arg].clone();
@@ -598,7 +737,14 @@ impl<'a> AsmFuncBuilder<'a> {
                                     }
                                     let reg = self.resolve(*arg, mbb);
                                     emit!(MV target, reg);
+                                    args.push(false);
                                 },
+                                TypeKind::F32 => {
+                                    let target = pre!(fa idx);
+                                    let reg = self.resolve_fp(*arg, mbb);
+                                    emit!(FMVSS target, reg);
+                                    args.push(true);
+                                }
                                 _ => unimplemented!("call arg type: {:?}", value.ty()),
                             };
                             
@@ -615,15 +761,28 @@ impl<'a> AsmFuncBuilder<'a> {
                             assert!(stack_size <= 2032);
                             
                             for i in 0..extra {
-                                let reg = self.resolve_ensure_reg(c.args[8 + i], mbb);
-                                emit!(SD reg, pre!(sp), (i * 8) as i32 - stack_size as i32);
+                                let arg = c.args[8 + i];
+                                let value = self.unit.values[arg].clone();
+                                match value.ty().kind {
+                                    TypeKind::I32 | TypeKind::Ptr(_) => {
+                                        let reg = self.resolve_ensure_reg(arg, mbb);
+                                        emit!(SD reg, pre!(sp), (i * 8) as i32 - stack_size as i32);
+                                        args.push(false);
+                                    }
+                                    TypeKind::F32 => {
+                                        let reg = self.resolve_fp(arg, mbb);
+                                        emit!(FSW reg, pre!(sp), (i * 8) as i32 - stack_size as i32);
+                                        args.push(true);
+                                    }
+                                    _ => unimplemented!("call arg type: {:?}", value.ty()),
+                                }
                             }
 
                             let inst = emit!(ADDI pre!(sp), pre!(sp), -(stack_size as i32));
                             self.prog.mark_inline(inst, false);
                         }
 
-                        emit!(CALL c.func.clone(), c.args.len());
+                        emit!(CALL c.func.clone(), args.clone());
 
                         if c.args.len() > 8 {
                             let extra = c.args.len() - 8;
@@ -637,8 +796,14 @@ impl<'a> AsmFuncBuilder<'a> {
                             let inst = emit!(ADDI pre!(sp), pre!(sp), stack_size as i32);
                             self.prog.mark_inline(inst, false);
                         }
-                        if let Some(dst) = dst {
-                            emit!(MV dst, pre!(a0));
+                        match dst {
+                            ReturnValue::GPR(gp) => {
+                                emit!(MV gp, pre!(a0));
+                            },
+                            ReturnValue::F32(fp) => {
+                                emit!(FMVSS fp, pre!(fa0));
+                            },
+                            ReturnValue::Void => {},
                         }
                     },
                 }
@@ -774,6 +939,14 @@ impl<'a> AsmFuncBuilder<'a> {
         GPOperand::Virtual(v)
     }
 
+    fn new_vregf32(&mut self) -> FPOperand {
+        let old = self.virtual_max;
+        self.virtual_max += 1;
+        let v = VirtFPR::new(old, VirtFPRType::Fp32);
+        self.virtual_fprs.insert(v);
+        FPOperand::Virtual(v)
+    }
+
     fn type_to_reg(&mut self, ty: Rc<Type>) -> GPOperand {
         match ty.kind {
             TypeKind::I1 => self.new_vreg(),
@@ -781,6 +954,87 @@ impl<'a> AsmFuncBuilder<'a> {
             TypeKind::I64 => self.new_vreg64(),
             TypeKind::Ptr(_) => self.new_vreg64(),
             _ => unimplemented!("unknown type width: {:?}", ty.kind)
+        }
+    }
+
+    fn type_to_regf(&mut self, ty: Rc<Type>) -> FPOperand {
+        match ty.kind {
+            TypeKind::F32 => self.new_vregf32(),
+            _ => unimplemented!("unknown type width: {:?}", ty.kind)
+        }
+    }
+
+    fn resolve_fp(&mut self, val: Id<Value>, _mbb: Id<MachineBB>) -> FPOperand {
+        let value = self.unit.values[val].clone();
+        match value.value {
+            ValueType::Constant(_c) => {
+                match _c {
+                    ConstantValue::F32(num) => {
+                        let dst = self.new_vregf32();
+                        if num != 0.0 {
+                            let reg = self.new_vreg();
+                            // just 32 bits, so this *should* make sense?
+                            self.prog.push_to_end(_mbb, RV64InstBuilder::LIMM(reg, num.to_bits() as i32));
+                            self.prog.push_to_end(_mbb, RV64InstBuilder::FMVWX(dst, reg));
+                        } else {
+                            self.prog.push_to_end(_mbb, RV64InstBuilder::FMVWX(dst, pre!(zero)));
+                        }
+                        dst
+                    }
+                    _ => unimplemented!("unknown constant type: {:?}", _c),
+                }
+            }
+            ValueType::Instruction(ref _inst) => {
+                if self.val_mapf.contains_key(&val) {
+                    self.val_mapf[&val]
+                } else {
+                    let res = self.type_to_regf(value.ty());
+                    self.val_mapf.insert(val, res);
+                    res
+                }
+            },
+            ValueType::Parameter(ref _param) => {
+                if self.val_mapf.contains_key(&val) {
+                    self.val_mapf[&val]
+                } else {
+                    let res = self.type_to_regf(value.ty());
+
+                    let params = self.unit.funcs[self.name.as_str()].params.clone();
+                    let idx = params.iter().position(|&x| x == val).unwrap();
+                    let entry = self.bb_map[&self.unit.funcs[self.name.as_str()].entry_bb];
+                    if idx < 8 {
+                        // first 8 params are passed in registers
+                        self.used_regs.insert(RVGPR::a(idx));
+                        // self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, MachineOperand::PreColored(RVGPR::a(idx))));
+                        // NO EXTRA MOVE! A registers cannot be written before used,
+                        // and the extra move causes erroneous register allocation
+                        return FPOperand::PreColored(RVFPR::fa(idx));
+                    } else {
+                        // extra args are passed on stack, 8 bytes aligned
+                        // for i-th arg, it is at [fp + 8 * (i - 8)]
+                        self.used_regs.insert(RVGPR::fp());
+                        let offset = 8 * (idx - 8) as i32;
+                        if is_imm12(offset) {
+                            self.prog.push_to_begin(
+                                entry, 
+                                RV64InstBuilder::FLD(res, GPOperand::PreColored(RVGPR::fp()),
+                                offset
+                            ));
+                        } else {
+                            panic!("offset too large: {}", offset)
+                        }
+
+                        // todo: the "omit frame pointer" version
+                        // save a worklist of loads needed to be fixed with actual offset (with stack size added)
+                    }
+
+                    self.val_mapf.insert(val, res);
+                    res
+                }
+            },
+            ValueType::Global(ref _g) => {
+                panic!("?")
+            },
         }
     }
 
@@ -854,18 +1108,19 @@ impl<'a> AsmFuncBuilder<'a> {
                         if is_imm12(offset) {
                             self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, GPOperand::PreColored(RVGPR::fp()), offset));
                         } else {
-                            // try to use itself as scratch register; should it cause any problem?
-                            let (load_high, lo12) = AsmFuncBuilder::load_imm32_hi20(res, offset);
+                            panic!("offset too large: {}", offset)
+                            // // try to use itself as scratch register; should it cause any problem?
+                            // let (load_high, lo12) = AsmFuncBuilder::load_imm32_hi20(res, offset);
                             
-                            if let Some(minst) = load_high {
-                                // pushed in reverse order
-                                self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, res, lo12));
-                                self.prog.push_to_begin(entry, RV64InstBuilder::ADD(res, res, GPOperand::PreColored(RVGPR::fp())));
-                                self.prog.push_to_begin(entry, minst);
-                            } else {
-                                // hi20 cannot be zero, or we can use LD directly
-                                unreachable!()
-                            }
+                            // if let Some(minst) = load_high {
+                            //     // pushed in reverse order
+                            //     self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, res, lo12));
+                            //     self.prog.push_to_begin(entry, RV64InstBuilder::ADD(res, res, GPOperand::PreColored(RVGPR::fp())));
+                            //     self.prog.push_to_begin(entry, minst);
+                            // } else {
+                            //     // hi20 cannot be zero, or we can use LD directly
+                            //     unreachable!()
+                            // }
                         }
 
                         // todo: the "omit frame pointer" version
@@ -903,6 +1158,29 @@ impl<'a> AsmFuncBuilder<'a> {
             },
             _ => None,
         }
+    }
+
+    // fn resolve_constantf(&mut self, val: Id<Value>) -> Option<f32> {
+    //     let value = self.unit.values[val].clone();
+    //     match value.value {
+    //         ValueType::Constant(c) => {
+    //             match c {
+    //                 ConstantValue::F32(num) => Some(num),
+    //                 _ => None,
+    //             }
+    //         },
+    //         _ => None,
+    //     }
+    // }
+
+    fn is_integral(&self, val: Id<Value>) -> bool {
+        let value = self.unit.values[val].clone();
+        value.ty().is_int()
+    }
+
+    fn is_floating(&self, val: Id<Value>) -> bool {
+        let value = self.unit.values[val].clone();
+        value.ty().is_float()
     }
 
     // fn load_imm32(reg: MachineOperand, imm: i32) -> Vec<RV64Instruction> {
@@ -972,6 +1250,8 @@ impl_blank_mo! {
     Id<MachineBB>,
     String,
     usize,
+    FPOperand,
+    Vec<bool>,
 }
 
 #[inline(always)]

@@ -2,7 +2,7 @@ use std::{fmt::{Display, Debug}, collections::{HashMap, HashSet}};
 
 use crate::ctype::Linkage;
 
-use super::{GPOperand, RVGPR, MachineProgram, RV64Instruction, DataLiteral, AsmGlobalObject};
+use super::{GPOperand, RVGPR, MachineProgram, RV64Instruction, DataLiteral, AsmGlobalObject, FPOperand, RVFPR};
 
 impl Display for MachineProgram {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -296,6 +296,62 @@ impl Display for RV64Instruction {
                 write!(f, "remw\t{}, {}, {}", rd, rs1, rs2),
             RV64Instruction::REMUW { rd, rs1, rs2 } =>
                 write!(f, "remuw\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FLW { rd, rs1, imm } =>
+                write!(f, "flw\t{}, {}({})", rd, imm, rs1),
+            RV64Instruction::FSW { rs1, rs2, imm } =>
+                write!(f, "fsw\t{}, {}({})", rs2, imm, rs1),
+            RV64Instruction::FMADDS { rd, rs1, rs2, rs3 } =>
+                write!(f, "fmadd.s\t{}, {}, {}, {}", rd, rs1, rs2, rs3),
+            RV64Instruction::FMSUBS { rd, rs1, rs2, rs3 } =>
+                write!(f, "fmsub.s\t{}, {}, {}, {}", rd, rs1, rs2, rs3),
+            RV64Instruction::FNMSUBS { rd, rs1, rs2, rs3 } =>
+                write!(f, "fnmsub.s\t{}, {}, {}, {}", rd, rs1, rs2, rs3),
+            RV64Instruction::FNMADDS { rd, rs1, rs2, rs3 } =>
+                write!(f, "fnmadd.s\t{}, {}, {}, {}", rd, rs1, rs2, rs3),
+            RV64Instruction::FADDS { rd, rs1, rs2 } =>
+                write!(f, "fadd.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FSUBS { rd, rs1, rs2 } =>
+                write!(f, "fsub.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FMULS { rd, rs1, rs2 } =>
+                write!(f, "fmul.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FDIVS { rd, rs1, rs2 } =>
+                write!(f, "fdiv.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FSQRTS { rd, rs1 } =>
+                write!(f, "fsqrt.s\t{}, {}", rd, rs1),
+            RV64Instruction::FSGNJS { rd, rs1, rs2 } =>
+                write!(f, "fsgnj.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FSGNJNS { rd, rs1, rs2 } =>
+                write!(f, "fsgnjn.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FSGNJXS { rd, rs1, rs2 } =>
+                write!(f, "fsgnjx.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FMINS { rd, rs1, rs2 } =>
+                write!(f, "fmin.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FMAXS { rd, rs1, rs2 } =>
+                write!(f, "fmax.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FCVTWS { rd, rs1 } =>
+                write!(f, "fcvt.w.s\t{}, {}, rtz", rd, rs1),
+            RV64Instruction::FCVTWUS { rd, rs1 } =>
+                write!(f, "fcvt.wu.s\t{}, {}", rd, rs1),
+            RV64Instruction::FMVXW { rd, rs1 } =>
+                write!(f, "fmv.x.w\t{}, {}", rd, rs1),
+            RV64Instruction::FEQS { rd, rs1, rs2 } =>
+                write!(f, "feq.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FLTS { rd, rs1, rs2 } =>
+                write!(f, "flt.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FLES { rd, rs1, rs2 } =>
+                write!(f, "fle.s\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::FCLASSS { rd, rs1 } =>
+                write!(f, "fclass.s\t{}, {}", rd, rs1),
+            RV64Instruction::FCVTSW { rd, rs1 } =>
+                write!(f, "fcvt.s.w\t{}, {}", rd, rs1),
+            RV64Instruction::FCVTSWU { rd, rs1 } =>
+                write!(f, "fcvt.s.wu\t{}, {}", rd, rs1),
+            RV64Instruction::FMVWX { rd, rs1 } =>
+                write!(f, "fmv.w.x\t{}, {}", rd, rs1),
+            RV64Instruction::FSD { rs1, rs2, imm } =>
+                write!(f, "fsd\t{}, {}({})", rs2, imm, rs1),
+            RV64Instruction::FLD { rd, rs1, imm } =>
+                write!(f, "fld\t{}, {}({})", rd, imm, rs1),
             RV64Instruction::COMMENT { comment } =>
                 write!(f, "# {}", comment),
             RV64Instruction::CALL { callee, .. } =>
@@ -304,6 +360,10 @@ impl Display for RV64Instruction {
                 write!(f, "ret"),
             RV64Instruction::MV { rd, rs } =>
                 write!(f, "mv\t{}, {}", rd, rs),
+            RV64Instruction::FMVSS { rd, rs } => 
+                write!(f, "fmv.s\t{}, {}", rd, rs),
+            RV64Instruction::FNEGS { rd, rs1 } =>
+                write!(f, "fneg.s\t{}, {}", rd, rs1),
             RV64Instruction::LIMM { rd, imm } =>
                 write!(f, "li\t{}, {}", rd, imm),
             RV64Instruction::LADDR { rd, label } =>
@@ -331,7 +391,23 @@ impl Display for GPOperand {
     }
 }
 
+impl Display for FPOperand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FPOperand::Virtual(v) => write!(f, "%{}f", v.id()),
+            FPOperand::Allocated(r) => write!(f, "{}", r),
+            FPOperand::PreColored(r) => write!(f, "{}", r),
+        }
+    }
+}
+
 impl Display for RVGPR {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+impl Display for RVFPR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(self, f)
     }

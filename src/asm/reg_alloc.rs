@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::asm::{codegen::split_imm32, VirtGPRType};
 
-use super::{import::*, VirtualRegister, OperandBase, MachineBB, OperandInfo, FuncVirtReg, MachineFunc};
+use super::include::*;
 
 impl MachineProgram {
     pub fn allocate_registers(&mut self, ir: &mut TransUnit) {
@@ -12,27 +12,58 @@ impl MachineProgram {
             // assert!(vmax <= 2048, "todo: use another allocation algorithm for large functions");
 
             let loopinfo = LoopInfo::compute(ir, func.as_str());
-            let mut done = false;
+            
+            self.gpr_pass(&loopinfo, &func);
+            self.fpr_pass(&loopinfo, &func);
+        }
+    }
 
-            while !done {
-                let liveness = 
-                    liveness_analysis::<GPOperand, RVGPR, VirtGPR>(self, func.as_str());
-                let mut allocator = 
-                    RegisterAllocator::<GPOperand, RVGPR, VirtGPR>::new(
-                        &loopinfo,
-                        liveness,
-                    );
-                allocator.prepare(self, func.as_str());
-                allocator.run();
-                allocator.assign_colors(self, func.as_str());
-                if allocator.spilled_nodes.is_empty() {
-                    done = true;
-                    let used_regs_allocated = allocator.used_regs;
-                    let func = self.funcs.get_mut(func.as_str()).unwrap();
-                    func.used_regs.extend(used_regs_allocated);
-                } else {
-                    RegisterSpilling::apply(self, allocator.spilled_nodes, func.as_str());
-                }
+    fn gpr_pass(&mut self, loopinfo: &LoopInfo, func: &str) {
+        let mut done = false;
+
+        while !done {
+            let liveness = 
+                liveness_analysis::<GPOperand, RVGPR, VirtGPR>(self, func);
+            let mut allocator = 
+                RegisterAllocator::<GPOperand, RVGPR, VirtGPR>::new(
+                    &loopinfo,
+                    liveness,
+                );
+            allocator.prepare(self, func);
+            allocator.run();
+            allocator.assign_colors(self, func);
+            if allocator.spilled_nodes.is_empty() {
+                done = true;
+                let used_regs_allocated = allocator.used_regs;
+                let func = self.funcs.get_mut(func).unwrap();
+                func.used_regs.extend(used_regs_allocated);
+            } else {
+                RegisterSpilling::<GPOperand, RVGPR, VirtGPR>::apply(self, allocator.spilled_nodes, func);
+            }
+        }
+    }
+
+    fn fpr_pass(&mut self, loopinfo: &LoopInfo, func: &str) {
+        let mut done = false;
+
+        while !done {
+            let liveness = 
+                liveness_analysis::<FPOperand, RVFPR, VirtFPR>(self, func);
+            let mut allocator = 
+                RegisterAllocator::<FPOperand, RVFPR, VirtFPR>::new(
+                    &loopinfo,
+                    liveness,
+                );
+            allocator.prepare(self, func);
+            allocator.run();
+            allocator.assign_colors(self, func);
+            if allocator.spilled_nodes.is_empty() {
+                done = true;
+                let used_regs_allocated = allocator.used_regs;
+                let func = self.funcs.get_mut(func).unwrap();
+                func.used_regsf.extend(used_regs_allocated);
+            } else {
+                RegisterSpilling::<FPOperand, RVFPR, VirtFPR>::apply(self, allocator.spilled_nodes, func);
             }
         }
     }
@@ -868,6 +899,34 @@ impl<'a> RegisterSpilling<GPOperand, RVGPR, VirtGPR> {
         unit.funcs.get_mut(func).unwrap().virtual_max = spilling.vmax;
         std::mem::swap(&mut bbs, &mut unit.funcs.get_mut(func).unwrap().bbs);
         std::mem::swap(&mut spilling.vregs, &mut unit.funcs.get_mut(func).unwrap().virtual_gprs);
+
+        unit.funcs.get_mut(func).unwrap().virtual_gprs.extend(spilling.vgpr);
+    }
+}
+
+impl<'a> RegisterSpilling<FPOperand, RVFPR, VirtFPR> {
+    pub fn apply(unit: &mut MachineProgram, spilled_nodes: BTreeSet<FPOperand>, func: &str) {
+        let mut bbs = vec![];
+        std::mem::swap(&mut bbs, &mut unit.funcs.get_mut(func).unwrap().bbs);
+        let mut vregs = BTreeSet::new();
+        std::mem::swap(&mut vregs, &mut unit.funcs.get_mut(func).unwrap().virtual_fprs);
+        let stack_size = unit.funcs[func].stack_size;
+        let vmax = unit.funcs[func].virtual_max;
+
+        let mut spilling = Self {
+            spilled_nodes,
+            vregs,
+            vgpr: BTreeSet::new(),
+            stack_size,
+            vmax,
+            _marker: PhantomData,
+        };
+        spilling.rewrite_program(unit, &bbs);
+
+        unit.funcs.get_mut(func).unwrap().stack_size = spilling.stack_size;
+        unit.funcs.get_mut(func).unwrap().virtual_max = spilling.vmax;
+        std::mem::swap(&mut bbs, &mut unit.funcs.get_mut(func).unwrap().bbs);
+        std::mem::swap(&mut spilling.vregs, &mut unit.funcs.get_mut(func).unwrap().virtual_fprs);
 
         unit.funcs.get_mut(func).unwrap().virtual_gprs.extend(spilling.vgpr);
     }
