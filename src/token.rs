@@ -121,26 +121,27 @@ impl_integer!(i64);
 
 impl_integer!(i32);
 
-macro_rules! impl_float {
-    ($float:ty) => {
-        impl TryInto<$float> for TokenSpan<'_> {
-            type Error = ();
-
-            fn try_into(self) -> Result<$float, Self::Error> {
-                if self.0.len() != 1 {
-                    return Err(());
-                }
-                if !matches!(self.0[0].1, TokenType::FloatConst) {
-                    return Err(())
-                }
-                let s = self.0[0].0.replace("'", "");
-                s.parse().map_err(|_| ())
-            }
+impl TryInto<f32> for TokenSpan<'_> {
+    type Error = ();
+    fn try_into(self) -> Result<f32, Self::Error> {
+        if self.0.len() != 1 {
+            return Err(());
         }
+        if !matches!(self.0[0].1, TokenType::FloatConst) {
+            return Err(());
+        }
+        let s = self.0[0].0.replace("'", "");
+        // s.parse().map_err(|_| ())
+        extern "C" {
+            fn strtof(s: *const u8, end: *mut *mut u8) -> f32;
+        }
+        let raw_str = s.as_bytes();
+        let res = unsafe {
+            strtof(raw_str.as_ptr(), std::ptr::null_mut())
+        };
+        Ok(res)
     }
 }
-
-impl_float!(f32);
 
 pub type TokenRange = Range<usize>;
 

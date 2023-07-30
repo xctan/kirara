@@ -87,23 +87,60 @@ fn exponent(input: &str) -> IResult<&str, &str> {
     )))(input)
 }
 
+fn floating_decimal(input: &str) -> IResult<&str, &str> {
+    alt((
+        recognize(tuple((
+            whole_number,
+            opt(tag(".")),
+            exponent))),
+        recognize(tuple((
+            opt(whole_number),
+            tag("."),
+            whole_number,
+            opt(exponent)))),
+        recognize(tuple((
+            whole_number,
+            tag("."),
+            opt(whole_number)))))
+    )(input)
+}
+
+fn whole_number_h(input: &str) -> IResult<&str, &str> {
+    recognize(separated_list1(
+        tag("'"),
+        many1(satisfy(|c: char| c.is_ascii_hexdigit()))
+    ))(input)
+}
+
+fn exponent_h(input: &str) -> IResult<&str, &str> {
+    recognize(tuple((
+        alt((tag("p"), tag("P"))),
+        opt(alt((tag("+"), tag("-")))),
+        whole_number
+    )))(input)
+}
+
+fn floating_hexadecimal(input: &str) -> IResult<&str, &str> {
+    recognize(pair(
+        alt((tag("0x"), tag("0X"))),
+        alt((
+            recognize(tuple((
+                whole_number_h,
+                opt(tag(".")),
+                exponent_h))),
+            recognize(tuple((
+                opt(whole_number_h),
+                tag("."),
+                whole_number_h,
+                exponent_h)))
+    ))))(input)
+}
+
 fn floating_const(input: &str) -> IResult<&str, Token> {
     map(
         alt((
-            recognize(tuple((
-                whole_number,
-                opt(tag(".")),
-                exponent))),
-            recognize(tuple((
-                    opt(whole_number),
-                    tag("."),
-                    whole_number,
-                    opt(exponent)))),
-            recognize(tuple((
-                whole_number,
-                tag("."),
-                opt(whole_number)))),
-        )),
+            floating_hexadecimal,
+            floating_decimal)),
         |s| Token(s, TokenType::FloatConst)
     )(input)
 }

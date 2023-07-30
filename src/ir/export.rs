@@ -33,6 +33,7 @@ impl TransUnit {
         print!("{} ", init.ty);
         match init.data {
             InitData::ScalarI32(i) => print!("{}", i),
+            InitData::ScalarF32(f) => print!("0x{:x}", f.to_bits()),
             InitData::Aggregate(ref data) => {
                 print!("[");
                 for (idx, val) in data.iter().enumerate() {
