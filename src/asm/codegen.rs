@@ -865,6 +865,7 @@ impl<'a> AsmFuncBuilder<'a> {
             //     self.prog.push_to_begin(mbb, RV64InstBuilder::MV(lhs, rhs));
             // }
             for (pred, insts) in outgoing {
+                // !!! FIXME: float phi node
                 let mbb = self.bb_map[&pred];
                 if let Some(last) = self.prog.blocks[mbb].insts_tail {
                     for (lhs, rhs) in insts {
@@ -884,14 +885,15 @@ impl<'a> AsmFuncBuilder<'a> {
                         ConstantValue::I32(imm) => loads.push(RV64InstBuilder::LIMM(lhs, imm)),
                         ConstantValue::I1(imm) => loads.push(RV64InstBuilder::LIMM(lhs, imm as i32)),
                         ConstantValue::F32(imm) => {
+                            // !!! FIXME: float phi node
                             let tmp = self.new_vreg64();
                             loads.push(RV64InstBuilder::LIMM(tmp, imm.to_bits() as i32));
-                            // FMV.S.X lhs, tmp
+                            // loads.push(RV64InstBuilder::FMVWX(lhs, tmp));
                         }
                         ConstantValue::Undef => continue,
                     }
                 }
-                if let Some(last) = self.prog.blocks[mbb].insts_tail {
+                if let Some(_last) = self.prog.blocks[mbb].insts_tail {
                     todo!("phi node with imm");
                 } else {
                     todo!("phi node with imm");
@@ -1200,16 +1202,16 @@ impl<'a> AsmFuncBuilder<'a> {
     //     ret
     // }
 
-    fn load_imm32_hi20(reg: GPOperand, imm: i32) -> (Option<RV64Instruction>, i32) {
-        let hi20 = (imm + 0x800) >> 12 & 0xfffff;
-        let lo12 = imm & 0xfff;
+    // fn load_imm32_hi20(reg: GPOperand, imm: i32) -> (Option<RV64Instruction>, i32) {
+    //     let hi20 = (imm + 0x800) >> 12 & 0xfffff;
+    //     let lo12 = imm & 0xfff;
 
-        if hi20 != 0 {
-            (Some(RV64InstBuilder::LUI(reg, hi20)), lo12)
-        } else {
-            (None, lo12)
-        }
-    }
+    //     if hi20 != 0 {
+    //         (Some(RV64InstBuilder::LUI(reg, hi20)), lo12)
+    //     } else {
+    //         (None, lo12)
+    //     }
+    // }
 
     fn mark_usage<R>(&mut self, reg: R)
     where

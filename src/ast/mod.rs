@@ -284,7 +284,7 @@ pub enum InitData {
     Expr(Rc<RefCell<AstNode>>),
     ScalarI32(i32),
     ScalarF32(f32),
-    Aggregate(Vec<Initializer>),
+    Aggregate(Box<Vec<Initializer>>),
     ZeroInit,
 }
 
@@ -367,7 +367,7 @@ impl InitData {
                 for init in data.iter() {
                     new_data.push(init.retain_const());
                 }
-                Self::Aggregate(new_data)
+                Self::Aggregate(Box::new(new_data))
             },
             Self::ZeroInit => Self::ZeroInit,
         }
@@ -406,7 +406,7 @@ impl Initializer {
                 for _ in 0..arr.len {
                     data.push(Initializer::new(arr.base_type.clone()));
                 }
-                InitData::Aggregate(data)
+                InitData::Aggregate(Box::new(data))
             }
             _ => unimplemented!("unknown initializer type: {:?}", ty.kind),
         };

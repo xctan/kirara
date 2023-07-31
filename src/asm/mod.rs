@@ -10,7 +10,7 @@ pub mod context;
 mod include;
 mod operand;
 
-pub trait PhysicalRegister: Clone + Copy + Ord
+pub trait PhysicalRegister: Clone + Copy + Ord + Hash
 where
     Self: Sized,
 {
@@ -23,7 +23,8 @@ where
     const NUM: isize;
 }
 
-pub trait VirtualRegister: Display + Clone + Copy + Ord {
+pub trait VirtualRegister: Display + Clone + Copy + Ord + Hash
+{
     fn from_other(id: u32, other: &Self) -> Self;
 }
 

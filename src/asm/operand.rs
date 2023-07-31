@@ -16,6 +16,8 @@ where
     fn get_use_mut(&mut self) -> Vec<&mut O>;
 }
 
+// TODO: generate this file by procedural macro
+
 impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
     fn get_move(&self) -> Option<(GPOperand, GPOperand)> {
         if let RV64Instruction::MV{ rd, rs } = self {
