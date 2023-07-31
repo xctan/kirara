@@ -138,6 +138,7 @@ impl<'a> AsmFuncBuilder<'a> {
         mfunc.used_regs.extend(self.used_regs);
         mfunc.virtual_gprs.extend(self.virtual_gprs);
         mfunc.virtual_fprs.extend(self.virtual_fprs);
+        mfunc.bb_map = self.bb_map;
 
         mfunc
     }
