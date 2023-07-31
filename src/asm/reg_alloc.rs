@@ -1,8 +1,13 @@
-use std::marker::PhantomData;
-
-use crate::asm::{codegen::split_imm32, VirtGPRType};
-
 use super::include::*;
+
+#[derive(PartialEq, PartialOrd)]
+struct OrderedF32(f32);
+impl Eq for OrderedF32 {}
+impl Ord for OrderedF32 {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.total_cmp(&other.0)
+    }
+}
 
 impl MachineProgram {
     pub fn allocate_registers(&mut self, ir: &mut TransUnit) {
@@ -467,15 +472,6 @@ where
     }
 
     fn select_spill(&mut self) -> O {
-        #[derive(PartialEq, PartialOrd)]
-        struct OrderedF32(f32);
-        impl Eq for OrderedF32 {}
-        impl Ord for OrderedF32 {
-            fn cmp(&self, other: &Self) -> Ordering {
-                self.0.total_cmp(&other.0)
-            }
-        }
-
         let m = self.spill_worklist
             .iter()
             .max_by_key(|x| {
