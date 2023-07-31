@@ -18,6 +18,8 @@ pub struct Arguments {
     /// Frontend language
     #[clap(short = 'x', long, default_value = "sysy")]
     pub language: String,
+    #[clap(short = 'S', long)]
+    pub assembly: bool,
 }
 
 mod alloc;
