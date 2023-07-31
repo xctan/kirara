@@ -89,7 +89,7 @@ where
     move_list: BTreeMap<O, BTreeSet<Move<O, R, V>>>,
     simplify_worklist: BTreeSet<O>,
     freeze_worklist: BTreeSet<O>,
-    spill_worklist: BTreeSet<O>,
+    spill_worklist: BTreeSet<(OrderedF32, O)>,
     spilled_nodes: BTreeSet<O>,
     coalesced_nodes: BTreeSet<O>,
     select_stack: Vec<O>,
@@ -190,6 +190,14 @@ where
                 self.adj_list.entry(v).or_insert(BTreeSet::new()).insert(u);
                 *self.degree.entry(v).or_insert(0) += 1;
             }
+        }
+    }
+
+    fn estimate_cost(&self, x: &O) -> OrderedF32 {
+        if self.loop_count[x] == 0 {
+            OrderedF32(self.degree[x] as f32 * 2.0)
+        } else {
+            OrderedF32(self.degree[x] as f32 / self.loop_count[x] as f32)
         }
     }
 
@@ -305,7 +313,7 @@ where
             self.degree.entry(v).or_insert(0);
             self.adj_list.entry(v).or_insert(BTreeSet::new());
             if self.degree[&v] >= R::NUM {
-                self.spill_worklist.insert(v);
+                self.spill_worklist.insert((self.estimate_cost(&v), v));
             } else if self.move_related(v) {
                 self.freeze_worklist.insert(v);
             } else {
@@ -337,7 +345,7 @@ where
         self.degree.insert(m, d - 1);
         if d == R::NUM {
             self.enable_moves(m);
-            self.spill_worklist.insert(m);
+            self.spill_worklist.insert((self.estimate_cost(&m), m));
             if self.move_related(m) {
                 self.freeze_worklist.insert(m);
             } else {
@@ -386,7 +394,7 @@ where
         if self.freeze_worklist.contains(&v) {
             self.freeze_worklist.remove(&v);
         } else {
-            self.spill_worklist.remove(&v);
+            self.spill_worklist.retain(|&(_, x)| x != v);
         }
         self.coalesced_nodes.insert(v);
         self.alias.insert(v, u);
@@ -401,7 +409,7 @@ where
         }
         if self.degree[&u] >= R::NUM && self.freeze_worklist.contains(&u) {
             self.freeze_worklist.remove(&u);
-            self.spill_worklist.insert(u);
+            self.spill_worklist.insert((self.estimate_cost(&u), u));
         }
     }
 
@@ -473,19 +481,11 @@ where
 
     fn select_spill(&mut self) -> O {
         let m = self.spill_worklist
-            .iter()
-            .max_by_key(|x| {
-                if self.loop_count[x] == 0 {
-                    OrderedF32(self.degree[x] as f32 * 2.0)
-                } else {
-                    OrderedF32(self.degree[x] as f32 / self.loop_count[x] as f32)
-                }
-            })
-            .unwrap()
-            .clone();
+            .pop_last()
+            .map(|(_, m)| m)
+            .unwrap();
         self.simplify_worklist.insert(m);
         self.freeze_moves(m);
-        self.spill_worklist.remove(&m);
 
         m
     }
