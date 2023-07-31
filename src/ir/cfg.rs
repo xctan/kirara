@@ -2,7 +2,27 @@ use std::{collections::{HashSet, HashMap}, rc::{Weak, Rc}, cell::RefCell};
 
 use super::{structure::TransUnit, structure::BlockId};
 
-fn reverse_post_order(unit: &mut TransUnit, entry_bb: BlockId) -> Vec<BlockId> {
+pub fn dfs_order(unit: &TransUnit, entry_bb: BlockId) -> Vec<BlockId> {
+    let mut stack = Vec::new();
+    let mut visited = HashSet::new();
+    let mut result = Vec::new();
+    stack.push(entry_bb);
+    while let Some(top_id) = stack.pop() {
+        if visited.contains(&top_id) {
+            continue;
+        }
+        visited.insert(top_id);
+        result.push(top_id);
+        let succ = unit.succ(top_id);
+        for target in succ {
+            stack.push(target);
+        }
+    }
+
+    result
+}
+
+pub fn reverse_post_order(unit: &mut TransUnit, entry_bb: BlockId) -> Vec<BlockId> {
     let mut stack = Vec::new();
     let mut visited = HashSet::new();
     let mut result = Vec::new();

@@ -1199,6 +1199,8 @@ pub struct MachineFunc {
     pub virtual_gprs: BTreeSet<VirtGPR>,
     pub virtual_fprs: BTreeSet<VirtFPR>,
 
+    pub bb_map: HashMap<BlockId, Id<MachineBB>>,
+
     // use_lr?
 
     // todo: omit_fp_fixup, for sp-relative addressing
@@ -1284,6 +1286,7 @@ impl MachineProgram {
             used_regsf: BTreeSet::new(),
             virtual_gprs: BTreeSet::new(),
             virtual_fprs: BTreeSet::new(),
+            bb_map: HashMap::new(),
         }
     }
 

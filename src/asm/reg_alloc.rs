@@ -18,17 +18,17 @@ impl MachineProgram {
 
             let loopinfo = LoopInfo::compute(ir, func.as_str());
             
-            self.gpr_pass(&loopinfo, &func);
-            self.fpr_pass(&loopinfo, &func);
+            self.gpr_pass(&loopinfo, &func, ir);
+            self.fpr_pass(&loopinfo, &func, ir);
         }
     }
 
-    fn gpr_pass(&mut self, loopinfo: &LoopInfo, func: &str) {
+    fn gpr_pass(&mut self, loopinfo: &LoopInfo, func: &str, ir: &mut TransUnit) {
         let mut done = false;
 
         while !done {
             let liveness = 
-                liveness_analysis::<GPOperand, RVGPR, VirtGPR>(self, func);
+                liveness_analysis::<GPOperand, RVGPR, VirtGPR>(self, func, ir);
             let mut allocator = 
                 RegisterAllocator::<GPOperand, RVGPR, VirtGPR>::new(
                     &loopinfo,
@@ -48,12 +48,12 @@ impl MachineProgram {
         }
     }
 
-    fn fpr_pass(&mut self, loopinfo: &LoopInfo, func: &str) {
+    fn fpr_pass(&mut self, loopinfo: &LoopInfo, func: &str, ir: &mut TransUnit) {
         let mut done = false;
 
         while !done {
             let liveness = 
-                liveness_analysis::<FPOperand, RVFPR, VirtFPR>(self, func);
+                liveness_analysis::<FPOperand, RVFPR, VirtFPR>(self, func, ir);
             let mut allocator = 
                 RegisterAllocator::<FPOperand, RVFPR, VirtFPR>::new(
                     &loopinfo,
@@ -766,7 +766,8 @@ where
 
 fn liveness_analysis<O, R, V>(
     unit: &mut MachineProgram, 
-    func: &str
+    func: &str,
+    ir: &mut TransUnit,
 ) -> HashMap<Id<MachineBB>, Liveness<O, R, V>>
 where
     O: Operand<R, V> ,
@@ -774,10 +775,14 @@ where
     V: VirtualRegister,
     RV64Instruction: OperandInfo<O, R, V>,
 {
-    let bbs = unit.funcs[func].bbs.clone();
     let mut liveness = HashMap::new();
-    
-    for bb in &bbs {
+
+    let entry_irbb = ir.funcs[func].entry_bb;
+    let bbmap = &unit.funcs[func].bb_map;
+    let ordering = crate::ir::cfg::dfs_order(ir, entry_irbb);
+    let ordering = ordering.iter().rev().map(|bb| bbmap[bb]).collect::<Vec<_>>();
+
+    for bb in &ordering {
         let mut bblive = Liveness::new();
 
         let block = &unit.blocks[*bb];
@@ -808,7 +813,7 @@ where
     let mut changed = true;
     while changed {
         changed = false;
-        for bb in &bbs {
+        for bb in &ordering {
             let block = &unit.blocks[*bb];
             let succs = block.succs.clone();
             let mut liveout = HashSet::new();
