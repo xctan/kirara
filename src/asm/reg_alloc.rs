@@ -82,27 +82,27 @@ where
 {
     loopinfo: &'a LoopInfo,
 
-    adj_list: BTreeMap<O, BTreeSet<O>>,
-    adj_set: BTreeSet<(O, O)>,
-    degree: BTreeMap<O, isize>,
-    alias: BTreeMap<O, O>,
-    move_list: BTreeMap<O, BTreeSet<Move<O, R, V>>>,
+    adj_list: HashMap<O, HashSet<O>>,
+    adj_set: HashSet<(O, O)>,
+    degree: HashMap<O, isize>,
+    alias: HashMap<O, O>,
+    move_list: HashMap<O, HashSet<Move<O, R, V>>>,
     simplify_worklist: BTreeSet<O>,
     freeze_worklist: BTreeSet<O>,
     spill_worklist: BTreeSet<(OrderedF32, O)>,
-    spilled_nodes: BTreeSet<O>,
-    coalesced_nodes: BTreeSet<O>,
+    spilled_nodes: HashSet<O>,
+    coalesced_nodes: HashSet<O>,
     select_stack: Vec<O>,
     select_stack_set: HashSet<O>,
-    coalesced_moves: BTreeSet<Move<O, R, V>>,
-    constrained_moves: BTreeSet<Move<O, R, V>>,
-    frozen_moves: BTreeSet<Move<O, R, V>>,
-    worklist_moves: BTreeSet<Move<O, R, V>>,
-    active_moves: BTreeSet<Move<O, R, V>>,
+    coalesced_moves: HashSet<Move<O, R, V>>,
+    constrained_moves: HashSet<Move<O, R, V>>,
+    frozen_moves: HashSet<Move<O, R, V>>,
+    worklist_moves: HashSet<Move<O, R, V>>,
+    active_moves: HashSet<Move<O, R, V>>,
     
-    loop_count: BTreeMap<O, usize>,
+    loop_count: HashMap<O, usize>,
 
-    used_regs: BTreeSet<R>,
+    used_regs: HashSet<R>,
     liveness: HashMap<Id<MachineBB>, Liveness<O, R, V>>,
 
     _marker: PhantomData<V>,
@@ -121,25 +121,25 @@ where
     ) -> Self {
         let mut init = Self {
             loopinfo,
-            adj_list: BTreeMap::new(),
-            adj_set: BTreeSet::new(),
-            degree: BTreeMap::new(),
-            alias: BTreeMap::new(),
-            move_list: BTreeMap::new(),
+            adj_list: HashMap::new(),
+            adj_set: HashSet::new(),
+            degree: HashMap::new(),
+            alias: HashMap::new(),
+            move_list: HashMap::new(),
             simplify_worklist: BTreeSet::new(),
             freeze_worklist: BTreeSet::new(),
             spill_worklist: BTreeSet::new(),
-            spilled_nodes: BTreeSet::new(),
-            coalesced_nodes: BTreeSet::new(),
+            spilled_nodes: HashSet::new(),
+            coalesced_nodes: HashSet::new(),
             select_stack: Vec::new(),
             select_stack_set: HashSet::new(),
-            coalesced_moves: BTreeSet::new(),
-            constrained_moves: BTreeSet::new(),
-            frozen_moves: BTreeSet::new(),
-            worklist_moves: BTreeSet::new(),
-            active_moves: BTreeSet::new(),
-            loop_count: BTreeMap::new(),
-            used_regs: BTreeSet::new(),
+            coalesced_moves: HashSet::new(),
+            constrained_moves: HashSet::new(),
+            frozen_moves: HashSet::new(),
+            worklist_moves: HashSet::new(),
+            active_moves: HashSet::new(),
+            loop_count: HashMap::new(),
+            used_regs: HashSet::new(),
             liveness,
             _marker: PhantomData,
         };
@@ -185,11 +185,11 @@ where
             self.adj_set.insert((u, v));
             self.adj_set.insert((v, u));
             if !u.is_precolored() {
-                self.adj_list.entry(u).or_insert(BTreeSet::new()).insert(v);
+                self.adj_list.entry(u).or_default().insert(v);
                 *self.degree.entry(u).or_insert(0) += 1;
             }
             if !v.is_precolored() {
-                self.adj_list.entry(v).or_insert(BTreeSet::new()).insert(u);
+                self.adj_list.entry(v).or_default().insert(u);
                 *self.degree.entry(v).or_insert(0) += 1;
             }
         }
@@ -232,8 +232,8 @@ where
                     if rd.needs_coloring() && rs.needs_coloring() {
                         live.remove(&rs);
                         let inst = Move::new(rs, rd);
-                        self.move_list.entry(rs).or_insert(BTreeSet::new()).insert(inst);
-                        self.move_list.entry(rd).or_insert(BTreeSet::new()).insert(inst);
+                        self.move_list.entry(rs).or_default().insert(inst);
+                        self.move_list.entry(rd).or_default().insert(inst);
                         self.worklist_moves.insert(inst);
                     }
                 }
@@ -279,30 +279,36 @@ where
         }
     }
 
-    fn adjacent(&self, n: O) -> BTreeSet<O> {
+    fn adjacent(&self, n: O) -> HashSet<O> {
         self.adj_list
             .get(&n)
-            .unwrap_or(&BTreeSet::new())
-            .iter()
-            .cloned()
-            .filter(|x| {
-                !self.select_stack_set.contains(x) &&
-                !self.coalesced_nodes.contains(x)
+            .map(|s| {
+                s
+                    .iter()
+                    .cloned()
+                    .filter(|x| {
+                        !self.select_stack_set.contains(x) &&
+                        !self.coalesced_nodes.contains(x)
+                    })
+                    .collect()
             })
-            .collect()
+            .unwrap_or_default()
     }
 
     fn node_moves(&self, n: O) -> BTreeSet<Move<O, R, V>> {
         self.move_list
             .get(&n)
-            .unwrap_or(&BTreeSet::new())
-            .iter()
-            .cloned()
-            .filter(|x| {
-                !self.active_moves.contains(x) &&
-                !self.worklist_moves.contains(x)
+            .map(|s| {
+                s
+                    .iter()
+                    .cloned()
+                    .filter(|x| {
+                        !self.active_moves.contains(x) &&
+                        !self.worklist_moves.contains(x)
+                    })
+                    .collect()
             })
-            .collect()
+            .unwrap_or_default()
     }
 
     fn move_related(&self, n: O) -> bool {
@@ -313,7 +319,7 @@ where
         for v in vregs {
             let v = O::virt(*v);
             self.degree.entry(v).or_insert(0);
-            self.adj_list.entry(v).or_insert(BTreeSet::new());
+            self.adj_list.entry(v).or_default();
             if self.degree[&v] >= R::NUM {
                 self.spill_worklist.insert((self.estimate_cost(&v), v));
             } else if self.move_related(v) {
@@ -357,8 +363,7 @@ where
     }
 
     fn simplify(&mut self) {
-        let n = *self.simplify_worklist.iter().next().unwrap();
-        self.simplify_worklist.remove(&n);
+        let n = self.simplify_worklist.pop_first().unwrap();
         self.select_stack.push(n);
         self.select_stack_set.insert(n);
         for m in self.adjacent(n) {
@@ -404,7 +409,7 @@ where
         let move_list_v = self.move_list[&v].clone();
         self.move_list
             .entry(u)
-            .or_insert(BTreeSet::new())
+            .or_default()
             .extend(move_list_v);
         for t in self.adjacent(v) {
             self.add_edge(t, u);
@@ -416,7 +421,7 @@ where
         }
     }
 
-    fn conservative(&self, mut adj_u: BTreeSet<O>, adj_v: BTreeSet<O>) -> bool {
+    fn conservative(&self, mut adj_u: HashSet<O>, adj_v: HashSet<O>) -> bool {
         adj_u.extend(adj_v);
         adj_u
             .iter()
@@ -476,8 +481,7 @@ where
     }
 
     fn freeze(&mut self) {
-        let u = *self.freeze_worklist.iter().next().unwrap();
-        self.freeze_worklist.remove(&u);
+        let u = self.freeze_worklist.pop_first().unwrap();
         self.simplify_worklist.insert(u);
         self.freeze_moves(u);
     }
@@ -513,10 +517,14 @@ where
                     // println!("remove p {}", a);
                     ok_colors.remove(&a);
                 } else if alias.is_virtual() {
-                    if colored.contains_key(&alias) {
-                        // println!("remove v {}", colored[&alias].color().unwrap());
-                        ok_colors.remove(&colored[&alias].color().unwrap());
-                    }
+                    // if colored.contains_key(&alias) {
+                    //     // println!("remove v {}", colored[&alias].color().unwrap());
+                    //     ok_colors.remove(&colored[&alias].color().unwrap());
+                    // }
+                    colored
+                        .get(&alias)
+                        .and_then(|a| a.color())
+                        .map(|c| ok_colors.remove(&c));
                 }
             }
             // print!("candidates: ");
@@ -873,7 +881,7 @@ where
     R: PhysicalRegister,
     V: VirtualRegister,
 {
-    spilled_nodes: BTreeSet<O>,
+    spilled_nodes: HashSet<O>,
     vregs: BTreeSet<V>,
     vgpr: BTreeSet<VirtGPR>,
     stack_size: u32,
@@ -882,7 +890,7 @@ where
 }
 
 impl<'a> RegisterSpilling<GPOperand, RVGPR, VirtGPR> {
-    pub fn apply(unit: &mut MachineProgram, spilled_nodes: BTreeSet<GPOperand>, func: &str) {
+    pub fn apply(unit: &mut MachineProgram, spilled_nodes: HashSet<GPOperand>, func: &str) {
         let mut bbs = vec![];
         std::mem::swap(&mut bbs, &mut unit.funcs.get_mut(func).unwrap().bbs);
         let mut vregs = BTreeSet::new();
@@ -910,7 +918,7 @@ impl<'a> RegisterSpilling<GPOperand, RVGPR, VirtGPR> {
 }
 
 impl<'a> RegisterSpilling<FPOperand, RVFPR, VirtFPR> {
-    pub fn apply(unit: &mut MachineProgram, spilled_nodes: BTreeSet<FPOperand>, func: &str) {
+    pub fn apply(unit: &mut MachineProgram, spilled_nodes: HashSet<FPOperand>, func: &str) {
         let mut bbs = vec![];
         std::mem::swap(&mut bbs, &mut unit.funcs.get_mut(func).unwrap().bbs);
         let mut vregs = BTreeSet::new();
