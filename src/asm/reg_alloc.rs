@@ -93,6 +93,7 @@ where
     spilled_nodes: BTreeSet<O>,
     coalesced_nodes: BTreeSet<O>,
     select_stack: Vec<O>,
+    select_stack_set: HashSet<O>,
     coalesced_moves: BTreeSet<Move<O, R, V>>,
     constrained_moves: BTreeSet<Move<O, R, V>>,
     frozen_moves: BTreeSet<Move<O, R, V>>,
@@ -131,6 +132,7 @@ where
             spilled_nodes: BTreeSet::new(),
             coalesced_nodes: BTreeSet::new(),
             select_stack: Vec::new(),
+            select_stack_set: HashSet::new(),
             coalesced_moves: BTreeSet::new(),
             constrained_moves: BTreeSet::new(),
             frozen_moves: BTreeSet::new(),
@@ -284,7 +286,7 @@ where
             .iter()
             .cloned()
             .filter(|x| {
-                !self.select_stack.contains(x) &&
+                !self.select_stack_set.contains(x) &&
                 !self.coalesced_nodes.contains(x)
             })
             .collect()
@@ -358,6 +360,7 @@ where
         let n = *self.simplify_worklist.iter().next().unwrap();
         self.simplify_worklist.remove(&n);
         self.select_stack.push(n);
+        self.select_stack_set.insert(n);
         for m in self.adjacent(n) {
             self.decrement_degree(m);
         }
@@ -493,6 +496,7 @@ where
     pub fn assign_colors(&mut self, unit: &mut MachineProgram, func: &str) {
         let mut colored: BTreeMap<O, O> = BTreeMap::new();
         while let Some(n) = self.select_stack.pop() {
+            self.select_stack_set.remove(&n);
             // GPRs
             let mut ok_colors: BTreeSet<_> = R::assignable_registers().into_iter().collect();
             // println!("node {}", n);
