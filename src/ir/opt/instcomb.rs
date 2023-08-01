@@ -23,7 +23,7 @@ impl IrPass for InstructionCombination {
 fn combine(unit: &mut TransUnit, func: &str) -> bool {
     let mut changed = false;
 
-    calculate_used_by(unit, func);
+    // calculate_used_by(unit, func);
 
     let bbs = unit.funcs[func].bbs.clone();
 
