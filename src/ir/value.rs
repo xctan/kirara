@@ -177,6 +177,15 @@ pub enum ConstantValue {
     F32(f32),
 }
 
+impl ConstantValue {
+    pub fn as_i1(&self) -> bool {
+        match self {
+            ConstantValue::I1(v) => *v,
+            _ => panic!("not an i1"),
+        }
+    }
+}
+
 impl ValueTrait for ConstantValue {
     fn ty(&self) -> Rc<Type> {
         match self {

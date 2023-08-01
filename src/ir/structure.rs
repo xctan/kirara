@@ -172,6 +172,26 @@ impl TransUnit {
         }
     }
 
+    pub fn insert_at_end(&mut self, bb: BlockId, value: ValueId) {
+        self.inst_bb.insert(value, bb);
+        let block = self.blocks.get(bb).unwrap();
+        match block.insts_end {
+            None => {
+                let bb = self.blocks.get_mut(bb).unwrap();
+                bb.insts_start = Some(value);
+                bb.insts_end = Some(value);
+            }
+            Some(end) => {
+                let mut this = self.values.get_mut(value).unwrap();
+                this.prev = Some(end);
+                let mut end = self.values.get_mut(end).unwrap();
+                end.next = Some(value);
+                let bb = self.blocks.get_mut(bb).unwrap();
+                bb.insts_end = Some(value);
+            }
+        }
+    }
+
     /// remove a inst from bb
     pub fn remove(&mut self, bb: BlockId, value: ValueId) {
         let this = self.values.get(value).unwrap().clone();
@@ -290,6 +310,30 @@ impl TransUnit {
             }
             _ => panic!("Invalid terminator instruction"),
         }
+    }
+
+    pub fn succ_mut(&mut self, bb: BlockId) -> Vec<&mut BlockId> {
+        let bb = &mut self.blocks[bb];
+        let last = bb.insts_end.unwrap();
+        let last = &mut self.values[last];
+        match last.value.as_inst_mut() {
+            &mut InstructionValue::Branch(ref mut insn) => {
+                vec![&mut insn.succ, &mut insn.fail]
+            }
+            &mut InstructionValue::Jump(ref mut insn) => {
+                vec![&mut insn.succ]
+            }
+            &mut InstructionValue::Return(_) => {
+                vec![]
+            }
+            _ => panic!("Invalid terminator instruction"),
+        }
+    }
+
+    pub fn rebuild_bb_cahce(&mut self, func: &str) {
+        let mut bbs = self.funcs[func].bbs.clone();
+        bbs.retain(|b| self.blocks.get(*b).is_some());
+        self.funcs.get_mut(func).unwrap().bbs = bbs;
     }
 
     // global value builders
