@@ -111,7 +111,7 @@ impl<T> Arena<T> {
             else { Entry::Vacant { next_free: Some(i + 1) } }
         ));
 
-        self.generation.checked_add(1).expect("generation overflow");
+        self.generation = self.generation.checked_add(1).expect("generation overflow");
         self.free_list_head = Some(0);
         self.len = 0;
     }
@@ -196,6 +196,10 @@ impl<T> Arena<T> {
             return None;
         }
 
+        if i.index == 17911 {
+            println!();
+        }
+
         match self.items[i.index] {
             Entry::Occupied { generation, .. } if generation == i.generation => {
                 let entry = mem::replace(
@@ -203,7 +207,7 @@ impl<T> Arena<T> {
                     Entry::Vacant { next_free: self.free_list_head },
                 );
                 self.free_list_head = Some(i.index);
-                self.generation.checked_add(1).expect("generation overflow");
+                self.generation = self.generation.checked_add(1).expect("generation overflow");
                 self.len -= 1;
 
                 match entry {

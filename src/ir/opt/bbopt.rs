@@ -21,6 +21,7 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
     while changed {
         changed = false;
 
+        // simplify branch instruction
         // br true, bb1, bb2
         // br false, bb1, bb2
         // br cond, bb1, bb1
@@ -58,14 +59,19 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
                 if let Some(deleted) = deleted {
                     unit.remove(*bb, last);
                     let deleted_bb = &mut unit.blocks[deleted];
-                    deleted_bb.preds.retain(|&x| x != *bb);
+                    // deleted_bb.preds.retain(|&x| x != *bb);
+                    let idx = deleted_bb.preds
+                        .iter()
+                        .position(|&x| x == *bb)
+                        .unwrap();
+                    deleted_bb.preds.remove(idx);
                     let mut iter = deleted_bb.insts_start;
                     while let Some(inst) = iter {
                         let inst = &mut unit.values[inst];
                         iter = inst.next;
                         let inst = inst.value.as_inst_mut();
                         if let InstructionValue::Phi(phi) = inst {
-                            phi.args.retain(|&(_, x)| x != deleted);
+                            phi.args.remove(idx);
                         } else {
                             break;
                         }
@@ -74,7 +80,7 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
             }
         }
 
-        // bb has only one last jump: br bb
+        // remove empty bb
         'bb: for bb in bbs.iter().skip(1) {
             let last = 
                 match unit.blocks.get(*bb) {
@@ -104,10 +110,9 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
                     changed = true;
                     let this_preds = unit.blocks[*bb].preds.clone();
                     let target = &mut unit.blocks[*succ];
-                    let (index, _) = target.preds
+                    let index = target.preds
                         .iter()
-                        .enumerate()
-                        .find(|&(_, x)| x == bb)
+                        .position(|x| x == bb)
                         .unwrap();
                     target.preds.remove(index);
                     for p in &this_preds {
@@ -161,18 +166,28 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
     for bb in &bbs {
         if !visited.contains(bb) {
             for s in unit.succ(*bb) {
-                let mut iter = 
-                    match unit.blocks.get(s) {
-                        Some(block) => block,
-                        None => continue,
-                    }
-                    .insts_start;
+                // let mut iter = 
+                //     match unit.blocks.get(s) {
+                //         Some(block) => block,
+                //         None => continue,
+                //     }
+                //     .insts_start;
+                let block = match unit.blocks.get_mut(s) {
+                    Some(block) => block,
+                    None => continue,
+                };
+                let idx = block.preds
+                    .iter()
+                    .position(|x| *x == *bb)
+                    .unwrap();
+                block.preds.remove(idx);
+                let mut iter = block.insts_start;
                 while let Some(inst) = iter {
                     let inst = &mut unit.values[inst];
                     iter = inst.next;
                     let inst = inst.value.as_inst_mut();
                     if let InstructionValue::Phi(phi) = inst {
-                        phi.args.retain(|&(_, x)| x != s);
+                        phi.args.remove(idx);
                     } else {
                         break;
                     }
@@ -199,7 +214,7 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
                 if let InstructionValue::Phi(phi) = insn.value.as_inst() {
                     let v = phi.args[0].0;
                     unit.replace(inst, v);
-                    unit.values.remove(inst);
+                    unit.remove(*bb, inst);
                     inst_changed = true;
                 } else {
                     break;
@@ -226,10 +241,9 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
                         unit.remove(*bb, block_last);
                         for s in unit.succ(br.succ) {
                             let block = &mut unit.blocks[s];
-                            let (idx, _) = block.preds
+                            let idx = block.preds
                                 .iter()
-                                .enumerate()
-                                .find(|(_, p)| **p == br.succ)
+                                .position(|p| *p == br.succ)
                                 .unwrap();
                             block.preds[idx] = *bb;
                             let mut iter = block.insts_start;
@@ -252,6 +266,9 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
             break;
         }
     }
+
+    // some basic blocks are deleted, so remove invalid reference here too
+    unit.rebuild_bb_cahce(func);
 
     inst_changed
 }

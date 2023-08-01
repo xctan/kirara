@@ -77,7 +77,7 @@ impl TransUnit {
                 } else {
                     print!(", ");
                 }
-                print!("%{}", self.blocks.get(*bb).unwrap().name);
+                print!("%{}", self.blocks[*bb].name);
             });
             println!();
             let mut insts = bb0.insts_start;
@@ -90,7 +90,13 @@ impl TransUnit {
                     ValueType::Instruction(ref insn) => {
                         match *insn {
                             InstructionValue::Binary(ref insn) => {
-                                let lhs = arena.get(insn.lhs).unwrap();
+                                let lhs = match arena.get(insn.lhs) {
+                                    Some(value) => value,
+                                    None => {
+                                        println!("UNDEFINED");
+                                        continue
+                                    }
+                                };
                                 let op_name = match lhs.ty().kind {
                                     TypeKind::I32 => {
                                         match insn.op {
@@ -244,7 +250,13 @@ impl TransUnit {
 
     pub fn print_value(&self, id: ValueId) {
         let bb = &self.values;
-        let val = bb.get(id).unwrap();
+        let val = match bb.get(id) {
+            Some(v) => v,
+            None => {
+                print!("@UNDEFINED@");
+                return
+            }
+        };
         match val.value {
             ValueType::Global(ref g) => {
                 print!("@{}", g.name);

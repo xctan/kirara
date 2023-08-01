@@ -125,8 +125,9 @@ impl TransUnit {
     }
 
     pub fn add_used_by(&mut self, value: ValueId, user: ValueId) {
-        let value = self.values.get_mut(value).unwrap();
-        value.used_by.insert(user);
+        self.values
+            .get_mut(value)
+            .map(|value| value.used_by.insert(user));
     }
 
     // methods for modifying insts in bb
@@ -222,8 +223,11 @@ impl TransUnit {
     pub fn replace(&mut self, old: ValueId, new: ValueId) {
         let occurrences = self.values.get(old).unwrap().used_by.clone();
         for oc in occurrences {
+            let user = match self.values.get(oc) {
+                Some(user) => user.clone(),
+                None => continue,
+            };
             self.add_used_by(new, oc);
-            let user = self.values.get(oc).unwrap();
             macro_rules! rep {
                 ($this:ident, $kind:ident, $st:ident { $($member:ident),+ }) => {
                     if false { unreachable!() }
