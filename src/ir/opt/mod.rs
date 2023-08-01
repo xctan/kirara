@@ -3,6 +3,7 @@ use super::structure::TransUnit;
 pub mod mem2reg;
 pub mod canonicalize;
 pub mod bbopt;
+pub mod instcomb;
 
 pub trait IrPass {
     fn run(unit: &mut TransUnit);

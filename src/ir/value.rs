@@ -130,7 +130,7 @@ impl ValueType {
     pub fn as_inst(&self) -> &InstructionValue {
         match self {
             ValueType::Instruction(v) => v,
-            _ => panic!("not an instruction"),
+            _ => panic!("not an instruction: {:?}", self),
         }
     }
 
