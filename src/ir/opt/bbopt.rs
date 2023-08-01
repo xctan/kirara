@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::ir::{structure::TransUnit, value::{InstructionValue, BranchInst, JumpInst}};
 
 use super::IrPass;
@@ -78,7 +80,8 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) /*-> bool*/ {
                 match unit.blocks.get(*bb) {
                     Some(block) => block,
                     None => continue,
-                }.insts_start.unwrap();
+                }
+                .insts_start.unwrap();
             let last_inst = unit.values[last].clone();
             if let InstructionValue::Jump(JumpInst { succ }) = last_inst.value.as_inst() {
                 // sanity check
@@ -139,4 +142,43 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) /*-> bool*/ {
 
     // some basic blocks are deleted, so remove invalid reference here
     unit.rebuild_bb_cahce(func);
+
+    // remove unreachable basic blocks
+    // mark
+    let mut visited = HashSet::new();
+    let mut worklist = vec![unit.funcs[func].entry_bb];
+    while let Some(bb) = worklist.pop() {
+        if visited.contains(&bb) {
+            continue;
+        }
+        visited.insert(bb);
+        for s in unit.succ(bb) {
+            worklist.push(s);
+        }
+    }
+    // sweep
+    let bbs = unit.funcs[func].bbs.clone();
+    for bb in &bbs {
+        if !visited.contains(bb) {
+            for s in unit.succ(*bb) {
+                let mut iter = 
+                    match unit.blocks.get(s) {
+                        Some(block) => block,
+                        None => continue,
+                    }
+                    .insts_start;
+                while let Some(inst) = iter {
+                    let inst = &mut unit.values[inst];
+                    iter = inst.next;
+                    let inst = inst.value.as_inst_mut();
+                    if let InstructionValue::Phi(phi) = inst {
+                        phi.args.retain(|&(_, x)| x != s);
+                    } else {
+                        break;
+                    }
+                }
+            }
+            unit.blocks.remove(*bb);
+        }
+    }
 }
