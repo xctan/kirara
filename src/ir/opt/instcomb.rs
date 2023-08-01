@@ -1,5 +1,5 @@
 use crate::{
-    ir::{structure::TransUnit, value::{InstructionValue, ConstantValue, calculate_used_by}},
+    ir::{structure::TransUnit, value::{InstructionValue, ConstantValue}},
     ctype::BinaryOpType
 };
 

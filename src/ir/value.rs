@@ -134,6 +134,10 @@ impl ValueType {
         }
     }
 
+    pub fn is_inst(&self) -> bool {
+        matches!(self, ValueType::Instruction(_))
+    }
+
     pub fn as_inst_mut(&mut self) -> &mut InstructionValue {
         match self {
             ValueType::Instruction(v) => v,

@@ -9,7 +9,7 @@ pub struct DeadCodeElimination;
 impl IrPass for DeadCodeElimination {
     fn run(unit: &mut TransUnit) {
         for k in unit.funcs() {
-            // bbopt(unit, k.as_str());
+            dce(unit, k.as_str());
         }
     }
 }
@@ -34,7 +34,10 @@ fn dce(unit: &mut TransUnit, func: &str) {
         }
         visited.insert(vid);
         for op in unit.get_operands(vid) {
-            worklist.push(op);
+            let op_val = &unit.values[op];
+            if op_val.value.is_inst() {
+                worklist.push(op);
+            }
         }
     }
 
