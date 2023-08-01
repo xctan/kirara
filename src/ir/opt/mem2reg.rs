@@ -166,7 +166,10 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
                     }
                     let mut phi = unit.values.get_mut(insn_id).unwrap().value.as_inst().clone();
                     if let InstructionValue::Phi(PhiInst{args, ..}) = &mut phi {
+                        // FIXME: track use-def correctly
                         args[index].0 = values[phis[&insn_id]];
+                        let def = unit.values.get_mut(values[phis[&insn_id]]).unwrap();
+                        def.used_by.insert(insn_id);
                     } else {
                         unreachable!();
                     }

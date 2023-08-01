@@ -4,6 +4,7 @@ pub mod mem2reg;
 pub mod canonicalize;
 pub mod bbopt;
 pub mod instcomb;
+pub mod dce;
 
 pub trait IrPass {
     fn run(unit: &mut TransUnit);

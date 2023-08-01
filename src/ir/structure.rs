@@ -215,8 +215,56 @@ impl TransUnit {
                 bb.insts_end = this.prev;
             }
         }
+
+        let oprs = self.get_operands(value);
+        for opr in oprs {
+            match self.values.get_mut(opr) {
+                Some(opr) => {
+                    opr.used_by.remove(&value);
+                }
+                None => {}
+            }
+        }
+
         self.values.remove(value);
         self.inst_bb.remove(&value);
+    }
+
+    pub fn get_operands(&self, inst: ValueId) -> Vec<ValueId> {
+        let inst = self.values[inst].value.as_inst().clone();
+        match inst {
+            InstructionValue::Alloca(_) => vec![],
+            InstructionValue::Return(ret) => {
+                if let Some(ret) = ret.value {
+                    vec![ret]
+                } else {
+                    vec![]
+                }
+            }
+            InstructionValue::Store(st) => vec![st.value, st.ptr],
+            InstructionValue::Load(ld) => vec![ld.ptr],
+            InstructionValue::Binary(bin) => vec![bin.lhs, bin.rhs],
+            InstructionValue::Branch(br) => vec![br.cond],
+            InstructionValue::Jump(_) => vec![],
+            InstructionValue::Unary(un) => vec![un.value],
+            InstructionValue::GetElemPtr(gep) => {
+                let mut ret = vec![gep.ptr];
+                ret.extend(gep.indices);
+                ret
+            },
+            InstructionValue::Phi(phi) => {
+                let mut ret = vec![];
+                for (val, _) in phi.args {
+                    ret.push(val);
+                }
+                ret
+            },
+            InstructionValue::Call(call) => {
+                let mut ret = vec![];
+                ret.extend(call.args);
+                ret
+            },
+        }
     }
 
     /// replace all occurrences of old inst value with new
@@ -331,6 +379,21 @@ impl TransUnit {
                 vec![]
             }
             _ => panic!("Invalid terminator instruction"),
+        }
+    }
+
+    pub fn has_side_effect(&self, inst: ValueId) -> bool {
+        let insn = self.values[inst].value.as_inst();
+        match insn {
+            InstructionValue::Branch(_) |
+            InstructionValue::Jump(_) |
+            InstructionValue::Return(_) |
+            InstructionValue::Store(_) => true,
+            InstructionValue::Call(_) => {
+                // TODO: check if function has side effect
+                true
+            }
+            _ => false,
         }
     }
 
