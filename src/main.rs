@@ -72,8 +72,9 @@ fn main() {
     
     ir::opt::canonicalize::Canonicalize::run(&mut unit);
     if ARGS.optimize != "0" {
-        debug!(unit.print());
+        // debug!(unit.print());
         ir::opt::mem2reg::Mem2Reg::run(&mut unit);
+        ir::opt::bbopt::BasicBlockOptimization::run(&mut unit);
         ir::opt::canonicalize::Canonicalize::run(&mut unit);
     }
     debug!(unit.print());
