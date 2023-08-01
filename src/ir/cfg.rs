@@ -95,6 +95,9 @@ fn compute_idom(unit: &mut TransUnit, func: &str) {
     entry.idom = None;
     // Entry block to function must not have predecessors!
     assert!(entry.preds.is_empty());
+    for bb in &func.bbs {
+        unit.blocks.get_mut(*bb).unwrap().idom = None;
+    }
     let successors = unit.succ(entry_bb);
     for succ in successors {
         let succ = unit.blocks.get_mut(succ).unwrap();
