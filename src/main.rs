@@ -7,7 +7,7 @@ pub struct Arguments {
     #[clap(short, long)]
     /// Dump every intermediate representation
     pub dump: bool,
-    #[clap(short = 'O', default_value = "0")]
+    #[clap(short = 'O', default_value = "1")]
     /// Optimization level
     pub optimize: String,
     /// Input file

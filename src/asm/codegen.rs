@@ -894,10 +894,14 @@ impl<'a> AsmFuncBuilder<'a> {
                         ConstantValue::Undef => continue,
                     }
                 }
-                if let Some(_last) = self.prog.blocks[mbb].insts_tail {
-                    todo!("phi node with imm");
+                if let Some(last) = self.prog.blocks[mbb].insts_tail {
+                    for inst in loads {
+                        self.prog.insert_before(last, inst);
+                    }
                 } else {
-                    todo!("phi node with imm");
+                    for inst in loads {
+                        self.prog.push_to_end(mbb, inst);
+                    }
                 }
             }
         }
