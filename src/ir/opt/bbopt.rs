@@ -14,7 +14,7 @@ impl IrPass for BasicBlockOptimization {
     }
 }
 
-pub fn bbopt(unit: &mut TransUnit, func: &str) /*-> bool*/ {
+pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
     let bbs = unit.funcs[func].bbs.clone();
 
     let mut changed = true;
@@ -104,7 +104,12 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) /*-> bool*/ {
                     changed = true;
                     let this_preds = unit.blocks[*bb].preds.clone();
                     let target = &mut unit.blocks[*succ];
-                    target.preds.retain(|&x| x != *bb);
+                    let (index, _) = target.preds
+                        .iter()
+                        .enumerate()
+                        .find(|&(_, x)| x == bb)
+                        .unwrap();
+                    target.preds.remove(index);
                     for p in &this_preds {
                         target.preds.push(*p);
                     }
@@ -120,13 +125,8 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) /*-> bool*/ {
                         iter = inst.next;
                         let inst = inst.value.as_inst_mut();
                         if let InstructionValue::Phi(phi) = inst {
-                            let (idx, (v, _)) = phi.args
-                                .iter()
-                                .enumerate()
-                                .find(|&(_, (_, x))| *x == *bb)
-                                .unwrap();
-                            let v = *v;
-                            phi.args.remove(idx);
+                            let v = phi.args[index].0;
+                            phi.args.remove(index);
                             for p in &this_preds {
                                 phi.args.push((v, *p));
                             }
@@ -181,4 +181,77 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) /*-> bool*/ {
             unit.blocks.remove(*bb);
         }
     }
+
+    // some basic blocks are deleted, so remove invalid reference here too
+    unit.rebuild_bb_cahce(func);
+
+    let mut inst_changed = false;
+
+    // remove redundant phi
+    let bbs = unit.funcs[func].bbs.clone();
+    for bb in &bbs {
+        let block = &unit.blocks[*bb];
+        if block.preds.len() == 1 {
+            let mut iter = block.insts_start;
+            while let Some(inst) = iter {
+                let insn = unit.values[inst].clone();
+                iter = insn.next;
+                if let InstructionValue::Phi(phi) = insn.value.as_inst() {
+                    let v = phi.args[0].0;
+                    unit.replace(inst, v);
+                    unit.values.remove(inst);
+                    inst_changed = true;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    // merge basic blocks
+    for bb in &bbs {
+        loop {
+            if let Some(block) = unit.blocks.get(*bb) {
+                let block_last = block.insts_end.unwrap();
+                let last = unit.values[block_last].clone();
+                if let InstructionValue::Jump(br) = last.value.as_inst() {
+                    let target = &unit.blocks[br.succ];
+                    if target.preds.len() == 1 {
+                        let mut iter = target.insts_start;
+                        while let Some(inst) = iter {
+                            let insn = unit.values[inst].clone();
+                            iter = insn.next;
+                            unit.insert_before(*bb, inst, block_last);
+                        }
+                        unit.remove(*bb, block_last);
+                        for s in unit.succ(br.succ) {
+                            let block = &mut unit.blocks[s];
+                            let (idx, _) = block.preds
+                                .iter()
+                                .enumerate()
+                                .find(|(_, p)| **p == br.succ)
+                                .unwrap();
+                            block.preds[idx] = *bb;
+                            let mut iter = block.insts_start;
+                            while let Some(inst) = iter {
+                                let insn = &mut unit.values[inst];
+                                iter = insn.next;
+                                let insn = insn.value.as_inst_mut();
+                                if let InstructionValue::Phi(phi) = insn {
+                                    phi.args[idx].1 = *bb;
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                        unit.blocks.remove(br.succ);
+                        continue;
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    inst_changed
 }
