@@ -196,10 +196,6 @@ impl<T> Arena<T> {
             return None;
         }
 
-        if i.index == 17911 {
-            println!();
-        }
-
         match self.items[i.index] {
             Entry::Occupied { generation, .. } if generation == i.generation => {
                 let entry = mem::replace(

@@ -1,4 +1,4 @@
-use std::{fmt::{Display, Debug}, collections::{HashMap, HashSet}};
+use std::{fmt::{Display, Debug}, collections::HashMap};
 
 use crate::ctype::Linkage;
 
@@ -34,55 +34,7 @@ impl MachineProgram {
                 bb_names.insert(*bb, format!(".LBB{}_{}.{}", counter, count2(), mbb.name));
             }
 
-            let bbs = if crate::ARGS.optimize != "0" {
-                // reschedule the order of basic blocks
-                let mut bbs = Vec::with_capacity(f.bbs.len());
-                let mut vis = HashSet::new();
-                let mut worklist = vec![f.bbs[0]];
-                while let Some(current) = worklist.pop() {
-                    if vis.contains(&current) {
-                        continue;
-                    }
-                    vis.insert(current);
-                    bbs.push(current);
-                    let mbb = &self.blocks[current];
-                    let final_inst = mbb.insts_tail.unwrap();
-                    let inst = self.insts[final_inst].clone();
-                    match inst.inst {
-                        RV64Instruction::JUMP { target } => {
-                            worklist.push(target);
-                        },
-                        RV64Instruction::JEQ { succ, fail, .. } => {
-                            worklist.push(succ);
-                            worklist.push(fail);
-                        },
-                        RV64Instruction::JNE { succ, fail, .. } => {
-                            worklist.push(succ);
-                            worklist.push(fail);
-                        },
-                        RV64Instruction::JLT { succ, fail, .. } => {
-                            worklist.push(succ);
-                            worklist.push(fail);
-                        },
-                        RV64Instruction::JGE { succ, fail, .. } => {
-                            worklist.push(succ);
-                            worklist.push(fail);
-                        },
-                        RV64Instruction::JLTU { succ, fail, .. } => {
-                            worklist.push(succ);
-                            worklist.push(fail);
-                        },
-                        RV64Instruction::JGEU { succ, fail, .. } => {
-                            worklist.push(succ);
-                            worklist.push(fail);
-                        },
-                        _ => ()
-                    }
-                }
-                bbs
-            } else {
-                f.bbs.clone()
-            };
+            let bbs = f.bbs.clone();
 
             for i in 0..bbs.len() {
                 let bb = bbs[i];

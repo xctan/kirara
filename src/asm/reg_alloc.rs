@@ -86,19 +86,19 @@ where
     adj_set: HashSet<(O, O)>,
     degree: HashMap<O, isize>,
     alias: HashMap<O, O>,
-    move_list: HashMap<O, HashSet<Move<O, R, V>>>,
+    move_list: HashMap<O, BTreeSet<Move<O, R, V>>>,
     simplify_worklist: BTreeSet<O>,
     freeze_worklist: BTreeSet<O>,
     spill_worklist: BTreeSet<(OrderedF32, O)>,
     spilled_nodes: HashSet<O>,
-    coalesced_nodes: HashSet<O>,
+    coalesced_nodes: BTreeSet<O>,
     select_stack: Vec<O>,
     select_stack_set: HashSet<O>,
-    coalesced_moves: HashSet<Move<O, R, V>>,
-    constrained_moves: HashSet<Move<O, R, V>>,
-    frozen_moves: HashSet<Move<O, R, V>>,
-    worklist_moves: HashSet<Move<O, R, V>>,
-    active_moves: HashSet<Move<O, R, V>>,
+    coalesced_moves: BTreeSet<Move<O, R, V>>,
+    constrained_moves: BTreeSet<Move<O, R, V>>,
+    frozen_moves: BTreeSet<Move<O, R, V>>,
+    worklist_moves: BTreeSet<Move<O, R, V>>,
+    active_moves: BTreeSet<Move<O, R, V>>,
     
     loop_count: HashMap<O, usize>,
 
@@ -130,14 +130,14 @@ where
             freeze_worklist: BTreeSet::new(),
             spill_worklist: BTreeSet::new(),
             spilled_nodes: HashSet::new(),
-            coalesced_nodes: HashSet::new(),
+            coalesced_nodes: BTreeSet::new(),
             select_stack: Vec::new(),
             select_stack_set: HashSet::new(),
-            coalesced_moves: HashSet::new(),
-            constrained_moves: HashSet::new(),
-            frozen_moves: HashSet::new(),
-            worklist_moves: HashSet::new(),
-            active_moves: HashSet::new(),
+            coalesced_moves: BTreeSet::new(),
+            constrained_moves: BTreeSet::new(),
+            frozen_moves: BTreeSet::new(),
+            worklist_moves: BTreeSet::new(),
+            active_moves: BTreeSet::new(),
             loop_count: HashMap::new(),
             used_regs: HashSet::new(),
             liveness,
@@ -557,6 +557,7 @@ where
                 colored.insert(*n, colored[&alias]);
             }
         }
+        // println!("colors: {:?}", colored);
 
         let bbs = unit.funcs[func].bbs.clone();
         for bb in bbs {
@@ -855,8 +856,8 @@ where
     R: PhysicalRegister,
     V: VirtualRegister,
 {
-    pub src: O,
     pub dst: O,
+    pub src: O,
     _marker: PhantomData<(O, R, V)>,
 }
 
