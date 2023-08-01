@@ -132,7 +132,6 @@ impl TransUnit {
     // methods for modifying insts in bb
 
     // insert before some inst in bb
-    #[allow(unused)]
     pub fn insert_before(&mut self, bb: BlockId, value: ValueId, before: ValueId) {
         self.inst_bb.insert(value, bb);
         let that = self.values.get(before).unwrap();
@@ -216,6 +215,7 @@ impl TransUnit {
             }
         }
         self.values.remove(value);
+        self.inst_bb.remove(&value);
     }
 
     /// replace all occurrences of old inst value with new
