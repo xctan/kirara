@@ -314,6 +314,8 @@ impl Display for RV64Instruction {
                 write!(f, "mv\t{}, {}", rd, rs),
             RV64Instruction::FMVSS { rd, rs } => 
                 write!(f, "fmv.s\t{}, {}", rd, rs),
+            RV64Instruction::FMVDD { rd, rs } => 
+                write!(f, "fmv.d\t{}, {}", rd, rs),
             RV64Instruction::FNEGS { rd, rs1 } =>
                 write!(f, "fneg.s\t{}, {}", rd, rs1),
             RV64Instruction::LIMM { rd, imm } =>

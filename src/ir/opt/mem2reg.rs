@@ -37,7 +37,7 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
             let insn = unit.values.get(insn_id).unwrap().clone();
             if let InstructionValue::Alloca(AllocaInst{alloc_ty, ..}) = insn.value.as_inst() {
                 let ty = alloc_ty.clone();
-                if matches!(ty.kind, TypeKind::I32) {
+                if matches!(ty.kind, TypeKind::I32 | TypeKind::Ptr(_) | TypeKind::F32) {
                     let alloca_id = alloca_ids.len();
                     alloca_ids.insert(insn_id, alloca_id);
                     allocas.push(ty);
@@ -205,6 +205,8 @@ impl UndefValue {
         }
         let val = match ty.kind {
             TypeKind::I32 => unit.undef(),
+            TypeKind::F32 => unit.undef(),
+            TypeKind::Ptr(_) => unit.undef(),
             _ => unimplemented!(),
         };
         self.values.push((ty, val));

@@ -1132,6 +1132,10 @@ impl RV64InstBuilder {
     pub fn FMVSS(rd: FPOperand, rs: FPOperand) -> RV64Instruction {
         RV64Instruction::FMVSS { rd, rs }
     }
+    #[allow(non_snake_case, unused)]
+    pub fn FMVDD(rd: FPOperand, rs: FPOperand) -> RV64Instruction {
+        RV64Instruction::FMVDD { rd, rs }
+    }
 
     #[allow(non_snake_case, unused)]
     pub fn COMMENT(comment: String) -> RV64Instruction {

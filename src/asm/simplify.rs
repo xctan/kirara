@@ -22,6 +22,16 @@ fn simplify_func(unit: &mut MachineProgram, func: &str) {
                     unit.remove(inst);
                 }
             }
+            if let RV64Instruction::FMVSS { rd, rs } = insn.inst {
+                if rd == rs {
+                    unit.remove(inst);
+                }
+            }
+            if let RV64Instruction::FMVDD { rd, rs } = insn.inst {
+                if rd == rs {
+                    unit.remove(inst);
+                }
+            }
         }
     }
 }
