@@ -101,6 +101,7 @@ fn combine(unit: &mut TransUnit, func: &str) -> bool {
                         BinaryOpType::Le => Some(unit.const_i1(lhs <= rhs)),
                         BinaryOpType::Gt => Some(unit.const_i1(lhs > rhs)),
                         BinaryOpType::Ge => Some(unit.const_i1(lhs >= rhs)),
+                        BinaryOpType::And => Some(unit.const_i32(lhs & rhs)),
                         _ => None,
                     }
                 });
@@ -129,6 +130,34 @@ fn combine(unit: &mut TransUnit, func: &str) -> bool {
 
                 if let Some(val) = new_val {
                     unit.replace(inst, val);
+                    unit.remove(*bb, inst);
+                    changed = true;
+                }
+            }
+
+            // rem v.i32 c.i32 => and v.i32 c1.i32
+            // where c.i32 is power of 2
+            // c1.i32 = c.i32 - 1
+            if let InstructionValue::Binary(bin) = instruction {
+                let rhs = extract!(I32, bin.rhs);
+
+                let new_val = combine!(rhs; {
+                    match bin.op {
+                        BinaryOpType::Mod => {
+                            if (rhs as u32).is_power_of_two() {
+                                let new_rhs = unit.const_i32(rhs - 1);
+                                Some(unit.binary(BinaryOpType::And, bin.lhs, new_rhs))
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    }
+                });
+
+                if let Some(val) = new_val {
+                    unit.replace(inst, val);
+                    unit.insert_before(*bb, val, inst);
                     unit.remove(*bb, inst);
                     changed = true;
                 }

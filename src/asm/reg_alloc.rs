@@ -2,18 +2,26 @@ use super::include::*;
 
 macro_rules! debugln {
     ($( $args:expr ),*) => {
+        debugln!(@disabled $( $args ),*);
+    };
+    (@enabled $( $args:expr ),*) => {
         if crate::ARGS.dump {
             println!($( $args ),*);
         }
     };
+    (@disabled $( $args:expr ),*) => {};
 }
 
 macro_rules! debug {
     ($( $args:expr ),*) => {
+        debug!(@disabled $( $args ),*);
+    };
+    (@enabled $( $args:expr ),*) => {
         if crate::ARGS.dump {
             print!($( $args ),*);
         }
     };
+    (@disabled $( $args:expr ),*) => {};
 }
 
 #[derive(PartialEq, PartialOrd)]
@@ -242,13 +250,13 @@ where
                 // debugln!("{}", insn.inst);
                 let (defs, uses) = OperandInfo::<O, R, V>::get_def_use(&insn.inst);
                 debug!("\t--- defs: ");
-                for d in &defs {
-                    debug!("{} ", d);
+                for _d in &defs {
+                    debug!("{} ", _d);
                 }
                 debugln!();
                 debug!("\t--- uses: ");
-                for u in &uses {
-                    debug!("{} ", u);
+                for _u in &uses {
+                    debug!("{} ", _u);
                 }
                 debugln!();
 
@@ -529,8 +537,8 @@ where
 
             for w in &self.adj_list[&n] {
                 debug!("candidates:");
-                for c in &ok_colors {
-                    debug!(" {}", c);
+                for _c in &ok_colors {
+                    debug!(" {}", _c);
                 }
                 debugln!(", checking {}", w);
 
@@ -550,8 +558,8 @@ where
                 }
             }
             debug!("candidates: ");
-            for c in &ok_colors {
-                debug!("{} ", c);
+            for _c in &ok_colors {
+                debug!("{} ", _c);
             }
             debugln!();
 

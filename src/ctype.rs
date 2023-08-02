@@ -275,6 +275,7 @@ pub enum BinaryOpType {
     LogOr,
     LogAnd,
     Xor,
+    And,
 }
 
 impl Display for BinaryOpType {
@@ -292,6 +293,7 @@ impl Display for BinaryOpType {
             BinaryOpType::Gt => "???gt",
             BinaryOpType::Ge => "???ge",
             BinaryOpType::Xor => "xor",
+            BinaryOpType::And => "and",
             BinaryOpType::Assign |
             BinaryOpType::Index |
             BinaryOpType::LogOr |
