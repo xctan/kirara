@@ -110,6 +110,7 @@ fn combine(unit: &mut TransUnit, func: &str) -> bool {
                     unit.replace(inst, val);
                     unit.remove(*bb, inst);
                     changed = true;
+                    continue;
                 }
             }
 
@@ -132,6 +133,7 @@ fn combine(unit: &mut TransUnit, func: &str) -> bool {
                     unit.replace(inst, val);
                     unit.remove(*bb, inst);
                     changed = true;
+                    continue;
                 }
             }
 
@@ -160,6 +162,7 @@ fn combine(unit: &mut TransUnit, func: &str) -> bool {
                     unit.insert_before(*bb, val, inst);
                     unit.remove(*bb, inst);
                     changed = true;
+                    continue;
                 }
             }
         }
