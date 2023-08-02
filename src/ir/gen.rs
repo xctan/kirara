@@ -241,6 +241,13 @@ impl EmitIrExpr for AstNodeType {
                         builder.unary(from_id, super::value::UnaryOp::CvtI32F32).push(),
                     (TypeKind::I32, TypeKind::F32) =>
                         builder.unary(from_id, super::value::UnaryOp::CvtF32I32).push(),
+                    (TypeKind::I1, TypeKind::F32) => {
+                        // ???
+                        // promote twice: I1 -> I32 -> F32
+                        let middle =
+                            builder.unary(from_id, super::value::UnaryOp::ZextI32I1).push();
+                        builder.unary(middle, super::value::UnaryOp::CvtF32I32).push()
+                    }
                     _ => unimplemented!("convert {:#?} to {:#?}", from, to),
                 }
             }

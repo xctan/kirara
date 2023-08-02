@@ -287,9 +287,8 @@ impl<'a> AsmFuncBuilder<'a> {
                                         match b.op {
                                             BinaryOpType::Add | BinaryOpType::Sub => {
                                                 let tmp = self.new_vreg();
-                                                let (hi, lo) = split_imm32(i);
-                                                emit!(LUI tmp, hi);
-                                                emit!(ADDIW tmp, tmp, lo);
+                                                emit!(LIMM tmp, i);
+                                                emit!(ADDW dst, tmp, mo_lhs);
                                                 continue
                                             }
                                             _ => {}
@@ -659,6 +658,7 @@ impl<'a> AsmFuncBuilder<'a> {
                             let elem_size = ty.base_type().size() as i32;
                             ty = ty.base_type();
                             let constant_index = self.resolve_constant(index);
+                            // todo: generate address register
                             if let Some(idx) = constant_index {
                                 let offset = idx * elem_size;
                                 if let Some(ptr_id) = self.prog.vreg_def.get(&ptr) {
@@ -758,29 +758,54 @@ impl<'a> AsmFuncBuilder<'a> {
                             } else {
                                 stack_size + 8
                             };
-                            // already so many arguments!
-                            assert!(stack_size <= 2032);
+                            // // already so many arguments!
+                            // assert!(stack_size <= 2032);
                             
                             for i in 0..extra {
                                 let arg = c.args[8 + i];
                                 let value = self.unit.values[arg].clone();
+                                let offset = (i * 8) as i32 - stack_size as i32;
                                 match value.ty().kind {
                                     TypeKind::I32 | TypeKind::Ptr(_) => {
                                         let reg = self.resolve_ensure_reg(arg, mbb);
-                                        emit!(SD reg, pre!(sp), (i * 8) as i32 - stack_size as i32);
+                                        if is_imm12(offset) {
+                                            emit!(SD reg, pre!(sp), offset);
+                                        } else {
+                                            let tmp = self.new_vreg64();
+                                            emit!(LIMM tmp, offset);
+                                            emit!(ADD tmp, pre!(sp), tmp);
+                                            emit!(SD reg, tmp, 0);
+                                        }
+                                        // integer, not float
                                         args.push(false);
                                     }
                                     TypeKind::F32 => {
                                         let reg = self.resolve_fp(arg, mbb);
-                                        emit!(FSW reg, pre!(sp), (i * 8) as i32 - stack_size as i32);
+                                        if is_imm12(offset) {
+                                            // just memory op, so dismiss its type
+                                            emit!(FSD reg, pre!(sp), offset);
+                                        } else {
+                                            let tmp = self.new_vreg64();
+                                            emit!(LIMM tmp, offset);
+                                            emit!(ADD tmp, pre!(sp), tmp);
+                                            emit!(FSD reg, tmp, 0);
+                                        }
+                                        // float
                                         args.push(true);
                                     }
                                     _ => unimplemented!("call arg type: {:?}", value.ty()),
                                 }
                             }
 
-                            let inst = emit!(ADDI pre!(sp), pre!(sp), -(stack_size as i32));
-                            self.prog.mark_inline(inst, false);
+                            if stack_size < 2032 {
+                                let inst = emit!(ADDI pre!(sp), pre!(sp), -(stack_size as i32));
+                                // please do not inline this!
+                                self.prog.mark_inline(inst, false);
+                            } else {
+                                let tmp = self.new_vreg64();
+                                emit!(LIMM tmp, -(stack_size as i32));
+                                emit!(ADD pre!(sp), pre!(sp), tmp);
+                            }
                         }
 
                         emit!(CALL c.func.clone(), args.clone());
@@ -793,9 +818,15 @@ impl<'a> AsmFuncBuilder<'a> {
                             } else {
                                 stack_size + 8
                             };
-                            assert!(stack_size <= 2032);
-                            let inst = emit!(ADDI pre!(sp), pre!(sp), stack_size as i32);
-                            self.prog.mark_inline(inst, false);
+                            // assert!(stack_size <= 2032);
+                            if stack_size < 2032 {
+                                let inst = emit!(ADDI pre!(sp), pre!(sp), stack_size as i32);
+                                self.prog.mark_inline(inst, false);
+                            } else {
+                                let tmp = self.new_vreg64();
+                                emit!(LIMM tmp, stack_size as i32);
+                                emit!(ADD pre!(sp), pre!(sp), tmp);
+                            }
                         }
                         match dst {
                             ReturnValue::GPR(gp) => {
@@ -1012,10 +1043,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     if idx < 8 {
                         // first 8 params are passed in registers
                         self.used_regs.insert(RVGPR::a(idx));
-                        // self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, MachineOperand::PreColored(RVGPR::a(idx))));
-                        // NO EXTRA MOVE! A registers cannot be written before used,
-                        // and the extra move causes erroneous register allocation
-                        return FPOperand::PreColored(RVFPR::fa(idx));
+                        self.prog.push_to_begin(entry, RV64InstBuilder::FMVSS(res, FPOperand::PreColored(RVFPR::fa(idx))));
                     } else {
                         // extra args are passed on stack, 8 bytes aligned
                         // for i-th arg, it is at [fp + 8 * (i - 8)]
@@ -1028,7 +1056,12 @@ impl<'a> AsmFuncBuilder<'a> {
                                 offset
                             ));
                         } else {
-                            panic!("offset too large: {}", offset)
+                            // panic!("offset too large: {}", offset)
+                            // temporary version
+                            let tmp = self.new_vreg64();
+                            self.prog.push_to_begin(entry, RV64InstBuilder::FLD(res, tmp, 0));
+                            self.prog.push_to_begin(entry, RV64InstBuilder::ADD(tmp, tmp, GPOperand::PreColored(RVGPR::fp())));
+                            self.prog.push_to_begin(entry, RV64InstBuilder::LIMM(tmp, offset));
                         }
 
                         // todo: the "omit frame pointer" version
@@ -1103,10 +1136,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     if idx < 8 {
                         // first 8 params are passed in registers
                         self.used_regs.insert(RVGPR::a(idx));
-                        // self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, MachineOperand::PreColored(RVGPR::a(idx))));
-                        // NO EXTRA MOVE! A registers cannot be written before used,
-                        // and the extra move causes erroneous register allocation
-                        return GPOperand::PreColored(RVGPR::a(idx));
+                        self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, GPOperand::PreColored(RVGPR::a(idx))));
                     } else {
                         // extra args are passed on stack, 8 bytes aligned
                         // for i-th arg, it is at [fp + 8 * (i - 8)]
@@ -1115,10 +1145,10 @@ impl<'a> AsmFuncBuilder<'a> {
                         if is_imm12(offset) {
                             self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, GPOperand::PreColored(RVGPR::fp()), offset));
                         } else {
-                            panic!("offset too large: {}", offset)
+                            // panic!("offset too large: {}", offset)
                             // // try to use itself as scratch register; should it cause any problem?
-                            // let (load_high, lo12) = AsmFuncBuilder::load_imm32_hi20(res, offset);
                             
+                            // let (load_high, lo12) = AsmFuncBuilder::load_imm32_hi20(res, offset);
                             // if let Some(minst) = load_high {
                             //     // pushed in reverse order
                             //     self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, res, lo12));
@@ -1128,6 +1158,12 @@ impl<'a> AsmFuncBuilder<'a> {
                             //     // hi20 cannot be zero, or we can use LD directly
                             //     unreachable!()
                             // }
+                            
+                            // temporary version
+                            let tmp = self.new_vreg64();
+                            self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, tmp, 0));
+                            self.prog.push_to_begin(entry, RV64InstBuilder::ADD(tmp, tmp, GPOperand::PreColored(RVGPR::fp())));
+                            self.prog.push_to_begin(entry, RV64InstBuilder::LIMM(tmp, offset));
                         }
 
                         // todo: the "omit frame pointer" version

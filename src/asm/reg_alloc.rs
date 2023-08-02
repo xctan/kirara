@@ -1,5 +1,21 @@
 use super::include::*;
 
+macro_rules! debugln {
+    ($( $args:expr ),*) => {
+        if crate::ARGS.dump {
+            println!($( $args ),*);
+        }
+    };
+}
+
+macro_rules! debug {
+    ($( $args:expr ),*) => {
+        if crate::ARGS.dump {
+            print!($( $args ),*);
+        }
+    };
+}
+
 #[derive(PartialEq, PartialOrd)]
 struct OrderedF32(f32);
 impl Eq for OrderedF32 {}
@@ -167,11 +183,14 @@ where
         while !self.is_empty() {
             if !self.simplify_worklist.is_empty() {
                 self.simplify();
-            } else if !self.worklist_moves.is_empty() {
+            }
+            if !self.worklist_moves.is_empty() {
                 self.coalesce();
-            } else if !self.freeze_worklist.is_empty() {
+            }
+            if !self.freeze_worklist.is_empty() {
                 self.freeze();
-            } else if !self.spill_worklist.is_empty() {
+            }
+            if !self.spill_worklist.is_empty() {
                 self.select_spill();
             }
         }
@@ -182,6 +201,10 @@ where
             return;
         }
         if !self.adj_set.contains(&(u, v)) {
+            if !u.is_precolored() || !v.is_precolored() {
+                debugln!("inferrence edge: {} <-> {}", u, v);
+            }
+
             self.adj_set.insert((u, v));
             self.adj_set.insert((v, u));
             if !u.is_precolored() {
@@ -209,24 +232,25 @@ where
             let block = &unit.blocks[*bb];
             let bblive = &self.liveness[bb];
             let mut live = bblive.liveout.clone();
+            debugln!("bb {}, live {:#?}", block.name, live);
 
             let mut iter = block.insts_tail;
             while let Some(inst) = iter {
                 let insn = unit.insts[inst].clone();
                 iter = insn.prev;
 
-                // println!("{}", insn.inst);
+                // debugln!("{}", insn.inst);
                 let (defs, uses) = OperandInfo::<O, R, V>::get_def_use(&insn.inst);
-                // print!("defs: ");
-                // for d in &defs {
-                //     print!("{} ", d);
-                // }
-                // println!();
-                // print!("uses: ");
-                // for u in &uses {
-                //     print!("{} ", u);
-                // }
-                // println!();
+                debug!("\t--- defs: ");
+                for d in &defs {
+                    debug!("{} ", d);
+                }
+                debugln!();
+                debug!("\t--- uses: ");
+                for u in &uses {
+                    debug!("{} ", u);
+                }
+                debugln!();
 
                 if let Some((rd, rs)) = OperandInfo::<O, R, V>::get_move(&insn.inst) {
                     if rd.needs_coloring() && rs.needs_coloring() {
@@ -247,9 +271,6 @@ where
                 for d in &defs {
                     if d.needs_coloring() {
                         for l in &live {
-                            // if !d.is_precolored() || !l.is_precolored() {
-                            //     println!("add edge: {} {}", d, l);
-                            // }
                             self.add_edge(*d, *l);
                         }
                     }
@@ -287,7 +308,7 @@ where
                     .iter()
                     .cloned()
                     .filter(|x| {
-                        !self.select_stack_set.contains(x) &&
+                        // !self.select_stack_set.contains(x) &&
                         !self.coalesced_nodes.contains(x)
                     })
                     .collect()
@@ -404,6 +425,7 @@ where
         } else {
             self.spill_worklist.retain(|&(_, x)| x != v);
         }
+        debugln!("coalesce {} and {}", u, v);
         self.coalesced_nodes.insert(v);
         self.alias.insert(v, u);
         let move_list_v = self.move_list[&v].clone();
@@ -503,14 +525,14 @@ where
             self.select_stack_set.remove(&n);
             // GPRs
             let mut ok_colors: BTreeSet<_> = R::assignable_registers().into_iter().collect();
-            // println!("node {}", n);
+            debugln!("node {}", n);
 
             for w in &self.adj_list[&n] {
-                // print!("candidates: ");
-                // for c in &ok_colors {
-                //     print!("{} ", c);
-                // }
-                // println!();
+                debug!("candidates:");
+                for c in &ok_colors {
+                    debug!(" {}", c);
+                }
+                debugln!(", checking {}", w);
 
                 let alias = self.get_alias(*w);
                 if let Some(a) = alias.color() {
@@ -527,22 +549,22 @@ where
                         .map(|c| ok_colors.remove(&c));
                 }
             }
-            // print!("candidates: ");
-            // for c in &ok_colors {
-            //     print!("{} ", c);
-            // }
-            // println!();
+            debug!("candidates: ");
+            for c in &ok_colors {
+                debug!("{} ", c);
+            }
+            debugln!();
 
             if ok_colors.is_empty() {
                 self.spilled_nodes.insert(n);
             } else {
                 let c = *ok_colors.iter().next().unwrap();
                 colored.insert(n, O::alloc(c));
-                // println!("color {}", c);
+                debugln!("color {}", c);
                 self.used_regs.insert(c);
             }
         }
-        // println!("colors: {:?}", colored);
+        debugln!("colors: {:?}", colored);
 
         // failed to satisfy constraints, try to spill
         if !self.spilled_nodes.is_empty() {
@@ -557,7 +579,7 @@ where
                 colored.insert(*n, colored[&alias]);
             }
         }
-        // println!("colors: {:?}", colored);
+        debugln!("colors: {:?}", colored);
 
         let bbs = unit.funcs[func].bbs.clone();
         for bb in bbs {

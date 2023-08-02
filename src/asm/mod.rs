@@ -623,19 +623,31 @@ define_operand!(FPOperand, RVFPR, VirtFPR);
 
 impl Operand<RVFPR, VirtFPR> for FPOperand {
     fn load_fn(&self) -> fn(Self, GPOperand, i32) -> RV64Instruction {
-        todo!()
+        match self.as_virtual().ty() {
+            VirtFPRType::Fp32 => RV64InstBuilder::FLW,
+            VirtFPRType::Fp64 => RV64InstBuilder::FLD,
+        }
     }
 
     fn store_fn(&self) -> fn(Self, GPOperand, i32) -> RV64Instruction {
-        todo!()
+        match self.as_virtual().ty() {
+            VirtFPRType::Fp32 => RV64InstBuilder::FSW,
+            VirtFPRType::Fp64 => RV64InstBuilder::FSD,
+        }
     }
 
     fn size(&self) -> u32 {
-        todo!()
+        match self.as_virtual().ty() {
+            VirtFPRType::Fp32 => 4,
+            VirtFPRType::Fp64 => 8,
+        }
     }
 
     fn align(&self) -> u32 {
-        todo!()
+        match self.as_virtual().ty() {
+            VirtFPRType::Fp32 => 4,
+            VirtFPRType::Fp64 => 8,
+        }
     }
 }
 
