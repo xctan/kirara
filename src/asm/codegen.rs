@@ -582,7 +582,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                 },
                                 TypeKind::F32 => {
                                     let src = self.resolve_fp(val, mbb);
-                                    emit!(FMVSS pre!(fa0), src);
+                                    emit!(FMVDD pre!(fa0), src);
                                 },
                                 _ => unimplemented!("return type: {:?}", value.ty()),
                             }
@@ -743,7 +743,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                 TypeKind::F32 => {
                                     let target = pre!(fa idx);
                                     let reg = self.resolve_fp(*arg, mbb);
-                                    emit!(FMVSS target, reg);
+                                    emit!(FMVDD target, reg);
                                     args.push(true);
                                 }
                                 _ => unimplemented!("call arg type: {:?}", value.ty()),
@@ -833,7 +833,8 @@ impl<'a> AsmFuncBuilder<'a> {
                                 emit!(MV gp, pre!(a0));
                             },
                             ReturnValue::F32(fp) => {
-                                emit!(FMVSS fp, pre!(fa0));
+                                // just register transfer so width is not a problem
+                                emit!(FMVDD fp, pre!(fa0));
                             },
                             ReturnValue::Void => {},
                         }
@@ -850,6 +851,7 @@ impl<'a> AsmFuncBuilder<'a> {
             // let mut incoming = Vec::new();
             let mut outgoing = HashMap::new();
             let mut outgoing_imm = HashMap::new();
+            let mut outgoing_f = HashMap::new();
 
             let mut iter = block.insts_start;
             while let Some(inst) = iter {
@@ -872,19 +874,39 @@ impl<'a> AsmFuncBuilder<'a> {
 
                     // let vreg = self.new_vreg();
                     // incoming.push((self.resolve(inst, mbb), vreg));
-                    let vreg = self.resolve(inst, mbb);
                     for (val, bb) in &phi.args {
                         let value = self.unit.values[*val].clone();
-                        if value.value.is_constant() {
-                            outgoing_imm
-                                .entry(*bb)
-                                .or_insert(Vec::new())
-                                .push((vreg, value.value.as_constant().clone()));
-                        } else {
-                            outgoing
-                                .entry(*bb)
-                                .or_insert(Vec::new())
-                                .push((vreg, self.resolve(*val, mbb)));
+                        match value.ty().kind {
+                            TypeKind::I32 | TypeKind::I1 => {
+                                let vreg = self.resolve(inst, mbb);
+                                if value.value.is_constant() {
+                                    outgoing_imm
+                                        .entry(*bb)
+                                        .or_insert(Vec::new())
+                                        .push((vreg, value.value.as_constant().clone()));
+                                } else {
+                                    outgoing
+                                        .entry(*bb)
+                                        .or_insert(Vec::new())
+                                        .push((vreg, self.resolve(*val, mbb)));
+                                }
+                            }
+                            TypeKind::Ptr(_) => {
+                                let vreg = self.resolve(inst, mbb);
+                                // how could it be a constant?
+                                outgoing
+                                    .entry(*bb)
+                                    .or_insert(Vec::new())
+                                    .push((vreg, self.resolve_ensure_reg(*val, mbb)));
+                            }
+                            TypeKind::F32 => {
+                                let vreg = self.resolve_fp(inst, mbb);
+                                outgoing_f
+                                    .entry(*bb)
+                                    .or_insert(Vec::new())
+                                    .push((vreg, self.resolve_fp(*val, mbb)));
+                            }
+                            _ => panic!("phi node type: {:?}", value.ty()),
                         }
                     }
                 } else {
@@ -897,7 +919,6 @@ impl<'a> AsmFuncBuilder<'a> {
             //     self.prog.push_to_begin(mbb, RV64InstBuilder::MV(lhs, rhs));
             // }
             for (pred, insts) in outgoing {
-                // !!! FIXME: float phi node
                 let mbb = self.bb_map[&pred];
                 if let Some(last) = self.prog.blocks[mbb].insts_tail {
                     for (lhs, rhs) in insts {
@@ -932,6 +953,18 @@ impl<'a> AsmFuncBuilder<'a> {
                 } else {
                     for inst in loads {
                         self.prog.push_to_end(mbb, inst);
+                    }
+                }
+            }
+            for (pred, insts) in outgoing_f {
+                let mbb = self.bb_map[&pred];
+                if let Some(last) = self.prog.blocks[mbb].insts_tail {
+                    for (lhs, rhs) in insts {
+                        self.prog.insert_before(last, RV64InstBuilder::FMVDD(lhs, rhs));
+                    }
+                } else {
+                    for (lhs, rhs) in insts {
+                        self.prog.push_to_end(mbb, RV64InstBuilder::FMVDD(lhs, rhs));
                     }
                 }
             }
@@ -1043,7 +1076,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     if idx < 8 {
                         // first 8 params are passed in registers
                         self.used_regs.insert(RVGPR::a(idx));
-                        self.prog.push_to_begin(entry, RV64InstBuilder::FMVSS(res, FPOperand::PreColored(RVFPR::fa(idx))));
+                        self.prog.push_to_begin(entry, RV64InstBuilder::FMVDD(res, FPOperand::PreColored(RVFPR::fa(idx))));
                     } else {
                         // extra args are passed on stack, 8 bytes aligned
                         // for i-th arg, it is at [fp + 8 * (i - 8)]

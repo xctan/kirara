@@ -102,6 +102,9 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
         if let RV64Instruction::FMVSS { .. } = self {
             return (vec![], vec![])
         }
+        if let RV64Instruction::FMVDD { .. } = self {
+            return (vec![], vec![])
+        }
         
         if let RV64Instruction::LUI { rd, .. } = self {
             return (vec![*rd], vec![])
@@ -217,6 +220,9 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
             return vec![]
         }
         if let RV64Instruction::FMVSS { .. } = self {
+            return vec![]
+        }
+        if let RV64Instruction::FMVDD { .. } = self {
             return vec![]
         }
 
@@ -339,6 +345,7 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
             return vec![rs1]
         }
         nop!(FMVSS);
+        nop!(FMVDD);
 
         panic!("unimplemented: {:?}", self)
     }
@@ -347,6 +354,8 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
 impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
     fn get_move(&self) -> Option<(FPOperand, FPOperand)> {
         if let RV64Instruction::FMVSS{ rd, rs } = self {
+            Some((*rd, *rs))
+        } else if let RV64Instruction::FMVDD{ rd, rs } = self {
             Some((*rd, *rs))
         } else {
             None
@@ -426,6 +435,9 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
             return (vec![*rd], vec![])
         }
         if let RV64Instruction::FMVSS { rd, rs } = self {
+            return (vec![*rd], vec![*rs])
+        }
+        if let RV64Instruction::FMVDD { rd, rs } = self {
             return (vec![*rd], vec![*rs])
         }
         
@@ -544,6 +556,9 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
             return vec![rd]
         }
         if let RV64Instruction::FMVSS { rd, .. } = self {
+            return vec![rd]
+        }
+        if let RV64Instruction::FMVDD { rd, .. } = self {
             return vec![rd]
         }
 
@@ -673,6 +688,9 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
             return vec![]
         }
         if let RV64Instruction::FMVSS { rs, .. } = self {
+            return vec![rs]
+        }
+        if let RV64Instruction::FMVDD { rs, .. } = self {
             return vec![rs]
         }
 
