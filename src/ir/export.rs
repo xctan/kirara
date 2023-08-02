@@ -112,6 +112,7 @@ impl TransUnit {
                                             BinaryOp::Gt => "icmp sgt",
                                             BinaryOp::Ge => "icmp sge",
                                             BinaryOp::Xor => "xor",
+                                            BinaryOp::And => "and",
                                             _ => unreachable!("i32 op {:?}", insn.op),
                                         }
                                     }

@@ -237,6 +237,9 @@ impl<'a> AsmFuncBuilder<'a> {
                                             BinaryOpType::Add | BinaryOpType::Sub => {
                                                 emit!(ADDIW dst, mo_lhs, i);
                                             }
+                                            BinaryOpType::And => {
+                                                emit!(ANDI dst, mo_lhs, i);
+                                            }
                                             BinaryOpType::Ne => {
                                                 if eliminate_cmp {
                                                     let tmp = self.resolve_ensure_reg(b.rhs, mbb);
@@ -317,6 +320,9 @@ impl<'a> AsmFuncBuilder<'a> {
                                             BinaryOpType::Ge => {
                                                 emit!(SGE dst, mo_lhs, tmp);
                                             }
+                                            BinaryOpType::And => {
+                                                emit!(AND dst, mo_lhs, tmp);
+                                            }
                                             _ => unimplemented!(),
                                         }
                                     }
@@ -350,6 +356,9 @@ impl<'a> AsmFuncBuilder<'a> {
                                         }
                                         BinaryOpType::Mod => {
                                             emit!(REMW dst, mo_lhs, mo_rhs);
+                                        }
+                                        BinaryOpType::And => {
+                                            emit!(AND dst, mo_lhs, mo_rhs);
                                         }
                                         _ => unimplemented!(),
                                     }
@@ -852,6 +861,7 @@ impl<'a> AsmFuncBuilder<'a> {
             let mut outgoing = HashMap::new();
             let mut outgoing_imm = HashMap::new();
             let mut outgoing_f = HashMap::new();
+            let mut outgoing_fimm = HashMap::new();
 
             let mut iter = block.insts_start;
             while let Some(inst) = iter {
@@ -901,11 +911,19 @@ impl<'a> AsmFuncBuilder<'a> {
                             }
                             TypeKind::F32 => {
                                 let vreg = self.resolve_fp(inst, mbb);
-                                outgoing_f
-                                    .entry(*bb)
-                                    .or_insert(Vec::new())
-                                    .push((vreg, self.resolve_fp(*val, mbb)));
+                                if value.value.is_constant() {
+                                    outgoing_fimm
+                                        .entry(*bb)
+                                        .or_insert(Vec::new())
+                                        .push((vreg, value.value.as_constant().clone()));
+                                } else {
+                                    outgoing_f
+                                        .entry(*bb)
+                                        .or_insert(Vec::new())
+                                        .push((vreg, self.resolve_fp(*val, mbb)));
+                                }
                             }
+                            TypeKind::Void => {}
                             _ => panic!("phi node type: {:?}", value.ty()),
                         }
                     }
@@ -937,13 +955,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     match rhs {
                         ConstantValue::I32(imm) => loads.push(RV64InstBuilder::LIMM(lhs, imm)),
                         ConstantValue::I1(imm) => loads.push(RV64InstBuilder::LIMM(lhs, imm as i32)),
-                        ConstantValue::F32(imm) => {
-                            // !!! FIXME: float phi node
-                            let tmp = self.new_vreg64();
-                            loads.push(RV64InstBuilder::LIMM(tmp, imm.to_bits() as i32));
-                            // loads.push(RV64InstBuilder::FMVWX(lhs, tmp));
-                        }
-                        ConstantValue::Undef => continue,
+                        _ => continue,
                     }
                 }
                 if let Some(last) = self.prog.blocks[mbb].insts_tail {
@@ -965,6 +977,29 @@ impl<'a> AsmFuncBuilder<'a> {
                 } else {
                     for (lhs, rhs) in insts {
                         self.prog.push_to_end(mbb, RV64InstBuilder::FMVDD(lhs, rhs));
+                    }
+                }
+            }
+            for (pred, insts) in outgoing_fimm {
+                let mbb = self.bb_map[&pred];
+                let mut loads = vec![];
+                for (lhs, rhs) in insts {
+                    match rhs {
+                        ConstantValue::F32(imm) => {
+                            let tmp = self.new_vreg();
+                            loads.push(RV64InstBuilder::LIMM(tmp, imm.to_bits() as i32));
+                            loads.push(RV64InstBuilder::FMVWX(lhs, tmp));
+                        }
+                        _ => continue,
+                    }
+                }
+                if let Some(last) = self.prog.blocks[mbb].insts_tail {
+                    for inst in loads {
+                        self.prog.insert_before(last, inst);
+                    }
+                } else {
+                    for inst in loads {
+                        self.prog.push_to_end(mbb, inst);
                     }
                 }
             }
@@ -1350,6 +1385,7 @@ fn is_i_type(op: BinaryOpType) -> bool {
         BinaryOpType::Add | 
         BinaryOpType::Sub |
         BinaryOpType::Xor |
+        BinaryOpType::And |
         BinaryOpType::Ne |
         BinaryOpType::Eq |
         BinaryOpType::Lt |

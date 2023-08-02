@@ -138,6 +138,10 @@ impl TransUnit {
         let that = self.values.get(before).unwrap();
         let prev = that.prev;
         let this = self.values.get_mut(value).unwrap();
+        if !this.value.is_inst() {
+            // harmless virtual inst
+            return
+        }
         this.prev = prev;
         this.next = Some(before);
         let that = self.values.get_mut(before).unwrap();
@@ -496,6 +500,7 @@ impl TransUnit {
             | BinaryOpType::Div
             | BinaryOpType::Mod
             | BinaryOpType::Xor
+            | BinaryOpType::And
             | BinaryOpType::Assign => {
                 let lhs = self.values.get(lhs).unwrap();
                 lhs.ty()
