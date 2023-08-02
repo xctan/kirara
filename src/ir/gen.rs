@@ -248,6 +248,10 @@ impl EmitIrExpr for AstNodeType {
                             builder.unary(from_id, super::value::UnaryOp::ZextI32I1).push();
                         builder.unary(middle, super::value::UnaryOp::CvtF32I32).push()
                     }
+                    (TypeKind::F32, TypeKind::I1) => {
+                        let zero = builder.const_f32(0.0);
+                        builder.binary(BinaryOpType::Ne, from_id, zero).push()
+                    }
                     _ => unimplemented!("convert {:#?} to {:#?}", from, to),
                 }
             }
