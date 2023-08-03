@@ -1,7 +1,7 @@
 use super::structure::TransUnit;
 
 pub mod mem2reg;
-pub mod canonicalize;
+pub mod rename;
 pub mod bbopt;
 pub mod instcomb;
 pub mod dce;
