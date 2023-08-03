@@ -524,25 +524,118 @@ impl<'a> AsmFuncBuilder<'a> {
                                 }
                             }
                             BinaryOpType::Mul => {
-                                // todo: multiply power of 2
                                 let dst = self.resolve(inst, mbb);
                                 let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+
+                                let val_rhs = self.unit.values[b.rhs].clone();
+                                if val_rhs.value.is_constant() {
+                                    let imm = val_rhs.value.as_constant().as_i32();
+
+                                    if imm == 1 {
+                                        emit!(MV dst, mo_lhs);
+                                        continue;
+                                    }
+
+                                    if (imm as u32).count_ones() == 1 {
+                                        let shift = imm.trailing_zeros();
+                                        emit!(SLLI dst, mo_lhs, shift as i32);
+                                        continue;
+                                    }
+                                }
+
                                 let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
                                 emit!(MULW dst, mo_lhs, mo_rhs);
                             }
                             BinaryOpType::Div => {
-                                // todo: div power of 2
-                                // todo: const fastdiv
+                                // ref: https://github.com/milakov/int_fastdiv
                                 let dst = self.resolve(inst, mbb);
                                 let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+
+                                let val_rhs = self.unit.values[b.rhs].clone();
+                                if val_rhs.value.is_constant() {
+                                    let imm = val_rhs.value.as_constant().as_i32();
+
+                                    if imm == 0 {
+                                        // what???
+                                        emit!(MV dst, mo_lhs);
+                                        continue;
+                                    }
+
+                                    let (m, s, n_add_sign) = fastdiv_magic(imm);
+                                    let tmp = self.new_vreg64();
+                                    emit!(LIMM tmp, m);
+                                    emit!(MUL tmp, tmp, mo_lhs);
+                                    emit!(SRAI dst, tmp, 32);
+                                    if n_add_sign == 1 {
+                                        emit!(ADDW dst, dst, mo_lhs);
+                                    } else if n_add_sign == -1 {
+                                        emit!(SUBW dst, dst, mo_lhs);
+                                    }
+                                    if s >= 0 {
+                                        if s > 0 {
+                                            emit!(SRAIW dst, dst, s);
+                                        }
+                                        let tmp2 = self.new_vreg();
+                                        emit!(SRLIW tmp2, dst, 31);
+                                        emit!(ADDW dst, dst, tmp2);
+                                    }
+                                    continue;
+                                }
+
                                 let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
                                 emit!(DIVW dst, mo_lhs, mo_rhs);
                             }
                             BinaryOpType::Mod => {
-                                // todo: mod power of 2
                                 // todo: const fastdiv
                                 let dst = self.resolve(inst, mbb);
                                 let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+
+                                let val_rhs = self.unit.values[b.rhs].clone();
+                                if val_rhs.value.is_constant() {
+                                    let imm = val_rhs.value.as_constant().as_i32();
+
+                                    if (imm as u32).count_ones() == 1 {
+                                        let mask = imm - 1;
+                                        if is_imm12(mask) {
+                                            emit!(ANDI dst, mo_lhs, mask);
+                                        } else {
+                                            emit!(LIMM dst, mask);
+                                            emit!(AND dst, mo_lhs, dst);
+                                        }
+                                        continue;
+                                    }
+
+                                    if imm == 0 {
+                                        // what???
+                                        emit!(MV dst, mo_lhs);
+                                        continue;
+                                    }
+
+                                    let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                    let (m, s, n_add_sign) = fastdiv_magic(imm);
+                                    let tmp = self.new_vreg64();
+                                    let tmp3 = self.new_vreg();
+                                    emit!(LIMM tmp, m);
+                                    emit!(MUL tmp, tmp, mo_lhs);
+                                    emit!(SRAI tmp3, tmp, 32);
+                                    if n_add_sign == 1 {
+                                        emit!(ADDW tmp3, tmp3, mo_lhs);
+                                    } else if n_add_sign == -1 {
+                                        emit!(SUBW tmp3, tmp3, mo_lhs);
+                                    }
+                                    if s >= 0 {
+                                        if s > 0 {
+                                            emit!(SRAIW tmp3, tmp3, s);
+                                        }
+                                        let tmp2 = self.new_vreg();
+                                        emit!(SRLIW tmp2, tmp3, 31);
+                                        emit!(ADDW tmp3, tmp3, tmp2);
+                                    }
+                                    emit!(MULW tmp3, tmp3, mo_rhs);
+                                    emit!(SUBW dst, mo_lhs, tmp3);
+                                    continue;
+                                }
+
                                 let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
                                 emit!(REMW dst, mo_lhs, mo_rhs);
                             }
@@ -1530,4 +1623,58 @@ pub fn split_imm32(imm: i32) -> (i32, i32) {
     let lo12 = imm & 0x7ff;
     let lo12 = lo12 << 20 >> 20;
     (hi20, lo12)
+}
+
+pub fn fastdiv_magic(imm: i32) -> (i32, i32, i32) {
+    if imm == 1 {
+        (0, -1, 1)
+    } else if imm == -1 {
+        (0, -1, -1)
+    } else {
+        let two31 = i32::MAX as u32 + 1;
+        let ad = imm.abs() as u32; // imm cannot be zero!
+        let t = two31 + (imm as u32 >> 31);
+        let anc = t - 1 - t % ad;
+        let mut p = 31u32;
+        let mut q1 = two31 / anc;
+        let mut r1 = two31 - q1 * anc;
+        let mut q2 = two31 / ad;
+        let mut r2 = two31 - q2 * ad;
+        let mut delta;
+        loop {
+            p += 1;
+            q1 *= 2;
+            r1 *= 2;
+            if r1 >= anc {
+                q1 += 1;
+                r1 -= anc;
+            }
+            q2 *= 2;
+            r2 *= 2;
+            if r2 >= ad {
+                q2 += 1;
+                r2 -= ad;
+            }
+            delta = ad - r2;
+            if !(q1 < delta || q1 == delta && r1 == 0) {
+                break;
+            }
+        }
+
+        let m: i32 = if imm < 0 {
+            -((q2 + 1) as i32)
+        } else {
+            (q2 + 1) as i32
+        };
+        let s = (p - 32) as i32;
+        let n_add_sign = if imm > 0 && m < 0 {
+            1
+        } else if imm < 0 && m > 0 {
+            -1
+        } else {
+            0
+        };
+        
+        (m, s, n_add_sign)
+    }
 }
