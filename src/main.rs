@@ -70,14 +70,14 @@ fn main() {
 
     let mut unit = ast.emit_ir();
     
-    ir::opt::canonicalize::Canonicalize::run(&mut unit);
     if ARGS.optimize != "0" {
+        ir::opt::rename::Canonicalize::run(&mut unit);
         debug!(unit.print());
         ir::opt::mem2reg::Mem2Reg::run(&mut unit);
         ir::opt::instcomb::InstructionCombination::run(&mut unit);
         ir::opt::dce::DeadCodeElimination::run(&mut unit);
-        ir::opt::canonicalize::Canonicalize::run(&mut unit);
     }
+    ir::opt::rename::Canonicalize::run(&mut unit);
     debug!(unit.print());
 
     let mut asm = unit.emit_asm();
