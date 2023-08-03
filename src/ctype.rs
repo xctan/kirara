@@ -258,6 +258,7 @@ pub struct Array {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(unused)]
 pub enum BinaryOpType {
     Add,
     Sub,
@@ -276,6 +277,8 @@ pub enum BinaryOpType {
     LogAnd,
     Xor,
     And,
+    Shr,
+    Shl,
 }
 
 impl Display for BinaryOpType {
@@ -294,6 +297,8 @@ impl Display for BinaryOpType {
             BinaryOpType::Ge => "???ge",
             BinaryOpType::Xor => "xor",
             BinaryOpType::And => "and",
+            BinaryOpType::Shr => "??shr",
+            BinaryOpType::Shl => "shl",
             BinaryOpType::Assign |
             BinaryOpType::Index |
             BinaryOpType::LogOr |

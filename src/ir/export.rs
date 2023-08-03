@@ -113,6 +113,8 @@ impl TransUnit {
                                             BinaryOp::Ge => "icmp sge",
                                             BinaryOp::Xor => "xor",
                                             BinaryOp::And => "and",
+                                            BinaryOp::Shl => "shl",
+                                            BinaryOp::Shr => "ashr",
                                             _ => unreachable!("i32 op {:?}", insn.op),
                                         }
                                     }

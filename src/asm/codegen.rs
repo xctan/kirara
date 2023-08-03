@@ -211,20 +211,127 @@ impl<'a> AsmFuncBuilder<'a> {
                 let iv = insn.value.as_inst().clone();
                 match iv {
                     InstructionValue::Binary(b) if self.is_integral(b.lhs) => {
-                        let dst = self.resolve(inst, mbb);
+                        // instruction selection
+                        match b.op {
+                            BinaryOpType::Add => {
+                                match b.ty().kind {
+                                    TypeKind::I32 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
 
-                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
-
-                        let val_rhs = self.unit.values[b.rhs].clone();
-                        if val_rhs.value.is_constant() && is_i_type(b.op) {
-                            match *val_rhs.value.as_constant() {
-                                ConstantValue::I32(mut i) => {
-                                    if matches!(b.op, BinaryOpType::Sub) {
-                                        // use addi to sub
-                                        i = -i;
+                                        if val_rhs.value.is_constant() {
+                                            let imm = val_rhs.value.as_constant().as_i32();
+                                            if is_imm12(imm) {
+                                                emit!(ADDIW dst, mo_lhs, imm);
+                                                continue;
+                                            }
+                                        }
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(ADDW dst, mo_lhs, mo_rhs);
                                     }
-                                    if is_imm12(i) {
-                                        let eliminate_cmp = insn.used_by
+                                    _ => unimplemented!("op:{}, ty: {}", b.op, b.ty()),
+                                }
+                            }
+                            BinaryOpType::Sub => {
+                                match b.ty().kind {
+                                    TypeKind::I32 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
+
+                                        if val_rhs.value.is_constant() {
+                                            let imm = -val_rhs.value.as_constant().as_i32();
+                                            if is_imm12(imm) {
+                                                emit!(ADDIW dst, mo_lhs, imm);
+                                                continue;
+                                            }
+                                        }
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SUBW dst, mo_lhs, mo_rhs);
+                                    }
+                                    _ => unimplemented!("op:{}, ty: {}", b.op, b.ty()),
+                                }
+                            }
+                            BinaryOpType::And => {
+                                match b.ty().kind {
+                                    TypeKind::I32 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
+
+                                        if val_rhs.value.is_constant() {
+                                            let imm = val_rhs.value.as_constant().as_i32();
+                                            if is_imm12(imm) {
+                                                emit!(ANDI dst, mo_lhs, imm);
+                                                continue;
+                                            }
+                                        }
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(AND dst, mo_lhs, mo_rhs);
+                                    }
+                                    TypeKind::I1 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
+
+                                        if val_rhs.value.is_constant() {
+                                            let imm = val_rhs.value.as_constant().as_i1();
+                                            emit!(ANDI dst, mo_lhs, imm as i32);
+                                            continue;
+                                        }
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(AND dst, mo_lhs, mo_rhs);
+                                    }
+                                    _ => unimplemented!("op:{}, ty: {}", b.op, b.ty()),
+                                }
+                            }
+                            BinaryOpType::Xor => {
+                                match b.ty().kind {
+                                    TypeKind::I32 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
+
+                                        if val_rhs.value.is_constant() {
+                                            let imm = val_rhs.value.as_constant().as_i32();
+                                            if is_imm12(imm) {
+                                                emit!(XORI dst, mo_lhs, imm);
+                                                continue;
+                                            }
+                                        }
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(XOR dst, mo_lhs, mo_rhs);
+                                    }
+                                    TypeKind::I1 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
+
+                                        if val_rhs.value.is_constant() {
+                                            let imm = val_rhs.value.as_constant().as_i1();
+                                            emit!(XORI dst, mo_lhs, imm as i32);
+                                            continue;
+                                        }
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(XOR dst, mo_lhs, mo_rhs);
+                                    }
+                                    _ => unimplemented!("op:{}, ty: {}", b.op, b.ty()),
+                                }
+                            }
+                            BinaryOpType::Ne => {
+                                match b.op_ty.kind {
+                                    TypeKind::I32 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
+                                        let compare_and_branch = insn.used_by
                                             .iter()
                                             .all(|val_id| {
                                                 let value = &self.unit.values[*val_id];
@@ -233,166 +340,213 @@ impl<'a> AsmFuncBuilder<'a> {
                                                     ValueType::Instruction(InstructionValue::Branch(_))
                                                 )
                                             });
-                                        match b.op {
-                                            BinaryOpType::Add | BinaryOpType::Sub => {
-                                                emit!(ADDIW dst, mo_lhs, i);
+
+                                        if val_rhs.value.is_constant() {
+                                            let imm = val_rhs.value.as_constant().as_i32();
+                                            if is_imm12(imm) && !compare_and_branch {
+                                                emit!(XORI dst, mo_lhs, imm);
+                                                emit!(SLTU dst, pre!(zero), dst);
+                                                continue;
                                             }
-                                            BinaryOpType::And => {
-                                                emit!(ANDI dst, mo_lhs, i);
-                                            }
-                                            BinaryOpType::Ne => {
-                                                if eliminate_cmp {
-                                                    let tmp = self.resolve_ensure_reg(b.rhs, mbb);
-                                                    emit!(SNE dst, mo_lhs, tmp);
-                                                } else {
-                                                    emit!(XORI dst, mo_lhs, i);
-                                                    emit!(SLTU dst, pre!(zero), dst);
-                                                }
-                                            }
-                                            BinaryOpType::Eq => {
-                                                if eliminate_cmp {
-                                                    let tmp = self.resolve_ensure_reg(b.rhs, mbb);
-                                                    emit!(SEQ dst, mo_lhs, tmp);
-                                                } else {
-                                                    emit!(XORI dst, mo_lhs, i);
-                                                    emit!(SLTIU dst, dst, 1);
-                                                }
-                                            }
-                                            BinaryOpType::Lt => {
-                                                if eliminate_cmp {
-                                                    let tmp = self.resolve_ensure_reg(b.rhs, mbb);
-                                                    emit!(SLT dst, mo_lhs, tmp);
-                                                } else {
-                                                    emit!(SLTI dst, mo_lhs, i);
-                                                }
-                                            }
-                                            BinaryOpType::Le => {
-                                                let tmp = self.resolve_ensure_reg(b.rhs, mbb);
-                                                emit!(SGE dst, tmp, mo_lhs);
-                                            }
-                                            BinaryOpType::Gt => {
-                                                let tmp = self.resolve_ensure_reg(b.rhs, mbb);
-                                                emit!(SLT dst, tmp, mo_lhs);
-                                            }
-                                            BinaryOpType::Ge => {
-                                                if eliminate_cmp {
-                                                    let tmp = self.resolve_ensure_reg(b.rhs, mbb);
-                                                    emit!(SGE dst, mo_lhs, tmp);
-                                                } else {
-                                                    emit!(SLTI dst, mo_lhs, i);
-                                                    emit!(XORI dst, dst, 1);
-                                                }
-                                            }
-                                            _ => unimplemented!(),
                                         }
-                                    } else {
-                                        // fallback to register
-                                        match b.op {
-                                            BinaryOpType::Add | BinaryOpType::Sub => {
-                                                let tmp = self.new_vreg();
-                                                emit!(LIMM tmp, i);
-                                                emit!(ADDW dst, tmp, mo_lhs);
-                                                continue
-                                            }
-                                            _ => {}
-                                        }
-                                        let tmp = self.resolve_ensure_reg(b.rhs, mbb);
-                                        match b.op {
-                                            BinaryOpType::Ne => {
-                                                // emit!(XOR dst, mo_lhs, tmp);
-                                                // emit!(SLTU dst, pre!(zero), dst);
-                                                emit!(SNE dst, mo_lhs, tmp);
-                                            }
-                                            BinaryOpType::Eq => {
-                                                // emit!(XOR dst, mo_lhs, tmp);
-                                                // emit!(SLTIU dst, dst, 1);
-                                                emit!(SEQ dst, mo_lhs, tmp);
-                                            }
-                                            BinaryOpType::Lt => {
-                                                emit!(SLT dst, mo_lhs, tmp);
-                                            }
-                                            BinaryOpType::Le => {
-                                                emit!(SGE dst, tmp, mo_lhs);
-                                            }
-                                            BinaryOpType::Gt => {
-                                                emit!(SLT dst, tmp, mo_lhs);
-                                            }
-                                            BinaryOpType::Ge => {
-                                                emit!(SGE dst, mo_lhs, tmp);
-                                            }
-                                            BinaryOpType::And => {
-                                                emit!(AND dst, mo_lhs, tmp);
-                                            }
-                                            _ => unimplemented!(),
-                                        }
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SNE dst, mo_lhs, mo_rhs);
                                     }
-                                }
-                                ConstantValue::I1(i) => {
-                                    match b.op {
-                                        BinaryOpType::Xor => {
-                                            emit!(XORI dst, mo_lhs, i as i32);
+                                    TypeKind::I1 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
+
+                                        if val_rhs.value.is_constant() {
+                                            let imm = val_rhs.value.as_constant().as_i1();
+                                            emit!(XORI dst, mo_lhs, imm as i32);
+                                            continue;
                                         }
-                                        _ => unimplemented!(),
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SNE dst, mo_lhs, mo_rhs);
                                     }
+                                    _ => unimplemented!("op:{}, ty: {}", b.op, b.ty()),
                                 }
-                                _ => unimplemented!(),
                             }
-                        } else {
-                            let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
-                            match b.ty().kind {
-                                TypeKind::I32 => {
-                                    match b.op {
-                                        BinaryOpType::Add => {
-                                            emit!(ADDW dst, mo_lhs, mo_rhs);
+                            BinaryOpType::Eq => {
+                                match b.op_ty.kind {
+                                    TypeKind::I32 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
+                                        let compare_and_branch = insn.used_by
+                                            .iter()
+                                            .all(|val_id| {
+                                                let value = &self.unit.values[*val_id];
+                                                matches!(
+                                                    value.value, 
+                                                    ValueType::Instruction(InstructionValue::Branch(_))
+                                                )
+                                            });
+
+                                        if val_rhs.value.is_constant() {
+                                            let imm = val_rhs.value.as_constant().as_i32();
+                                            if is_imm12(imm) && !compare_and_branch {
+                                                emit!(XORI dst, mo_lhs, imm);
+                                                emit!(SLTIU dst, dst, 1);
+                                                continue;
+                                            }
                                         }
-                                        BinaryOpType::Sub => {
-                                            emit!(SUBW dst, mo_lhs, mo_rhs);
-                                        }
-                                        BinaryOpType::Mul => {
-                                            emit!(MULW dst, mo_lhs, mo_rhs);
-                                        }
-                                        BinaryOpType::Div => {
-                                            emit!(DIVW dst, mo_lhs, mo_rhs);
-                                        }
-                                        BinaryOpType::Mod => {
-                                            emit!(REMW dst, mo_lhs, mo_rhs);
-                                        }
-                                        BinaryOpType::And => {
-                                            emit!(AND dst, mo_lhs, mo_rhs);
-                                        }
-                                        _ => unimplemented!(),
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SEQ dst, mo_lhs, mo_rhs);
                                     }
-                                }
-                                TypeKind::I1 => {
-                                    match b.op {
-                                        BinaryOpType::Ne => {
-                                            emit!(SNE dst, mo_lhs, mo_rhs);
+                                    TypeKind::I1 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
+
+                                        if val_rhs.value.is_constant() {
+                                            let imm = val_rhs.value.as_constant().as_i1();
+                                            emit!(XORI dst, mo_lhs, imm as i32);
+                                            emit!(XORI dst, dst, 1);
+                                            continue;
                                         }
-                                        BinaryOpType::Eq => {
-                                            emit!(SEQ dst, mo_lhs, mo_rhs);
-                                        }
-                                        BinaryOpType::Lt => {
-                                            emit!(SLT dst, mo_lhs, mo_rhs);
-                                        }
-                                        BinaryOpType::Le => {
-                                            // !(rhs < lhs)
-                                            emit!(SGE dst, mo_rhs, mo_lhs);
-                                        }
-                                        BinaryOpType::Gt => {
-                                            emit!(SLT dst, mo_rhs, mo_lhs);
-                                        }
-                                        BinaryOpType::Ge => {
-                                            // !(lhs < rhs)
-                                            emit!(SGE dst, mo_lhs, mo_rhs);
-                                        }
-                                        BinaryOpType::Xor => {
-                                            emit!(XOR dst, mo_lhs, mo_rhs);
-                                        }
-                                        _ => unimplemented!(),
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SEQ dst, mo_lhs, mo_rhs);
                                     }
+                                    _ => unimplemented!("op:{}, ty: {}", b.op, b.ty()),
                                 }
-                                _ => unimplemented!("binop, type: {:?}", b.ty()),
                             }
+                            BinaryOpType::Lt => {
+                                match b.op_ty.kind {
+                                    TypeKind::I32 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
+                                        let compare_and_branch = insn.used_by
+                                            .iter()
+                                            .all(|val_id| {
+                                                let value = &self.unit.values[*val_id];
+                                                matches!(
+                                                    value.value, 
+                                                    ValueType::Instruction(InstructionValue::Branch(_))
+                                                )
+                                            });
+
+                                        if val_rhs.value.is_constant() {
+                                            let imm = val_rhs.value.as_constant().as_i32();
+                                            if is_imm12(imm) && !compare_and_branch {
+                                                emit!(SLTI dst, mo_lhs, imm);
+                                                continue;
+                                            }
+                                        }
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SLT dst, mo_lhs, mo_rhs);
+                                    }
+                                    TypeKind::I1 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SLT dst, mo_lhs, mo_rhs);
+                                    }
+                                    _ => unimplemented!("op:{}, ty: {}", b.op, b.ty()),
+                                }
+                            }
+                            BinaryOpType::Le => {
+                                match b.op_ty.kind {
+                                    TypeKind::I32 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SGE dst, mo_rhs, mo_lhs);
+                                    }
+                                    TypeKind::I1 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SGE dst, mo_rhs, mo_lhs);
+                                    }
+                                    _ => unimplemented!("op:{}, ty: {}", b.op, b.ty()),
+                                }
+                            }
+                            BinaryOpType::Gt => {
+                                match b.op_ty.kind {
+                                    TypeKind::I32 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SLT dst, mo_rhs, mo_lhs);
+                                    }
+                                    TypeKind::I1 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SLT dst, mo_rhs, mo_lhs);
+                                    }
+                                    _ => unimplemented!("op:{}, ty: {}", b.op, b.ty()),
+                                }
+                            }
+                            BinaryOpType::Ge => {
+                                match b.op_ty.kind {
+                                    TypeKind::I32 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let val_rhs = self.unit.values[b.rhs].clone();
+                                        let compare_and_branch = insn.used_by
+                                            .iter()
+                                            .all(|val_id| {
+                                                let value = &self.unit.values[*val_id];
+                                                matches!(
+                                                    value.value, 
+                                                    ValueType::Instruction(InstructionValue::Branch(_))
+                                                )
+                                            });
+
+                                        if val_rhs.value.is_constant() {
+                                            let imm = val_rhs.value.as_constant().as_i32();
+                                            if is_imm12(imm) && !compare_and_branch {
+                                                emit!(SLTI dst, mo_lhs, imm);
+                                                emit!(XORI dst, dst, 1);
+                                                continue;
+                                            }
+                                        }
+                                        // generic impl
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SGE dst, mo_lhs, mo_rhs);
+                                    }
+                                    TypeKind::I1 => {
+                                        let dst = self.resolve(inst, mbb);
+                                        let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                        let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                        emit!(SGE dst, mo_lhs, mo_rhs);
+                                    }
+                                    _ => unimplemented!("op:{}, ty: {}", b.op, b.ty()),
+                                }
+                            }
+                            BinaryOpType::Mul => {
+                                // todo: multiply power of 2
+                                let dst = self.resolve(inst, mbb);
+                                let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                emit!(MULW dst, mo_lhs, mo_rhs);
+                            }
+                            BinaryOpType::Div => {
+                                // todo: div power of 2
+                                // todo: const fastdiv
+                                let dst = self.resolve(inst, mbb);
+                                let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                emit!(DIVW dst, mo_lhs, mo_rhs);
+                            }
+                            BinaryOpType::Mod => {
+                                // todo: mod power of 2
+                                // todo: const fastdiv
+                                let dst = self.resolve(inst, mbb);
+                                let mo_lhs = self.resolve_ensure_reg(b.lhs, mbb);
+                                let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                emit!(REMW dst, mo_lhs, mo_rhs);
+                            }
+                            _ => unimplemented!("{} is not implemented yet", b.op),
                         }
                     },
                     InstructionValue::Binary(b) if self.is_floating(b.lhs) => {
@@ -634,7 +788,6 @@ impl<'a> AsmFuncBuilder<'a> {
                         emit!(JUMP self.bb_map[&j.succ]);
                     },
                     InstructionValue::Unary(c) => {
-                        // todo: this should be a general conversion instruction!
                         match c.op {
                             UnaryOp::ZextI32I1 => {
                                 let dst = self.resolve(inst, mbb);
@@ -1377,21 +1530,4 @@ pub fn split_imm32(imm: i32) -> (i32, i32) {
     let lo12 = imm & 0x7ff;
     let lo12 = lo12 << 20 >> 20;
     (hi20, lo12)
-}
-
-#[inline(always)]
-fn is_i_type(op: BinaryOpType) -> bool {
-    match op {
-        BinaryOpType::Add | 
-        BinaryOpType::Sub |
-        BinaryOpType::Xor |
-        BinaryOpType::And |
-        BinaryOpType::Ne |
-        BinaryOpType::Eq |
-        BinaryOpType::Lt |
-        BinaryOpType::Le |
-        BinaryOpType::Gt |
-        BinaryOpType::Ge => true,
-        _ => false,
-    }
 }
