@@ -12,5 +12,11 @@ void putfarray(int, float a[]);
 
 // putf(char *s, ...)
 
+// macros are not supported as for now
+// #define starttime() _sysy_starttime(__LINE__)
+// #define stoptime()  _sysy_stoptime(__LINE__)
+void starttime();
+void stoptime();
+
 void memset(void *s, int c, int n);
 void memcpy(void *dest, void *src, int n);

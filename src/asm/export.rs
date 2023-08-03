@@ -12,6 +12,10 @@ impl Display for MachineProgram {
 
 impl MachineProgram {
     pub fn print(&self, writer: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(writer, "# Built-in library")?;
+        let builtin = include_str!("../rt/builtin.S");
+        writeln!(writer, "{}", builtin)?;
+
         let mut counter = 0;
 
         for (_, f) in &self.funcs {

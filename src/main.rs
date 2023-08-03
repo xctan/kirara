@@ -49,7 +49,7 @@ fn main() {
     }
 
     let mut input = if ARGS.language == "sysy" {
-        include_str!("defs.h").to_owned()
+        include_str!("rt/defs.h").to_owned()
     } else {
         String::new()
     };
