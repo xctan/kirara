@@ -188,6 +188,13 @@ impl ConstantValue {
             _ => panic!("not an i1"),
         }
     }
+
+    pub fn as_i32(&self) -> i32 {
+        match self {
+            ConstantValue::I32(v) => *v,
+            _ => panic!("not an i32"),
+        }
+    }
 }
 
 impl ValueTrait for ConstantValue {
@@ -237,6 +244,7 @@ pub struct BinaryInst {
     pub op: BinaryOp,
     pub name: String,
     pub ty: Rc<Type>,
+    pub op_ty: Rc<Type>,
 }
 
 impl_value_trait!(BinaryInst);

@@ -513,7 +513,7 @@ impl TransUnit {
             | BinaryOpType::Ge
             | BinaryOpType::LogAnd
             | BinaryOpType::LogOr => Type::i1_type(),
-            _ => unimplemented!(),
+            _ => unimplemented!("BinaryOpType {:?} not implemented", op),
         };
         let inst = BinaryInst {
             lhs,
@@ -521,6 +521,10 @@ impl TransUnit {
             op,
             name: self.gen_local_name(),
             ty,
+            op_ty: {
+                let lhs = self.values.get(lhs).unwrap();
+                lhs.ty()
+            },
         };
         let val = ValueType::Instruction(InstructionValue::Binary(inst));
         let val = Value::new(val);
