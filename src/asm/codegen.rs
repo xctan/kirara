@@ -561,6 +561,12 @@ impl<'a> AsmFuncBuilder<'a> {
                                         continue;
                                     }
 
+                                    if (imm as u32).count_ones() == 1 {
+                                        let shift = imm.trailing_zeros();
+                                        emit!(SRAI dst, mo_lhs, shift as i32);
+                                        continue;
+                                    }
+
                                     let (m, s, n_add_sign) = fastdiv_magic(imm);
                                     let tmp = self.new_vreg64();
                                     emit!(LIMM tmp, m);
