@@ -1,6 +1,3 @@
-#![allow(stable_features)]
-#![feature(map_first_last)]
-
 use std::io::Read;
 use clap::Parser;
 use lazy_static::lazy_static;

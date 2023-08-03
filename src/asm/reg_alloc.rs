@@ -392,7 +392,9 @@ where
     }
 
     fn simplify(&mut self) {
-        let n = self.simplify_worklist.pop_first().unwrap();
+        // let n = self.simplify_worklist.pop_first().unwrap();
+        let n = self.simplify_worklist.iter().next().unwrap().clone();
+        self.simplify_worklist.remove(&n);
         self.select_stack.push(n);
         self.select_stack_set.insert(n);
         for m in self.adjacent(n) {
@@ -511,16 +513,23 @@ where
     }
 
     fn freeze(&mut self) {
-        let u = self.freeze_worklist.pop_first().unwrap();
+        // let u = self.freeze_worklist.pop_first().unwrap();
+        let u = self.freeze_worklist.iter().next().unwrap().clone();
+        self.freeze_worklist.remove(&u);
         self.simplify_worklist.insert(u);
         self.freeze_moves(u);
     }
 
     fn select_spill(&mut self) -> O {
         let m = self.spill_worklist
-            .pop_last()
+            // .pop_last()
+            .iter()
+            .rev()
+            .next()
             .map(|(_, m)| m)
-            .unwrap();
+            .unwrap()
+            .clone();
+        self.spill_worklist.retain(|(_, x)| x != &m);
         self.simplify_worklist.insert(m);
         self.freeze_moves(m);
 
