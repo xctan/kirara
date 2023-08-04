@@ -137,6 +137,84 @@ fn combine(unit: &mut TransUnit, func: &str) -> bool {
                 }
             }
 
+            // op c.i32 v.i32 => op v.i32 c.i32
+            // op: add mul lt le gt ge eq ne (and or xor)
+            if let InstructionValue::Binary(bin) = instruction {
+                // [2.1] lhs is c.i32
+                let lhs = extract!(I32, bin.lhs);
+
+                let new_val = combine!(lhs; {
+                    let _ = lhs;
+                    match bin.op {
+                        BinaryOpType::Add => Some(unit.binary(bin.op, bin.rhs, bin.lhs)),
+                        BinaryOpType::Mul => Some(unit.binary(bin.op, bin.rhs, bin.lhs)),
+                        BinaryOpType::Lt => Some(unit.binary(BinaryOpType::Gt, bin.rhs, bin.lhs)),
+                        BinaryOpType::Le => Some(unit.binary(BinaryOpType::Ge, bin.rhs, bin.lhs)),
+                        BinaryOpType::Gt => Some(unit.binary(BinaryOpType::Lt, bin.rhs, bin.lhs)),
+                        BinaryOpType::Ge => Some(unit.binary(BinaryOpType::Le, bin.rhs, bin.lhs)),
+                        BinaryOpType::Eq => Some(unit.binary(bin.op, bin.rhs, bin.lhs)),
+                        BinaryOpType::Ne => Some(unit.binary(bin.op, bin.rhs, bin.lhs)),
+                        _ => None,
+                    }
+                });
+
+                if let Some(val) = new_val {
+                    unit.replace(inst, val);
+                    unit.insert_before(*bb, val, inst);
+                    unit.remove(*bb, inst);
+                    changed = true;
+                    continue;
+                }
+            }
+
+            // v2.i32 = op1 v1.i32 c1.i32   <== remove this via DCE
+            //      _ = op2 v2.i32 c2.i32   <== match this
+            // op1, op2: add sub
+            if let InstructionValue::Binary(bin) = instruction {
+                // [2.1] lhs is c.i32
+                let rhs = extract!(I32, bin.rhs);
+                let lhs = unit.values[bin.lhs].value.clone();
+                if !lhs.is_inst() {
+                    continue;
+                }
+                let lhs_inst = lhs.as_inst();
+                let lhs =
+                    if let InstructionValue::Binary(lhs) = lhs_inst {
+                        let rhs = extract!(I32, lhs.rhs);
+
+                        combine!(rhs; {
+                            match lhs.op {
+                                BinaryOpType::Add => Some((lhs.lhs, rhs)),
+                                BinaryOpType::Sub => Some((lhs.lhs, -rhs)),
+                                _ => None,
+                            }
+                        })
+                    } else {
+                        None
+                    };
+
+                let new_val = combine!(lhs, rhs; {
+                    match bin.op {
+                        BinaryOpType::Add => {
+                            let rhs = unit.const_i32(lhs.1 + rhs);
+                            Some(unit.binary(bin.op, lhs.0, rhs))
+                        },
+                        BinaryOpType::Sub => {
+                            let rhs = unit.const_i32(lhs.1 - rhs);
+                            Some(unit.binary(BinaryOpType::Add, lhs.0, rhs))
+                        },
+                        _ => None,
+                    }
+                });
+
+                if let Some(val) = new_val {
+                    unit.replace(inst, val);
+                    unit.insert_before(*bb, val, inst);
+                    unit.remove(*bb, inst);
+                    changed = true;
+                    continue;
+                }
+            }
         }
     }
 
