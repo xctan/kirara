@@ -173,13 +173,13 @@ fn combine(unit: &mut TransUnit, func: &str) -> bool {
             if let InstructionValue::Binary(bin) = instruction {
                 // [2.1] lhs is c.i32
                 let rhs = extract!(I32, bin.rhs);
-                let lhs = unit.values[bin.lhs].value.clone();
-                if !lhs.is_inst() {
-                    continue;
-                }
-                let lhs_inst = lhs.as_inst();
-                let lhs =
-                    if let InstructionValue::Binary(lhs) = lhs_inst {
+                let lhs = loop {
+                    let lhs = unit.values[bin.lhs].value.clone();
+                    if !lhs.is_inst() {
+                        break None;
+                    }
+                    let lhs_inst = lhs.as_inst();
+                    break if let InstructionValue::Binary(lhs) = lhs_inst {
                         let rhs = extract!(I32, lhs.rhs);
 
                         combine!(rhs; {
@@ -191,7 +191,8 @@ fn combine(unit: &mut TransUnit, func: &str) -> bool {
                         })
                     } else {
                         None
-                    };
+                    }
+                };
 
                 let new_val = combine!(lhs, rhs; {
                     match bin.op {
@@ -215,6 +216,8 @@ fn combine(unit: &mut TransUnit, func: &str) -> bool {
                     continue;
                 }
             }
+
+            // todo: x / 30 >= 10000 ==> x >= 300000
         }
     }
 
