@@ -40,13 +40,9 @@ lazy_static!{
 }
 
 fn main() {
-    macro_rules! debug {
-        ($act:expr) => {
-            if ARGS.dump {
-                $act
-            }
-        };
-    }
+    let pwd = std::env::current_dir().unwrap();
+    let input_basename = 
+        std::path::Path::new(&ARGS.input).file_stem().unwrap().to_str().unwrap();
 
     let mut input = if ARGS.language == "sysy" {
         include_str!("rt/defs.h").to_owned()
@@ -72,16 +68,31 @@ fn main() {
     
     if ARGS.optimize != "0" {
         ir::opt::rename::Canonicalize::run(&mut unit);
-        debug!(unit.print());
+        if ARGS.dump {
+            std::fs::write(
+                pwd.join(format!("{}.00.ll", input_basename)),
+                unit.to_string()
+            ).unwrap();
+        }
         ir::opt::mem2reg::Mem2Reg::run(&mut unit);
         ir::opt::instcomb::InstructionCombination::run(&mut unit);
         ir::opt::dce::DeadCodeElimination::run(&mut unit);
     }
     ir::opt::rename::Canonicalize::run(&mut unit);
-    debug!(unit.print());
+    if ARGS.dump {
+        std::fs::write(
+            pwd.join(format!("{}.01.ll", input_basename)),
+            unit.to_string()
+        ).unwrap();
+    }
 
     let mut asm = unit.emit_asm();
-    debug!(println!("{}", asm));
+    if ARGS.dump {
+        std::fs::write(
+            pwd.join(format!("{}.00.s", input_basename)),
+            asm.to_string()
+        ).unwrap();
+    }
     asm.allocate_registers(&mut unit);
     asm.simplify();
     asm.setup_stack();

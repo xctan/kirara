@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::{ast::{Initializer, InitData}, ctype::{Linkage, TypeKind}, ir::value::UnaryInst};
 
 use super::{
@@ -5,84 +7,115 @@ use super::{
     structure::{TransUnit, GlobalObject}, structure::IrFunc
 };
 
+impl Display for TransUnit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.print(f)
+    }
+}
+
 impl TransUnit {
-    pub fn print(&self) {
-        for (name, init) in &self.globals {
-            self.print_global(name, init);
+    pub fn print(&self, writer: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut keys: Vec<_> = self.globals.keys().collect();
+        keys.sort();
+        for name in keys {
+            let init = self.globals.get(name).unwrap();
+            self.print_global(name, init, writer)?;
+        }
+        writeln!(writer)?;
+
+        let mut keys: Vec<_> = self.funcs.keys().collect();
+        keys.sort();
+        for name in keys {
+            let func = self.funcs.get(name).unwrap();
+            self.print_func(name, func, writer)?;
+            writeln!(writer)?;
         }
 
-        for (name, func) in &self.funcs {
-            self.print_func(name, func);
+        let mut keys: Vec<_> = self.external.keys().collect();
+        keys.sort();
+        for name in keys {
+            let ty = self.external.get(name).unwrap().as_function();
+            write!(writer, "declare {} @{}(", ty.ret_type, name)?;
+            for (idx, (_, argty)) in ty.params.iter().enumerate() {
+                if idx != 0 {
+                    write!(writer, ", ")?;
+                }
+                write!(writer, "{} %{}", argty, idx)?;
+            }
+            writeln!(writer, ")")?;
+            writeln!(writer)?;
         }
+
+        Ok(())
     }
 
-    fn print_global(&self, name: &str, init: &GlobalObject) {
-        print!(
+    fn print_global(&self, name: &str, init: &GlobalObject, writer: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(writer, 
             "@{name} = {} ", 
             match init.linkage {
                 Linkage::Global => "global",
                 Linkage::Static => "internal global",
                 Linkage::Extern => "external global"
             }
-        );
-        self.print_initializer(&init.init);
-        println!(", align {}", init.init.ty.align());
+        )?;
+        self.print_initializer(&init.init, writer)?;
+        writeln!(writer, ", align {}", init.init.ty.align())
     }
 
-    fn print_initializer(&self, init: &Initializer) {
-        print!("{} ", init.ty);
+    fn print_initializer(&self, init: &Initializer, writer: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(writer, "{} ", init.ty)?;
         match init.data {
-            InitData::ScalarI32(i) => print!("{}", i),
-            InitData::ScalarF32(f) => print!("0x{:x}", f.to_bits()),
+            InitData::ScalarI32(i) => write!(writer, "{}", i),
+            InitData::ScalarF32(f) => write!(writer, "0x{:x}", f.to_bits()),
             InitData::Aggregate(ref data) => {
-                print!("[");
+                write!(writer, "[")?;
                 for (idx, val) in data.iter().enumerate() {
                     if idx != 0 {
-                        print!(", ");
+                        write!(writer, ", ")?;
                     }
-                    self.print_initializer(val);
+                    self.print_initializer(val, writer)?;
                 }
-                print!("]");
+                write!(writer, "]")
             },
-            InitData::ZeroInit => print!("zeroinitializer"),
+            InitData::ZeroInit => write!(writer, "zeroinitializer"),
             _ => panic!("unexpected non-constant initializer: {:?}", init.data),
         }
     }
 
-    fn print_typed_value(&self, val: ValueId) {
+    fn print_typed_value(&self, val: ValueId, writer: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let value = self.values.get(val).unwrap();
-        print!("{} ", value.ty());
-        self.print_value(val);
+        write!(writer, "{} ", value.ty())?;
+        self.print_value(val, writer)
     }
 
-    fn print_func(&self, name: &str, func: &IrFunc) {
+    fn print_func(&self, name: &str, func: &IrFunc, writer: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ty = func.ty.as_function();
-        print!("define {} @{}(", ty.ret_type, name);
+        write!(writer, "define {} @{}(", ty.ret_type, name)?;
         for (idx, (_, argty)) in ty.params.iter().enumerate() {
             if idx != 0 {
-                print!(", ");
+                write!(writer, ", ")?;
             }
-            print!("{} %{}", argty, idx);
+            write!(writer, "{} %{}", argty, idx)?;
         }
-        println!(") {{");
+        writeln!(writer, ") {{")?;
 
         let arena = &self.values;
         for bb in &func.bbs {
             let bb = *bb;
             let bb0 = self.blocks.get(bb).unwrap();
-            print!("{:<40}", format!("{}:", bb0.name));
+            write!(writer, "{:<40}", format!("{}:", bb0.name))?;
             bb0.preds.iter().enumerate().for_each(|(idx, bb)| {
                 if idx == 0 {
-                    print!("; preds: ");
+                    write!(writer, "; preds: ").unwrap();
                 } else {
-                    print!(", ");
+                    write!(writer, ", ").unwrap();
                 }
-                print!("%{}", self.blocks[*bb].name);
+                write!(writer, "%{}", self.blocks[*bb].name).unwrap();
             });
-            println!();
+            writeln!(writer, )?;
             let mut insts = bb0.insts_start;
             while let Some(inst) = insts {
-                print!("  ");
+                write!(writer, "  ")?;
                 let inst = arena.get(inst).unwrap();
                 insts = inst.next;
                 match inst.value {
@@ -93,7 +126,7 @@ impl TransUnit {
                                 let lhs = match arena.get(insn.lhs) {
                                     Some(value) => value,
                                     None => {
-                                        println!("UNDEFINED");
+                                        writeln!(writer, "UNDEFINED")?;
                                         continue
                                     }
                                 };
@@ -141,56 +174,56 @@ impl TransUnit {
                                     }
                                     _ => unimplemented!("binary op for type {:?}", lhs.ty().kind),
                                 };
-                                print!("{} = {} {} ", insn.name, op_name, lhs.ty());
-                                self.print_value(insn.lhs);
-                                print!(", ");
-                                self.print_value(insn.rhs);
-                                println!();
+                                write!(writer, "{} = {} {} ", insn.name, op_name, lhs.ty())?;
+                                self.print_value(insn.lhs, writer)?;
+                                write!(writer, ", ")?;
+                                self.print_value(insn.rhs, writer)?;
+                                writeln!(writer, )?;
                             }
                             InstructionValue::Return(ref insn) => {
-                                print!("ret");
+                                write!(writer, "ret")?;
                                 if let Some(val) = insn.value {
-                                    print!(" {} ", arena.get(val).unwrap().ty());
-                                    self.print_value(val);
+                                    write!(writer, " {} ", arena.get(val).unwrap().ty())?;
+                                    self.print_value(val, writer)?;
                                 } else {
-                                    print!(" void");
+                                    write!(writer, " void")?;
                                 }
-                                println!();
+                                writeln!(writer, )?;
                             }
                             InstructionValue::Load(ref insn) => {
-                                print!("{} = load {}, ptr ", insn.name, insn.ty);
-                                self.print_value(insn.ptr);
-                                println!();
+                                write!(writer, "{} = load {}, ptr ", insn.name, insn.ty)?;
+                                self.print_value(insn.ptr, writer)?;
+                                writeln!(writer, )?;
                             }
                             InstructionValue::Store(ref insn) => {
                                 let v = arena.get(insn.value).unwrap();
-                                print!("store {} ", v.ty());
-                                self.print_value(insn.value);
-                                print!(", ptr ");
-                                self.print_value(insn.ptr);
-                                println!();
+                                write!(writer, "store {} ", v.ty())?;
+                                self.print_value(insn.value, writer)?;
+                                write!(writer, ", ptr ")?;
+                                self.print_value(insn.ptr, writer)?;
+                                writeln!(writer, )?;
                             }
                             InstructionValue::Alloca(ref insn) => {
-                                print!("{} = alloca {}, align {}", insn.name, insn.alloc_ty, insn.alloc_ty.align());
-                                println!();
+                                write!(writer, "{} = alloca {}, align {}", insn.name, insn.alloc_ty, insn.alloc_ty.align())?;
+                                writeln!(writer, )?;
                             }
                             InstructionValue::Branch(ref insn) => {
-                                print!("br ");
-                                print!("{} ", arena.get(insn.cond).unwrap().ty());
-                                self.print_value(insn.cond);
-                                print!(", ");
+                                write!(writer, "br ")?;
+                                write!(writer, "{} ", arena.get(insn.cond).unwrap().ty())?;
+                                self.print_value(insn.cond, writer)?;
+                                write!(writer, ", ")?;
                                 let succ = self.blocks.get(insn.succ).unwrap();
                                 let fail = self.blocks.get(insn.fail).unwrap();
-                                println!("label %{}, label %{}", succ.name, fail.name);
+                                writeln!(writer, "label %{}, label %{}", succ.name, fail.name)?;
                             }
                             InstructionValue::Jump(ref insn) => {
                                 let succ = self.blocks.get(insn.succ).unwrap();
-                                println!("br label %{}", succ.name);
+                                writeln!(writer, "br label %{}", succ.name)?;
                             }
                             InstructionValue::Unary(ref insn @ UnaryInst { op: super::value::UnaryOp::NegF32, .. }) => {
-                                print!("{} = fneg {} ", insn.name, arena.get(insn.value).unwrap().ty());
-                                self.print_value(insn.value);
-                                println!();
+                                write!(writer, "{} = fneg {} ", insn.name, arena.get(insn.value).unwrap().ty())?;
+                                self.print_value(insn.value, writer)?;
+                                writeln!(writer, )?;
                             }
                             InstructionValue::Unary(ref insn) => {
                                 let op_name = match insn.op {
@@ -199,47 +232,47 @@ impl TransUnit {
                                     super::value::UnaryOp::ZextI32I1 => "zext",
                                     _ => unimplemented!("ir export unary op {:?}", insn.op)
                                 };
-                                print!("{} = {} {} ", insn.name, op_name, arena.get(insn.value).unwrap().ty());
-                                self.print_value(insn.value);
-                                print!(" to {}", insn.ty);
-                                println!();
+                                write!(writer, "{} = {} {} ", insn.name, op_name, arena.get(insn.value).unwrap().ty())?;
+                                self.print_value(insn.value, writer)?;
+                                write!(writer, " to {}", insn.ty)?;
+                                writeln!(writer, )?;
                             }
                             InstructionValue::Phi(ref insn) => {
-                                print!("{} = phi {} ", insn.name, insn.ty);
+                                write!(writer, "{} = phi {} ", insn.name, insn.ty)?;
                                 for (idx, &(val, bb)) in insn.args.iter().enumerate() {
                                     if idx != 0 {
-                                        print!(", ");
+                                        write!(writer, ", ")?;
                                     }
-                                    print!("[");
-                                    self.print_value(val);
-                                    print!(", %{}]", self.blocks.get(bb).unwrap().name);
+                                    write!(writer, "[")?;
+                                    self.print_value(val, writer)?;
+                                    write!(writer, ", %{}]", self.blocks.get(bb).unwrap().name)?;
                                 }
-                                println!();
+                                writeln!(writer, )?;
                             }
                             InstructionValue::GetElemPtr(ref gep) => {
-                                print!("{} = getelementptr inbounds {}, ", gep.name, gep.base_ty);
-                                self.print_typed_value(gep.ptr);
+                                write!(writer, "{} = getelementptr inbounds {}, ", gep.name, gep.base_ty)?;
+                                self.print_typed_value(gep.ptr, writer)?;
                                 for idx in &gep.indices {
-                                    print!(", ");
-                                    self.print_typed_value(*idx);
+                                    write!(writer, ", ")?;
+                                    self.print_typed_value(*idx, writer)?;
                                 }
-                                println!();
+                                writeln!(writer, )?;
                             }
                             InstructionValue::Call(ref call) => {
                                 if call.ty.is_void() {
-                                    print!("call {} @{}", call.ty, call.func);
+                                    write!(writer, "call {} @{}", call.ty, call.func)?;
                                 } else {
-                                    print!("{} = call {} @{}", call.name, call.ty, call.func);
+                                    write!(writer, "{} = call {} @{}", call.name, call.ty, call.func)?;
                                 }
-                                print!("(");
+                                write!(writer, "(")?;
                                 for (idx, arg) in call.args.iter().enumerate() {
                                     if idx != 0 {
-                                        print!(", ");
+                                        write!(writer, ", ")?;
                                     }
-                                    print!("{} ", arena.get(*arg).unwrap().ty());
-                                    self.print_value(*arg);
+                                    write!(writer, "{} ", arena.get(*arg).unwrap().ty())?;
+                                    self.print_value(*arg, writer)?;
                                 }
-                                println!(")");
+                                writeln!(writer, ")")?;
                             }
                         }
                     }
@@ -248,35 +281,34 @@ impl TransUnit {
             }
         }
 
-        println!("}}");
+        writeln!(writer, "}}")
     }
 
-    pub fn print_value(&self, id: ValueId) {
+    pub fn print_value(&self, id: ValueId, writer: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let bb = &self.values;
         let val = match bb.get(id) {
             Some(v) => v,
             None => {
-                print!("@UNDEFINED@");
-                return
+                return write!(writer, "@UNDEFINED@")
             }
         };
         match val.value {
             ValueType::Global(ref g) => {
-                print!("@{}", g.name);
+                write!(writer, "@{}", g.name)
             },
             ValueType::Constant(c) => {
                 match c {
-                    ConstantValue::Undef => print!("undef"),
-                    ConstantValue::I1(b) => print!("{}", b),
-                    ConstantValue::I32(i) => print!("{}", i),
-                    ConstantValue::F32(f) => print!("{}", f),
+                    ConstantValue::Undef => write!(writer, "undef"),
+                    ConstantValue::I1(b) => write!(writer, "{}", b),
+                    ConstantValue::I32(i) => write!(writer, "{}", i),
+                    ConstantValue::F32(f) => write!(writer, "{}", f),
                 }
             }
             ValueType::Instruction(ref insn) => {
-                print!("{}", insn.name());
+                write!(writer, "{}", insn.name())
             }
             ValueType::Parameter(ref p) => {
-                print!("{}", p.name());
+                write!(writer, "{}", p.name())
             }
         }
     }

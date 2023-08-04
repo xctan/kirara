@@ -203,7 +203,8 @@ impl Display for Type {
             TypeKind::I1 => write!(f, "i1"),
             TypeKind::I32 => write!(f, "i32"),
             TypeKind::I64 => write!(f, "i64"),
-            TypeKind::F32 => write!(f, "f32"),
+            // TypeKind::F32 => write!(f, "f32"),
+            TypeKind::F32 => write!(f, "float"),
             // TypeKind::Ptr(p) => {
             //     write!(f, "{}*", p)
             // },
