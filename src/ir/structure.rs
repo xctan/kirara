@@ -74,6 +74,7 @@ pub struct TransUnit {
 
     // funcs
     pub funcs: HashMap<String, IrFunc>,
+    pub external: HashMap<String, Rc<Type>>,
 
     counter: usize,
 }
@@ -91,6 +92,7 @@ impl TransUnit {
             blocks: Arena::new(),
             inst_bb: HashMap::new(),
             globals: HashMap::new(),
+            external: HashMap::new(),
             funcs: HashMap::new(),
             counter: 0,
         }

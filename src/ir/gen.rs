@@ -80,7 +80,14 @@ impl AstContext {
                     let func = builder.finish();
                     unit.funcs.insert(name, func);
                 }
-                _ => (),
+                AstObjectType::Var(_init) => {
+                    if var.is_decl {
+                        // marker for external function
+                        let name = var.name.clone();
+                        let ty = var.ty.clone();
+                        unit.external.insert(name, ty);
+                    }
+                }
             }
         }
         unit
