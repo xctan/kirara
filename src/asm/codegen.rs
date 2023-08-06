@@ -833,14 +833,9 @@ impl<'a> AsmFuncBuilder<'a> {
                             self.used_regs.insert(RVGPR::a(0));
                             let value = self.unit.values[val].clone();
                             match value.ty().kind {
-                                TypeKind::I32 => {
-                                    if let Some(imm) = self.resolve_constant(val) {
-                                        emit!(LIMM pre!(a0), imm);
-                                    } else {
-                                        let src = self.resolve(val, mbb);
-                                        // avoid using addi directly here, because it shouldn't be inlined
-                                        emit!(MV pre!(a0), src);
-                                    }
+                                TypeKind::I32 | TypeKind::Ptr(_) => {
+                                    let src = self.resolve_ensure_reg(val, mbb);
+                                    emit!(MV pre!(a0), src);
                                 },
                                 TypeKind::F32 => {
                                     let src = self.resolve_fp(val, mbb);
