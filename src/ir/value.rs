@@ -13,7 +13,7 @@ pub use crate::ctype::BinaryOpType as BinaryOp;
 /// Unary Operations in IR
 /// 
 /// Op, RdTy, RsTy
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash)]
 pub enum UnaryOp {
     NegF32,
     ZextI32I1,

@@ -8,7 +8,7 @@ use super::{IrPass, bbopt::bbopt};
 pub struct InstructionCombination;
 
 impl IrPass for InstructionCombination {
-    fn run(unit: &mut TransUnit) {
+    fn run(&self, unit: &mut TransUnit) {
         for k in unit.funcs() {
             let mut done = false;
             while !done {

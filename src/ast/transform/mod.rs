@@ -39,7 +39,10 @@ pub trait AstRewriteVisitor {
         self.rewrite(_from);
         None
     }
-    fn visit_unary_op(&mut self, expr: Rc<RefCell<AstNode>>, _op: UnaryOpType) -> Option<Rc<RefCell<AstNode>>> { 
+    fn visit_unary_op(&mut self, expr: Rc<RefCell<AstNode>>, _op: UnaryOpType) -> Option<Rc<RefCell<AstNode>>> {
+        if matches!(_op, UnaryOpType::Addr | UnaryOpType::Deref) {
+            return None
+        }
         self.rewrite(expr);
         None
     }

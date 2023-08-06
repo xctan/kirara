@@ -7,7 +7,7 @@ use super::IrPass;
 pub struct DeadCodeElimination;
 
 impl IrPass for DeadCodeElimination {
-    fn run(unit: &mut TransUnit) {
+    fn run(&self, unit: &mut TransUnit) {
         for k in unit.funcs() {
             dce(unit, k.as_str());
         }

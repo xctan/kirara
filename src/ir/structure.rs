@@ -476,6 +476,7 @@ impl TransUnit {
         let val = Value::new(val);
         let id = self.values.alloc(val);
         self.add_used_by(value, id);
+        self.add_used_by(ptr, id);
         id
     }
 
