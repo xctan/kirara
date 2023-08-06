@@ -6,7 +6,7 @@ use std::{collections::{HashMap, HashSet}, rc::Rc};
 use crate::{
     ir::{
         structure::TransUnit, cfg::compute_df,
-        value::{InstructionValue, AllocaInst, StoreInst, ValueId, LoadInst, PhiInst, GetElemPtrInst}
+        value::{InstructionValue, AllocaInst, StoreInst, ValueId, LoadInst, PhiInst, GetElemPtrInst, ReturnInst, CallInst}
     },
     ctype::{TypeKind, Type, TypePtrCompare}
 };
@@ -42,6 +42,17 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
                 },
                 InstructionValue::Store(StoreInst { value, .. }) => {
                     addr_used.insert(*value);
+                },
+                InstructionValue::Return(ReturnInst { value, .. }) => {
+                    // ??? will the local address be returned?
+                    if let Some(value) = value {
+                        addr_used.insert(*value);
+                    }
+                },
+                InstructionValue::Call(CallInst { args, .. }) => {
+                    for arg in args {
+                        addr_used.insert(*arg);
+                    }
                 },
                 _ => (),
             }
