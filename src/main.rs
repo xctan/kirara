@@ -67,21 +67,29 @@ fn main() {
     let mut unit = ast.emit_ir();
     
     if ARGS.optimize != "0" {
-        ir::opt::rename::Canonicalize::run(&mut unit);
-        if ARGS.dump {
-            std::fs::write(
-                pwd.join(format!("{}.00.ll", input_basename)),
-                unit.to_string()
-            ).unwrap();
+        let mut cnt = 0;
+        let passes: Vec<Box<dyn IrPass>> = vec![
+            Box::new(ir::opt::rename::Canonicalize),
+            Box::new(ir::opt::mem2reg::Mem2Reg),
+            Box::new(ir::opt::mem2reg::Mem2Reg),
+            Box::new(ir::opt::instcomb::InstructionCombination),
+            Box::new(ir::opt::dce::DeadCodeElimination),
+            Box::new(ir::opt::rename::Canonicalize),
+        ];
+        for pass in &passes {
+            if ARGS.dump {
+                std::fs::write(
+                    pwd.join(format!("{}.{cnt:02}.ll", input_basename)),
+                    unit.to_string()
+                ).unwrap();
+                cnt += 1;
+            }
+            pass.run(&mut unit);
         }
-        ir::opt::mem2reg::Mem2Reg::run(&mut unit);
-        ir::opt::instcomb::InstructionCombination::run(&mut unit);
-        ir::opt::dce::DeadCodeElimination::run(&mut unit);
     }
-    ir::opt::rename::Canonicalize::run(&mut unit);
     if ARGS.dump {
         std::fs::write(
-            pwd.join(format!("{}.01.ll", input_basename)),
+            pwd.join(format!("{}.99.ll", input_basename)),
             unit.to_string()
         ).unwrap();
     }

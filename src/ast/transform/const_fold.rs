@@ -56,6 +56,9 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
             }
         }
         AstNodeType::UnaryOp(UnaryOp { expr, op }) => {
+            if matches!(op, UnaryOpType::Addr | UnaryOpType::Deref) {
+                return;
+            }
             // println!("{expr:#?}");
             ast_const_fold(expr.clone());
             // println!("{expr:#?}");

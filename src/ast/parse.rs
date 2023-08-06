@@ -161,8 +161,8 @@ fn unary(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
                     "-" => UnaryOpType::Neg,
                     "!" => UnaryOpType::LogNot,
                     // "~" => UnaryOpType::BitNot,
-                    // "&" => UnaryOpType::Addr,
-                    // "*" => UnaryOpType::Deref,
+                    "&" => UnaryOpType::Addr,
+                    "*" => UnaryOpType::Deref,
                     _ => unreachable!(),
                 };
                 let token = range_between(&sign.as_range(), &expr.borrow().token);
@@ -446,8 +446,13 @@ fn declarator((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, (Rc<Typ
         ty = Type::ptr_to(ty);
     }
 
-    if let Ok((_cursor, _)) = ttag!(P("("))(left) {
-        todo!()
+    if let Ok((l_cursor, _)) = ttag!(P("("))(left) {
+        let void = Type::void_type();
+        let (r_cursor, (_ty, _)) = declarator((l_cursor, void))?;
+        let (rem_cursor, _) = ttag!(P(")"))(r_cursor)?;
+        let (extra, suffix_ty) = type_suffix((rem_cursor, ty))?;
+        let (_, real_ty) = declarator((l_cursor, suffix_ty))?;
+        Ok((extra, real_ty))
     } else {
         let (cursor, id) = ttag!(I)(left)
             .map(|(cursor, token)| (cursor, Some(token)))

@@ -7,7 +7,7 @@ pub mod instcomb;
 pub mod dce;
 
 pub trait IrPass {
-    fn run(unit: &mut TransUnit);
+    fn run(&self, unit: &mut TransUnit);
 }
 
 #[macro_export]

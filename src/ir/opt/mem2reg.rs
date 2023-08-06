@@ -6,7 +6,7 @@ use std::{collections::{HashMap, HashSet}, rc::Rc};
 use crate::{
     ir::{
         structure::TransUnit, cfg::compute_df,
-        value::{InstructionValue, AllocaInst, StoreInst, ValueId, LoadInst, PhiInst}
+        value::{InstructionValue, AllocaInst, StoreInst, ValueId, LoadInst, PhiInst, GetElemPtrInst}
     },
     ctype::{TypeKind, Type, TypePtrCompare}
 };
@@ -16,7 +16,7 @@ use super::IrPass;
 pub struct Mem2Reg;
 
 impl IrPass for Mem2Reg {
-    fn run(unit: &mut TransUnit) {
+    fn run(&self, unit: &mut TransUnit) {
         for k in unit.funcs() {
             mem2reg(unit, k.as_str());
         }
@@ -26,8 +26,28 @@ impl IrPass for Mem2Reg {
 fn mem2reg(unit: &mut TransUnit, func: &str) {
     // obtain dominance frontier
     compute_df(unit, func);
-
     let func = unit.funcs.get(func).unwrap().clone();
+
+    let mut addr_used = HashSet::new();
+    for bb in &func.bbs {
+        let block = unit.blocks.get(*bb).unwrap();
+        let mut inst = block.insts_start;
+        while let Some(insn_id) = inst {
+            let insn = unit.values.get(insn_id).unwrap().clone();
+            inst = insn.next;
+
+            match insn.value.as_inst() {
+                InstructionValue::GetElemPtr(GetElemPtrInst { ptr, .. }) => {
+                    addr_used.insert(*ptr);
+                },
+                InstructionValue::Store(StoreInst { value, .. }) => {
+                    addr_used.insert(*value);
+                },
+                _ => (),
+            }
+        }
+    }
+
     let mut alloca_ids = HashMap::new();
     let mut allocas = Vec::new();
     for bb in &func.bbs {
@@ -35,6 +55,10 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
         let mut inst = block.insts_start;
         while let Some(insn_id) = inst {
             let insn = unit.values.get(insn_id).unwrap().clone();
+            inst = insn.next;
+            if addr_used.contains(&insn_id) {
+                continue;
+            }
             if let InstructionValue::Alloca(AllocaInst{alloc_ty, ..}) = insn.value.as_inst() {
                 let ty = alloc_ty.clone();
                 if matches!(ty.kind, TypeKind::I32 | TypeKind::Ptr(_) | TypeKind::F32) {
@@ -43,7 +67,6 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
                     allocas.push(ty);
                 }
             }
-            inst = insn.next;
         }
     }
 

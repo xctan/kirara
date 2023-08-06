@@ -7,7 +7,7 @@ use super::IrPass;
 pub struct BasicBlockOptimization;
 
 impl IrPass for BasicBlockOptimization {
-    fn run(unit: &mut TransUnit) {
+    fn run(&self, unit: &mut TransUnit) {
         for k in unit.funcs() {
             bbopt(unit, k.as_str());
         }

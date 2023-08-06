@@ -12,7 +12,7 @@ use super::IrPass;
 pub struct Canonicalize;
 
 impl IrPass for Canonicalize {
-    fn run(unit: &mut TransUnit) {
+    fn run(&self, unit: &mut TransUnit) {
         for k in unit.funcs() {
             canonicalize(unit, k.as_str());
         }

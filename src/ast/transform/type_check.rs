@@ -25,6 +25,14 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             ast_type_check(from);
             to
         },
+        AstNodeType::UnaryOp(UnaryOp { expr, op: UnaryOpType::Addr }) => {
+            ast_type_check(expr.clone());
+            Type::ptr_to(expr.borrow().ty.clone().unwrap())
+        },
+        AstNodeType::UnaryOp(UnaryOp { expr, op: UnaryOpType::Deref }) => {
+            ast_type_check(expr.clone());
+            expr.borrow().ty.clone().unwrap().base_type()
+        },
         AstNodeType::UnaryOp(UnaryOp { expr, op }) => {
             // println!("+unary {op:?} {expr:#?}");
             ast_type_check(expr.clone());
@@ -34,6 +42,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
                     expr.borrow().ty.clone().unwrap(),
                     Type::i32_type(),
                 ),
+                UnaryOpType::Addr | UnaryOpType::Deref => unreachable!()
             };
             let expr_new = ast_gen_convert(expr.clone(), common_ty.clone());
             let mut expr_mut = expr.borrow_mut();
@@ -44,6 +53,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
             match op {
                 UnaryOpType::LogNot => Type::i1_type(),
                 UnaryOpType::Neg => common_ty,
+                UnaryOpType::Addr | UnaryOpType::Deref => unreachable!()
             }
         },
         AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op: BinaryOpType::Index }) => {
@@ -170,8 +180,23 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
 }
 
 pub fn ast_gen_convert(from: Rc<RefCell<AstNode>>, to: Rc<Type>) -> AstNodeType {
+    // !!! `from' will be overwritten after this, so do not reference it directly!
+
     if from.borrow().ty.clone().unwrap() == to {
         return from.borrow().node.clone();
+    }
+
+    // decay of array type
+    if to.is_ptr() && from.borrow().ty.clone().unwrap().is_array() {
+        // &arr[0]
+        let zero = AstNode::i32_number(0, 0..0);
+        let index = AstNode::binary(
+            Rc::new(RefCell::new((*from.borrow()).clone())),
+            zero,
+            BinaryOpType::Index,
+            from.borrow().token.clone()
+        );
+        return AstNodeType::UnaryOp(UnaryOp { expr: index, op: UnaryOpType::Addr })
     }
 
     let from = Rc::new(RefCell::new((*from.borrow()).clone()));

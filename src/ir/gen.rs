@@ -241,9 +241,6 @@ impl EmitIrExpr for AstNodeType {
                     }
                     (TypeKind::I1, TypeKind::I32) =>
                         builder.unary(from_id, super::value::UnaryOp::ZextI32I1).push(),
-                    (TypeKind::Array(_), TypeKind::Ptr(_)) => {
-                        from_id
-                    }
                     (TypeKind::F32, TypeKind::I32) =>
                         builder.unary(from_id, super::value::UnaryOp::CvtI32F32).push(),
                     (TypeKind::I32, TypeKind::F32) =>
@@ -259,14 +256,17 @@ impl EmitIrExpr for AstNodeType {
                         let zero = builder.const_f32(0.0);
                         builder.binary(BinaryOpType::Ne, from_id, zero).push()
                     }
+                    (TypeKind::Ptr(_), TypeKind::Ptr(_)) => {
+                        from_id
+                    }
                     _ => unimplemented!("convert {:#?} to {:#?}", from, to),
                 }
             }
             AstNodeType::UnaryOp(UnaryOp { expr, op }) => {
                 let ty = expr.borrow().ty.clone().unwrap();
-                let expr = expr.emit_ir_expr(builder, ctx);
                 match *op {
                     UnaryOpType::Neg => {
+                        let expr = expr.emit_ir_expr(builder, ctx);
                         match ty.kind {
                             TypeKind::I32 => {
                                 let zero = builder.const_i32(0);
@@ -279,8 +279,16 @@ impl EmitIrExpr for AstNodeType {
                         }
                     },
                     UnaryOpType::LogNot => {
+                        let expr = expr.emit_ir_expr(builder, ctx);
                         let one = builder.const_i1(true);
                         builder.binary(BinaryOpType::Xor, expr, one).push()
+                    },
+                    UnaryOpType::Addr => {
+                        expr.emit_ir_lvalue(builder, ctx)
+                    },
+                    UnaryOpType::Deref => {
+                        let expr = expr.emit_ir_lvalue(builder, ctx);
+                        builder.load(expr).push()
                     }
                     // _ => unimplemented!("unary op {:?}, ty {}", op, ty),
                 }
@@ -373,6 +381,9 @@ impl EmitIrLValue for AstNodeType {
             AstNodeType::Variable(var) => {
                 let var = ctx.get_object(*var).unwrap();
                 var.ir_value.unwrap()
+            }
+            AstNodeType::UnaryOp(UnaryOp { expr, op: UnaryOpType::Deref }) => {
+                expr.emit_ir_expr(builder, ctx)
             }
             _ => unimplemented!("is this an lvalue?\n{:#?}", self),
         }

@@ -258,7 +258,7 @@ pub struct Array {
     pub len: isize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash)]
 #[allow(unused)]
 pub enum BinaryOpType {
     Add,
@@ -313,6 +313,8 @@ impl Display for BinaryOpType {
 pub enum UnaryOpType {
     Neg,
     LogNot,
+    Addr,
+    Deref,
 }
 
 #[derive(Debug, Clone, Copy)]
