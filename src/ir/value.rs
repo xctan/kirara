@@ -155,6 +155,17 @@ impl ValueType {
             _ => panic!("not a constant"),
         }
     }
+
+    pub fn is_undef(&self) -> bool {
+        matches!(
+            self,
+            ValueType::Constant(ConstantValue::Undef)
+        )
+    }
+
+    pub fn is_argument(&self) -> bool {
+        matches!(self, ValueType::Parameter(_))
+    }
 }
 
 #[derive(Debug, Clone)]

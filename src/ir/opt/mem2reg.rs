@@ -54,6 +54,11 @@ fn mem2reg(unit: &mut TransUnit, func: &str) {
                         addr_used.insert(*arg);
                     }
                 },
+                InstructionValue::Phi(PhiInst { args, .. }) => {
+                    for arg in args {
+                        addr_used.insert(arg.0);
+                    }
+                },
                 _ => (),
             }
         }

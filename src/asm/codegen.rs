@@ -952,6 +952,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                 let idx = self.resolve(index, mbb);
                                 let tmp = self.new_vreg64();
                                 if elem_size.count_ones() == 1 {
+                                    // FIXME: Zba shift and add instructions
                                     if  elem_size.trailing_zeros() > 0 {
                                         emit!(SLLI tmp, idx, elem_size.trailing_zeros() as i32);
                                     }
