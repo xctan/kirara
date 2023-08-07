@@ -26,6 +26,7 @@ pub struct BasicBlock {
     pub name: String,
     
     pub is_labeled: bool,
+    pub is_entry: bool,
 
     pub preds: Vec<BlockId>,
     /// reverse post order
@@ -46,6 +47,7 @@ impl BasicBlock {
         Self {
             name,
             is_labeled: false,
+            is_entry: false,
             preds: Vec::new(),
             rpo: 0,
             idom: None,

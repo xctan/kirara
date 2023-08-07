@@ -218,6 +218,35 @@ pub fn compute_df(unit: &mut TransUnit, func: &str) {
     }
 }
 
+pub fn is_potentially_reachable_from_many(
+    unit: &TransUnit,
+    worklist: &mut Vec<BlockId>,
+    stop_bb: BlockId,
+) -> bool {
+    let mut visited = HashSet::new();
+    let mut limit = 32;
+    while let Some(bb) = worklist.pop() {
+        if bb == stop_bb {
+            return true;
+        }
+        if visited.contains(&bb) {
+            continue;
+        }
+        visited.insert(bb);
+
+        if limit == 0 {
+            return true;
+        }
+        limit -= 1;
+        
+        for succ in unit.succ(bb) {
+            worklist.push(succ);
+        }
+    }
+
+    false
+}
+
 pub struct Loop {
     pub parent: Weak<RefCell<Loop>>,
     pub sub_loops: Vec<Rc<RefCell<Loop>>>,

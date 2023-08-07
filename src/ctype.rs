@@ -258,7 +258,7 @@ pub struct Array {
     pub len: isize,
 }
 
-#[derive(Debug, Clone, Copy, Hash)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[allow(unused)]
 pub enum BinaryOpType {
     Add,

@@ -59,6 +59,13 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op: BinaryOpType::Index }) => {
             ast_type_check(lhs.clone());
             ast_type_check(rhs.clone());
+
+            // ensure rhs is i32
+            let rhs_new = ast_gen_convert(rhs.clone(), Type::i32_type());
+            let mut rhs_mut = rhs.borrow_mut();
+            rhs_mut.node = rhs_new;
+            rhs_mut.ty = Some(Type::i32_type());
+
             lhs.borrow().ty.clone().unwrap().base_type()
         }
         AstNodeType::BinaryOp(BinaryOp { lhs, rhs, op: BinaryOpType::Assign }) => {
