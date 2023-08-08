@@ -398,7 +398,9 @@ impl TransUnit {
             InstructionValue::Return(_) |
             InstructionValue::Store(_) => true,
             InstructionValue::Call(_) => {
-                // TODO: check if function has side effect
+                // TODO: check if function is pure or const
+                // pure: a function does not modify any global memory.
+                // const: a function does not read/modify any global memory.
                 true
             }
             _ => false,

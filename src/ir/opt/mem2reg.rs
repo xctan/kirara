@@ -25,6 +25,7 @@ impl IrPass for Mem2Reg {
 
 fn mem2reg(unit: &mut TransUnit, func: &str) {
     // obtain dominance frontier
+    // todo: create a separate pass for computing dominance frontier
     compute_df(unit, func);
     let func = unit.funcs.get(func).unwrap().clone();
 
