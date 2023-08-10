@@ -5,7 +5,7 @@ pub mod rename;
 pub mod bbopt;
 pub mod instcomb;
 pub mod dce;
-pub mod gvn;
+pub mod gvngcm;
 
 pub trait IrPass {
     fn run(&self, unit: &mut TransUnit);

@@ -69,12 +69,14 @@ fn main() {
     if ARGS.optimize != "0" {
         let mut cnt = 0;
         let passes: Vec<Box<dyn IrPass>> = vec![
-            Box::new(ir::opt::rename::Canonicalize),
-            Box::new(ir::opt::mem2reg::Mem2Reg),
-            Box::new(ir::opt::mem2reg::Mem2Reg),
-            Box::new(ir::opt::instcomb::InstructionCombination),
-            Box::new(ir::opt::dce::DeadCodeElimination),
-            Box::new(ir::opt::rename::Canonicalize),
+            Box::new(ir::transform::rename::Canonicalize),
+            Box::new(ir::transform::mem2reg::Mem2Reg),
+            Box::new(ir::transform::bbopt::BasicBlockOptimization),
+            Box::new(ir::transform::mem2reg::Mem2Reg),
+            Box::new(ir::transform::gvngcm::GVNGCM),
+            Box::new(ir::transform::instcomb::InstructionCombination),
+            Box::new(ir::transform::dce::DeadCodeElimination),
+            Box::new(ir::transform::rename::Canonicalize),
         ];
         for pass in &passes {
             if ARGS.dump {

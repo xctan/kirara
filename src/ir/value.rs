@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{rc::Rc, hash::Hash};
 use std::collections::HashSet;
 
 use crate::alloc::Id;
@@ -156,16 +156,16 @@ impl ValueType {
         }
     }
 
-    pub fn is_undef(&self) -> bool {
-        matches!(
-            self,
-            ValueType::Constant(ConstantValue::Undef)
-        )
-    }
+    // pub fn is_undef(&self) -> bool {
+    //     matches!(
+    //         self,
+    //         ValueType::Constant(ConstantValue::Undef)
+    //     )
+    // }
 
-    pub fn is_argument(&self) -> bool {
-        matches!(self, ValueType::Parameter(_))
-    }
+    // pub fn is_argument(&self) -> bool {
+    //     matches!(self, ValueType::Parameter(_))
+    // }
 }
 
 #[derive(Debug, Clone)]
@@ -207,6 +207,40 @@ impl ConstantValue {
         }
     }
 }
+
+impl Hash for ConstantValue {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            ConstantValue::Undef => 0.hash(state),
+            ConstantValue::I1(v) => {
+                1.hash(state);
+                v.hash(state);
+            }
+            ConstantValue::I32(v) => {
+                2.hash(state);
+                v.hash(state);
+            }
+            ConstantValue::F32(v) => {
+                3.hash(state);
+                v.to_bits().hash(state);
+            }
+        }
+    }
+}
+
+impl PartialEq for ConstantValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (ConstantValue::Undef, ConstantValue::Undef) => true,
+            (ConstantValue::I1(v1), ConstantValue::I1(v2)) => v1 == v2,
+            (ConstantValue::I32(v1), ConstantValue::I32(v2)) => v1 == v2,
+            (ConstantValue::F32(v1), ConstantValue::F32(v2)) => v1.to_bits() == v2.to_bits(),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for ConstantValue {}
 
 impl ValueTrait for ConstantValue {
     fn ty(&self) -> Rc<Type> {

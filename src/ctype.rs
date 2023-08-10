@@ -282,6 +282,33 @@ pub enum BinaryOpType {
     Shl,
 }
 
+impl BinaryOpType {
+    // a <op> b == b <reverse(op)> a
+    pub fn reverse(&self) -> Option<Self> {
+        match self {
+            BinaryOpType::Add => Some(BinaryOpType::Add),
+            BinaryOpType::Sub => None,
+            BinaryOpType::Mul => Some(BinaryOpType::Mul),
+            BinaryOpType::Div => None,
+            BinaryOpType::Mod => None,
+            BinaryOpType::Ne => Some(BinaryOpType::Ne),
+            BinaryOpType::Eq => Some(BinaryOpType::Eq),
+            BinaryOpType::Lt => Some(BinaryOpType::Gt),
+            BinaryOpType::Le => Some(BinaryOpType::Ge),
+            BinaryOpType::Gt => Some(BinaryOpType::Lt),
+            BinaryOpType::Ge => Some(BinaryOpType::Le),
+            BinaryOpType::Xor => Some(BinaryOpType::Xor),
+            BinaryOpType::And => Some(BinaryOpType::And),
+            BinaryOpType::Shr => None,
+            BinaryOpType::Shl => None,
+            BinaryOpType::Assign => None,
+            BinaryOpType::Index => None,
+            BinaryOpType::LogOr => Some(BinaryOpType::LogOr),
+            BinaryOpType::LogAnd => Some(BinaryOpType::LogAnd),
+        }
+    }
+}
+
 impl Display for BinaryOpType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
