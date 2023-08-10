@@ -55,7 +55,7 @@ pub fn reverse_post_order(unit: &mut TransUnit, entry_bb: BlockId) -> Vec<BlockI
     ordering
 }
 
-fn intersect(unit: &TransUnit, entry_bb: BlockId, i: BlockId, j: BlockId) -> BlockId {
+pub fn intersect(unit: &TransUnit, entry_bb: BlockId, i: BlockId, j: BlockId) -> BlockId {
     if i == entry_bb {
         return i;
     } else if j == entry_bb {
@@ -175,6 +175,12 @@ fn compute_dom(unit: &mut TransUnit, func: &str) {
     compute_idom(unit, func);
 
     let func = unit.funcs.get(func).unwrap().clone();
+
+    for n in &func.bbs {
+        let node = unit.blocks.get_mut(*n).unwrap();
+        node.dom.clear();
+    }
+
     for bb in func.bbs {
         let block = &mut unit.blocks[bb];
         // a block dominates itself
@@ -197,6 +203,11 @@ pub fn compute_df(unit: &mut TransUnit, func: &str) {
     compute_idom(unit, func);
     let bbs = unit.funcs.get(func).unwrap().bbs.clone();
 
+    for n in &bbs {
+        let node = unit.blocks.get_mut(*n).unwrap();
+        node.df.clear();
+    }
+
     // calculate dominance frontier (figure 9.10)
     for n in &bbs {
         let node = unit.blocks.get(*n).unwrap().clone();
@@ -218,33 +229,25 @@ pub fn compute_df(unit: &mut TransUnit, func: &str) {
     }
 }
 
-pub fn is_potentially_reachable_from_many(
-    unit: &TransUnit,
-    worklist: &mut Vec<BlockId>,
-    stop_bb: BlockId,
-) -> bool {
-    let mut visited = HashSet::new();
-    let mut limit = 32;
-    while let Some(bb) = worklist.pop() {
-        if bb == stop_bb {
-            return true;
-        }
-        if visited.contains(&bb) {
+pub fn compute_dom_level(unit: &TransUnit, func: &str) -> HashMap<BlockId, u32> {
+    let mut dom_level = HashMap::new();
+    let func = unit.funcs.get(func).unwrap().clone();
+    let entry_bb = func.entry_bb;
+    dom_level.insert(entry_bb, 0);
+    for bb in &func.bbs {
+        let block = unit.blocks.get(*bb).unwrap();
+        if block.preds.len() == 0 || *bb == entry_bb {
             continue;
         }
-        visited.insert(bb);
-
-        if limit == 0 {
-            return true;
+        let mut level = 0;
+        let mut runner = block.idom;
+        while let Some(r) = runner {
+            level += 1;
+            runner = unit.blocks.get(r).unwrap().idom;
         }
-        limit -= 1;
-        
-        for succ in unit.succ(bb) {
-            worklist.push(succ);
-        }
+        dom_level.insert(*bb, level);
     }
-
-    false
+    dom_level
 }
 
 pub struct Loop {

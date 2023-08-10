@@ -14,7 +14,7 @@ impl IrPass for DeadCodeElimination {
     }
 }
 
-fn dce(unit: &mut TransUnit, func: &str) {
+pub fn dce(unit: &mut TransUnit, func: &str) {
     let bbs = unit.funcs[func].bbs.clone();
 
     let mut visited = HashSet::new();

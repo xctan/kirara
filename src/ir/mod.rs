@@ -4,8 +4,7 @@ pub mod builder;
 pub mod export;
 pub mod cfg;
 pub mod structure;
-pub mod opt;
-pub mod mssa;
-pub mod alias;
+pub mod transform;
+pub mod memdep;
 
-pub use opt::IrPass;
+pub use transform::IrPass;

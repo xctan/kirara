@@ -200,8 +200,20 @@ impl TransUnit {
         }
     }
 
-    /// remove a inst from bb
-    pub fn remove(&mut self, bb: BlockId, value: ValueId) {
+    pub fn insert_before_end(&mut self, bb: BlockId, value: ValueId) {
+        let block = self.blocks.get(bb).unwrap();
+        match block.insts_end {
+            None => {
+                self.insert_at_begin(bb, value);
+            }
+            Some(end) => {
+                self.insert_before(bb, value, end);
+            }
+        }
+    }
+
+    pub fn takeout(&mut self, value: ValueId) {
+        let bb = *self.inst_bb.get(&value).unwrap();
         let this = self.values.get(value).unwrap().clone();
         match this.prev {
             Some(prev) => {
@@ -224,6 +236,12 @@ impl TransUnit {
             }
         }
 
+        self.inst_bb.remove(&value);
+    }
+
+    /// remove a inst from bb and delete it
+    pub fn remove(&mut self, _bb: BlockId, value: ValueId) {
+        self.takeout(value);
         let oprs = self.get_operands(value);
         for opr in oprs {
             match self.values.get_mut(opr) {
@@ -233,9 +251,7 @@ impl TransUnit {
                 None => {}
             }
         }
-
         self.values.remove(value);
-        self.inst_bb.remove(&value);
     }
 
     pub fn get_operands(&self, inst: ValueId) -> Vec<ValueId> {
