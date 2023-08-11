@@ -211,7 +211,7 @@ fn run_gcm(unit: &mut TransUnit, func: &str) {
         schedule_early(unit, &mut vis, *inst, &dom_level, entry);
     }
     vis.clear();
-    eprintln!("{}", unit);
+    // eprintln!("{}", unit);
 
     for inst in insts.iter().rev() {
         schedule_late(unit, &mut vis, *inst, &info, entry, &dom_level);
@@ -302,15 +302,15 @@ fn schedule_late(
     }
     
     let mut user_bbs = vec![];
-    eprintln!("{:#?}", value);
-    use crate::ir::value::ValueTrait;
-    eprintln!("schedule {:?} {}", inst, value.name());
+    // eprintln!("{:#?}", value);
+    // use crate::ir::value::ValueTrait;
+    // eprintln!("schedule {:?} {}", inst, value.name());
     for u in &value.used_by {
         // eprintln!("value id {:?}", u);
         schedule_late(unit, vis, *u, info, entry, dom_level);
         let user = unit.inst_bb[u];
         let user_value = unit.values[*u].clone();
-        eprintln!("---- {:?}", user_value);
+        // eprintln!("---- {:?}", user_value);
         match user_value.value.as_inst() {
             InstructionValue::Phi(phi) => {
                 for (arg, bb) in &phi.args {
@@ -326,7 +326,7 @@ fn schedule_late(
                         let st = l.use_store.unwrap();
                         for (arg, bb) in &mphi.args {
                             if *arg == st {
-                                eprintln!("added {}", unit.blocks[*bb].name);
+                                // eprintln!("added {}", unit.blocks[*bb].name);
                                 user_bbs.push(*bb);
                             }
                         }
@@ -340,19 +340,19 @@ fn schedule_late(
         }
     }
 
-    eprint!(" users at: ");
-    for u in &user_bbs {
-        let block = &unit.blocks[*u];
-        eprint!("{} ", block.name);
-    }
-    eprintln!();
+    // eprint!(" users at: ");
+    // for u in &user_bbs {
+    //     let block = &unit.blocks[*u];
+    //     eprint!("{} ", block.name);
+    // }
+    // eprintln!();
 
     let mut lca = user_bbs[0];
     for i in user_bbs.iter().skip(1) {
         lca = cfg::intersect(unit, entry, lca, *i);
     }
 
-    eprintln!("lca bb: {}", unit.blocks[lca].name);
+    // eprintln!("lca bb: {}", unit.blocks[lca].name);
     assert!(dom_level[&lca] >= dom_level[&unit.inst_bb[&inst]]);
 
     let mut best_bb = lca;

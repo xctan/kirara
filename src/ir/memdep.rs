@@ -77,6 +77,7 @@ impl TransUnit {
             }
         }
 
+        super::cfg::compute_dom(self, func);
         let f = self.funcs[func].clone();
         
         let mut loads = HashMap::<_, RelatedAccess>::new();

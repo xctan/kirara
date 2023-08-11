@@ -1107,7 +1107,8 @@ impl<'a> AsmFuncBuilder<'a> {
             let mbb = self.bb_map[bb];
             let block = &self.unit.blocks[*bb];
 
-            // let mut incoming = Vec::new();
+            let mut incoming = Vec::new();
+            let mut incoming_f = Vec::new();
             let mut outgoing = HashMap::new();
             let mut outgoing_imm = HashMap::new();
             let mut outgoing_f = HashMap::new();
@@ -1132,50 +1133,59 @@ impl<'a> AsmFuncBuilder<'a> {
                     //     mv vreg, c
                     //     blt ...
 
-                    // let vreg = self.new_vreg();
-                    // incoming.push((self.resolve(inst, mbb), vreg));
-                    for (val, bb) in &phi.args {
-                        let value = self.unit.values[*val].clone();
-                        match value.ty().kind {
-                            TypeKind::I32 | TypeKind::I1 => {
-                                let vreg = self.resolve(inst, mbb);
-                                if value.value.is_constant() {
-                                    outgoing_imm
-                                        .entry(*bb)
-                                        .or_insert(Vec::new())
-                                        .push((vreg, value.value.as_constant().clone()));
-                                } else {
-                                    outgoing
-                                        .entry(*bb)
-                                        .or_insert(Vec::new())
-                                        .push((vreg, self.resolve(*val, mbb)));
+                    match phi.ty().kind {
+                        TypeKind::I32 | TypeKind::I1 | TypeKind::Ptr(_) => {
+                            let vreg = self.new_vreg();
+                            incoming.push((self.resolve(inst, mbb), vreg));
+                            for (val, bb) in &phi.args {
+                                let value = self.unit.values[*val].clone();
+                                match value.ty().kind {
+                                    TypeKind::I32 | TypeKind::I1 => {
+                                        if value.value.is_constant() {
+                                            outgoing_imm
+                                                .entry(*bb)
+                                                .or_insert(Vec::new())
+                                                .push((vreg, value.value.as_constant().clone()));
+                                        } else {
+                                            outgoing
+                                                .entry(*bb)
+                                                .or_insert(Vec::new())
+                                                .push((vreg, self.resolve(*val, mbb)));
+                                        }
+                                    }
+                                    TypeKind::Void => {
+                                        // undef value, just dismiss
+                                    }
+                                    _ => panic!("phi type: {:?}, value type: {:?}", phi.ty(), value.ty()),
                                 }
                             }
-                            TypeKind::Ptr(_) => {
-                                let vreg = self.resolve(inst, mbb);
-                                // how could it be a constant?
-                                outgoing
-                                    .entry(*bb)
-                                    .or_insert(Vec::new())
-                                    .push((vreg, self.resolve_ensure_reg(*val, mbb)));
-                            }
-                            TypeKind::F32 => {
-                                let vreg = self.resolve_fp(inst, mbb);
-                                if value.value.is_constant() {
-                                    outgoing_fimm
-                                        .entry(*bb)
-                                        .or_insert(Vec::new())
-                                        .push((vreg, value.value.as_constant().clone()));
-                                } else {
-                                    outgoing_f
-                                        .entry(*bb)
-                                        .or_insert(Vec::new())
-                                        .push((vreg, self.resolve_fp(*val, mbb)));
-                                }
-                            }
-                            TypeKind::Void => {}
-                            _ => panic!("phi node type: {:?}", value.ty()),
                         }
+                        TypeKind::F32 => {
+                            let vreg = self.new_vregf32();
+                            incoming_f.push((self.resolve_fp(inst, mbb), vreg));
+                            for (val, bb) in &phi.args {
+                                let value = self.unit.values[*val].clone();
+                                match value.ty().kind {
+                                    TypeKind::F32 => {
+                                        let vreg = self.resolve_fp(inst, mbb);
+                                        if value.value.is_constant() {
+                                            outgoing_fimm
+                                                .entry(*bb)
+                                                .or_insert(Vec::new())
+                                                .push((vreg, value.value.as_constant().clone()));
+                                        } else {
+                                            outgoing_f
+                                                .entry(*bb)
+                                                .or_insert(Vec::new())
+                                                .push((vreg, self.resolve_fp(*val, mbb)));
+                                        }
+                                    }
+                                    TypeKind::Void => {}
+                                    _ => panic!("phi type: {:?}, value type: {:?}", phi.ty(), value.ty()),
+                                }
+                            }
+                        }
+                        _ => panic!("phi type: {:?}", phi.ty()),
                     }
                 } else {
                     // end of phi nodes
@@ -1183,9 +1193,12 @@ impl<'a> AsmFuncBuilder<'a> {
                 }
             }
 
-            // for (lhs, rhs) in incoming {
-            //     self.prog.push_to_begin(mbb, RV64InstBuilder::MV(lhs, rhs));
-            // }
+            for (lhs, rhs) in incoming {
+                self.prog.push_to_begin(mbb, RV64InstBuilder::MV(lhs, rhs));
+            }
+            for (lhs, rhs) in incoming_f {
+                self.prog.push_to_begin(mbb, RV64InstBuilder::FMVDD(lhs, rhs));
+            }
             for (pred, insts) in outgoing {
                 let mbb = self.bb_map[&pred];
                 if let Some(last) = self.prog.blocks[mbb].insts_tail {
