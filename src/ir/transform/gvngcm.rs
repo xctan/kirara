@@ -5,7 +5,7 @@ use crate::{ir::{
     cfg::{reverse_post_order, LoopInfo, compute_dom_level, self},
     value::{
         ValueId, BinaryInst, ConstantValue, ValueType, InstructionValue,
-        GetElemPtrInst, LoadInst, CallInst, ValueTrait,
+        GetElemPtrInst, LoadInst, CallInst,
     }
 }, ctype::BinaryOpType};
 
@@ -302,7 +302,8 @@ fn schedule_late(
     
     let mut user_bbs = vec![];
     // eprintln!("{:#?}", value);
-    eprintln!("schedule {:?} {}", inst, value.name());
+    // use crate::ir::value::ValueTrait;
+    // eprintln!("schedule {:?} {}", inst, value.name());
     for u in &value.used_by {
         // eprintln!("value id {:?}", u);
         schedule_late(unit, vis, *u, info, entry);
@@ -317,12 +318,19 @@ fn schedule_late(
                 }
             }
             InstructionValue::MemPhi(mphi) => {
-                eprintln!("memphi {:?}", mphi);
-                for (arg, bb) in &mphi.args {
-                    if *arg == inst {
-                        eprintln!("added {}", unit.blocks[*bb].name);
-                        user_bbs.push(*bb);
+                // this inst must be a load
+                match value.value.as_inst() {
+                    InstructionValue::Load(l) => {
+                        let st = l.use_store.unwrap();
+                        // eprintln!("memphi {:?}", mphi);
+                        for (arg, bb) in &mphi.args {
+                            if *arg == st {
+                                // eprintln!("added {}", unit.blocks[*bb].name);
+                                user_bbs.push(*bb);
+                            }
+                        }
                     }
+                    _ => unreachable!()
                 }
             }
             _ => {
@@ -331,25 +339,28 @@ fn schedule_late(
         }
     }
 
-    eprint!(" users at: ");
-    for u in &user_bbs {
-        let block = &unit.blocks[*u];
-        eprint!("{} ", block.name);
-    }
-    eprintln!();
+    // eprint!(" users at: ");
+    // for u in &user_bbs {
+    //     let block = &unit.blocks[*u];
+    //     eprint!("{} ", block.name);
+    // }
+    // eprintln!();
 
     let mut lca = user_bbs[0];
     for i in user_bbs.iter().skip(1) {
         lca = cfg::intersect(unit, entry, lca, *i);
     }
 
-    eprintln!("lca bb: {}", unit.blocks[lca].name);
+    // eprintln!("lca bb: {}", unit.blocks[lca].name);
 
     let mut best_bb = lca;
     let mut best_loop_depth = info.depth(best_bb);
     let inst_bb = unit.inst_bb[&inst]; // upper bound
     while lca != inst_bb {
-        lca = unit.blocks[lca].idom.unwrap();
+        lca = match unit.blocks[lca].idom {
+            Some(idom) => idom,
+            None => break, // already at entry
+        };
         let loop_depth = info.depth(lca);
         if loop_depth < best_loop_depth {
             best_bb = lca;
@@ -357,7 +368,7 @@ fn schedule_late(
         }
     }
 
-    eprintln!("best bb: {}, loop depth {}", unit.blocks[best_bb].name, best_loop_depth);
+    // eprintln!("best bb: {}, loop depth {}", unit.blocks[best_bb].name, best_loop_depth);
 
     unit.takeout(inst);
     unit.insert_before_end(best_bb, inst);
