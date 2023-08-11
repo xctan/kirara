@@ -31,20 +31,20 @@ impl TransUnit {
             writeln!(writer)?;
         }
 
-        // let mut keys: Vec<_> = self.external.keys().collect();
-        // keys.sort();
-        // for name in keys {
-        //     let ty = self.external.get(name).unwrap().as_function();
-        //     write!(writer, "declare {} @{}(", ty.ret_type, name)?;
-        //     for (idx, (_, argty)) in ty.params.iter().enumerate() {
-        //         if idx != 0 {
-        //             write!(writer, ", ")?;
-        //         }
-        //         write!(writer, "{} %{}", argty, idx)?;
-        //     }
-        //     writeln!(writer, ")")?;
-        //     writeln!(writer)?;
-        // }
+        let mut keys: Vec<_> = self.external.keys().collect();
+        keys.sort();
+        for name in keys {
+            let ty = self.external.get(name).unwrap().as_function();
+            write!(writer, "declare {} @{}(", ty.ret_type, name)?;
+            for (idx, (_, argty)) in ty.params.iter().enumerate() {
+                if idx != 0 {
+                    write!(writer, ", ")?;
+                }
+                write!(writer, "{} %{}", argty, idx)?;
+            }
+            writeln!(writer, ")")?;
+            writeln!(writer)?;
+        }
 
         Ok(())
     }
