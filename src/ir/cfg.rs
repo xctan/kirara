@@ -171,7 +171,7 @@ fn compute_idom(unit: &mut TransUnit, func: &str) {
     // }
 }
 
-fn compute_dom(unit: &mut TransUnit, func: &str) {
+pub fn compute_dom(unit: &mut TransUnit, func: &str) {
     compute_idom(unit, func);
 
     let func = unit.funcs.get(func).unwrap().clone();
