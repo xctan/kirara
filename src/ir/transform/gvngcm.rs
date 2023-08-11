@@ -320,12 +320,14 @@ fn schedule_late(
                 }
             }
             InstructionValue::MemPhi(mphi) => {
+                let load_bb = unit.inst_bb[&inst];
+                let load_dom = unit.blocks[load_bb].dom.clone();
                 // this inst must be a load
                 match value.value.as_inst() {
                     InstructionValue::Load(l) => {
                         let st = l.use_store.unwrap();
                         for (arg, bb) in &mphi.args {
-                            if *arg == st {
+                            if *arg == st && load_dom.contains(bb) {
                                 // eprintln!("added {}", unit.blocks[*bb].name);
                                 user_bbs.push(*bb);
                             }
