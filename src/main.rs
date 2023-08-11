@@ -41,8 +41,15 @@ lazy_static!{
 
 fn main() {
     let pwd = std::env::current_dir().unwrap();
-    let input_basename = 
-        std::path::Path::new(&ARGS.input).file_stem().unwrap().to_str().unwrap();
+    let input_basename = {
+        let raw = std::path::Path::new(&ARGS.input).file_stem().unwrap().to_str().unwrap();
+        if raw == "-" {
+            // avoid special characters in filename with confusing meaning
+            "STDIN"
+        } else {
+            raw
+        }
+    };
 
     let mut input = if ARGS.language == "sysy" {
         include_str!("rt/defs.h").to_owned()
@@ -73,6 +80,7 @@ fn main() {
             Box::new(ir::transform::mem2reg::Mem2Reg),
             Box::new(ir::transform::bbopt::BasicBlockOptimization),
             Box::new(ir::transform::mem2reg::Mem2Reg),
+            Box::new(ir::transform::rename::Canonicalize),
             Box::new(ir::transform::gvngcm::GVNGCM),
             Box::new(ir::transform::instcomb::InstructionCombination),
             Box::new(ir::transform::dce::DeadCodeElimination),

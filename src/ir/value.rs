@@ -109,6 +109,13 @@ impl Value {
             used_by: HashSet::new(),
         }
     }
+
+    pub fn as_mphi(&mut self) -> &mut MemPhiInst {
+        match &mut self.value {
+            ValueType::Instruction(InstructionValue::MemPhi(v)) => v,
+            _ => panic!("not an mphi"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -266,6 +273,8 @@ pub enum InstructionValue {
     Phi(PhiInst),
     GetElemPtr(GetElemPtrInst),
     Call(CallInst),
+    MemOp(MemOpInst),
+    MemPhi(MemPhiInst),
 }
 
 impl_value_trait!{InstructionValue{
@@ -280,6 +289,8 @@ impl_value_trait!{InstructionValue{
     Phi,
     GetElemPtr,
     Call,
+    MemOp,
+    MemPhi,
 }}
 
 #[derive(Debug, Clone)]
@@ -299,6 +310,7 @@ pub struct LoadInst {
     pub ptr: ValueId,
     pub name: String,
     pub ty: Rc<Type>,
+    pub use_store: Option<ValueId>,
 }
 
 impl_value_trait!(LoadInst);
@@ -383,6 +395,22 @@ pub struct CallInst {
 
 impl_value_trait!(CallInst);
 
+#[derive(Debug, Clone)]
+pub struct MemOpInst {
+    pub load: ValueId,
+    pub after_load: Option<ValueId>,
+}
+
+impl ValueTrait for MemOpInst {}
+
+#[derive(Debug, Clone)]
+pub struct MemPhiInst {
+    pub args: Vec<(ValueId, BlockId)>,
+    pub bind_ptr: ValueId,
+}
+
+impl ValueTrait for MemPhiInst {}
+
 pub fn calculate_used_by(unit: &mut TransUnit, func: &str) {
     let func = unit.funcs[func].clone();
 
@@ -448,6 +476,8 @@ pub fn calculate_used_by(unit: &mut TransUnit, func: &str) {
                         arg_mut.used_by.insert(inst);
                     }
                 },
+                InstructionValue::MemOp(_) => {},
+                InstructionValue::MemPhi(_) => {},
             }
         }
     }

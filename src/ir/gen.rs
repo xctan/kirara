@@ -145,13 +145,15 @@ impl EmitIr for AstNode {
                 // println!("if end");
             }
             AstNodeType::WhileStmt(whiles) => {
-                let counter = builder.count();
+                // let counter = builder.count();
                 let cur_bb = &builder.unit.blocks[builder.cur_bb()];
                 // println!("while test");
                 let test = if cur_bb.is_empty() && !cur_bb.is_labeled {
                     builder.cur_bb()
                 } else {
-                    let (a, b) = builder.start_new_named_bb(&format!("while_begin_{counter}"));
+                    let (a, b) =
+                        // builder.start_new_named_bb(&format!("while_begin_{counter}"));
+                        builder.start_new_bb();
                     builder.jump(b).push_to(a);
                     b
                 };
@@ -163,7 +165,9 @@ impl EmitIr for AstNode {
                     let cur_bb = &builder.unit.blocks[builder.cur_bb()];
                     let fail =
                         if !cur_bb.is_empty() || cur_bb.is_labeled {
-                            let (a, b) = builder.start_new_named_bb(&format!("while_end_{counter}"));
+                            let (a, b) =
+                                // builder.start_new_named_bb(&format!("while_end_{counter}"));
+                                builder.start_new_bb();
                             // println!("jump to test");
                             builder.jump(test).push_to(a);
                             b

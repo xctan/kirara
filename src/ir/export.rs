@@ -274,6 +274,15 @@ impl TransUnit {
                                 }
                                 writeln!(writer, ")")?;
                             }
+                            InstructionValue::MemOp(ref mop) => {
+                                write!(writer, "\r; memop")?;
+                                if let Some(l) = mop.after_load {
+                                    write!(writer, " after ")?;
+                                    self.print_value(l, writer)?;
+                                }
+                                writeln!(writer)?;
+                            }
+                            InstructionValue::MemPhi(_) => {}
                         }
                     }
                     ValueType::Constant(_) => unimplemented!(),

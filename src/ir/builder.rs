@@ -76,6 +76,7 @@ impl IrFuncBuilder<'_> {
         (old, bb)
     }
 
+    #[allow(unused)]
     pub fn start_new_named_bb(&mut self, name: &str) -> (BlockId, BlockId) {
         let old = self.cur_bb();
         let name = format!("{}.{}", name, self.count());

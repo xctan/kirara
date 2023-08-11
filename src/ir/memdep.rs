@@ -1,237 +1,350 @@
 use std::collections::{HashMap, HashSet};
 
-use super::{value::{ValueId, InstructionValue, ValueType, CallInst}, structure::{BlockId, TransUnit}};
+use super::{value::{ValueId, InstructionValue, ValueType, CallInst}, structure::TransUnit};
 
-pub struct MemoryDependency {
-    // which version is used
-    memuse: HashMap<ValueId, u32>,
-    // which version is killed
-    memdef: HashMap<ValueId, u32>,
-    // the version is defined by which MemoryDef/MemoryPhi
-    def_by: HashMap<u32, MemoryDef>,
-    pub store_defs: HashMap<ValueId, u32>,
-    // merge memory defs
-    memphi: HashMap<BlockId, Vec<(BlockId, u32)>>,
+impl TransUnit {
+    pub fn clear_memdep(&mut self, func: &str) {
+        let f = self.funcs[func].clone();
+        let mut deleted = HashSet::new();
 
-    results: HashMap<ValueId, u32>,
-    pub mr: ModRef,
-}
-
-// a mix of MemoryDef and MemoryPhi
-#[derive(Hash, PartialEq, Eq)]
-pub enum MemoryDef {
-    Instruction(ValueId),
-    MemoryPhi(BlockId),
-}
-
-const LIVE_ON_ENTRY: u32 = 0;
-
-impl MemoryDependency {
-    pub fn build(unit: &TransUnit, func: &str, mr: &ModRef) -> MemoryDependency {
-        // need to obtain dominance frontier before building memory ssa
-
-        let f = unit.funcs[func].clone();
-
-        // stage 1
-        let mut memphi = HashMap::new();
-        let mut worklist = vec![];
         for bb in &f.bbs {
-            let mut iter = unit.blocks[*bb].insts_start;
+            for mphi in self.blocks[*bb].mphi_lts.clone() {
+                self.values.remove(mphi);
+                deleted.insert(mphi);
+            }
+            for mphi in self.blocks[*bb].mphi_stl.clone() {
+                self.values.remove(mphi);
+                deleted.insert(mphi);
+            }
+            let block = &mut self.blocks[*bb];
+            block.mphi_lts.clear();
+            block.mphi_stl.clear();
+            
+            let mut removed = vec![];
+            let mut iter = block.insts_start;
             while let Some(vid) = iter {
-                let value = &unit.values[vid];
+                let value = &mut self.values[vid];
+                iter = value.next;
+                match value.value.as_inst_mut() {
+                    InstructionValue::Load(l) => {
+                        l.use_store = None;
+                    },
+                    InstructionValue::MemOp(_) => {
+                        removed.push(vid);
+                    },
+                    _ => {}
+                }
+            }
+            for vid in removed {
+                self.remove2(vid);
+            }
+        }
+
+        for bb in &f.bbs {
+            let block = &self.blocks[*bb];
+            let mut iter = block.insts_start;
+            while let Some(vid) = iter {
+                let inst = &mut self.values[vid];
+                iter = inst.next;
+                inst.used_by.retain(|u| !deleted.contains(u));
+            }
+        }
+
+        // for bb in &f.bbs {
+        //     let block = &self.blocks[*bb];
+        //     let mut iter = block.insts_start;
+        //     while let Some(vid) = iter {
+        //         let inst = &self.values[vid];
+        //         iter = inst.next;
+        //         assert!(inst.used_by.iter().all(|u| self.values.get(*u).is_some()))
+        //     }
+        // }
+    }
+
+    pub fn compute_memdep(&mut self, func: &str, mr: &ModRef) {
+        struct RelatedAccess {
+            id: usize,
+            loads: Vec<ValueId>,
+            stores: HashSet<ValueId>,
+        }
+        impl RelatedAccess {
+            fn new(id: usize) -> Self {
+                Self {
+                    id,
+                    loads: vec![],
+                    stores: HashSet::new(),
+                }
+            }
+        }
+
+        let f = self.funcs[func].clone();
+        
+        let mut loads = HashMap::<_, RelatedAccess>::new();
+        for bb in &f.bbs {
+            let mut iter = self.blocks[*bb].insts_start;
+            while let Some(vid) = iter {
+                let value = &self.values[vid];
                 iter = value.next;
                 match value.value.as_inst() {
-                    // FIXME: check user ptr
-                    // FIXME: check user ptr
-                    // FIXME: check user ptr
-                    InstructionValue::Store(_) => {
-                        worklist.push(*bb);
-                    },
-                    InstructionValue::Call(c) => {
-                        let _ = c;
-                        // todo: check if the function has side effect (purity)
-                        worklist.push(*bb);
+                    InstructionValue::Load(l) => {
+                        let orig = self.get_base_object(l.ptr);
+                        if loads.contains_key(&orig) {
+                            loads.get_mut(&orig).unwrap().loads.push(vid);
+                            continue;
+                        }
+                        let mut ra = RelatedAccess::new(loads.len());
+                        ra.loads.push(vid);
+                        for bb in &f.bbs {
+                            let mut iter = self.blocks[*bb].insts_start;
+                            while let Some(vid) = iter {
+                                let value = &self.values[vid];
+                                iter = value.next;
+                                match value.value.as_inst() {
+                                    InstructionValue::Store(s) => {
+                                        if self.may_alias(s.ptr, orig, mr) {
+                                            ra.stores.insert(vid);
+                                        }
+                                    }
+                                    InstructionValue::Call(c) => {
+                                        // todo: check side effect!
+                                        if self.call_may_alias(orig, c.clone(), mr) {
+                                            ra.stores.insert(vid);
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        loads.insert(orig, ra);
                     }
                     _ => {}
                 }
             }
         }
-        let mut visited = HashSet::new();
-        while let Some(bb) = worklist.pop() {
-            // somewhere inside this bb there is a store-like instruction
-            let df = &unit.blocks[bb].df;
-            for y in df {
-                if !visited.contains(y) {
-                    visited.insert(*y);
-                    worklist.push(*y);
 
-                    let preds = &unit.blocks[*y].preds;
-                    let phi: Vec<_> = preds
-                        .iter()
-                        .map(|x| (*x, LIVE_ON_ENTRY))
-                        .collect();
-                    memphi.insert(*y, phi);
+        let mut worklist = vec![];
+        let mut visited = HashSet::new();
+        for (&orig, ra) in &loads {
+            visited.clear();
+            for i in &ra.stores {
+                let inst_bb = self.inst_bb[i];
+                worklist.push(inst_bb);
+            }
+            while let Some(bb) = worklist.pop() {
+                for &df in &self.blocks[bb].df.clone() {
+                    if !visited.contains(&df) {
+                        visited.insert(df);
+                        let phi = self.memphi(orig, df);
+                        self.blocks.get_mut(df).unwrap().mphi_lts.push(phi);
+                        self.inst_bb.insert(phi, df);
+                        worklist.push(df);
+                    }
                 }
             }
         }
 
-        // stage 2
-        let mut counter = 1u32;
-        let mut visited = HashSet::new();
-        let mut worklist = Vec::new();
-        let mut store_defs = HashMap::new();
-        let mut def_by = HashMap::new();
-        let mut memuse = HashMap::new();
-        let mut memdef = HashMap::new();
-        worklist.push((f.entry_bb, LIVE_ON_ENTRY));
-        while let Some((w, mut v)) = worklist.pop() {
-            if visited.contains(&w) {
+        let mut worklist = vec![(f.entry_bb, vec![self.undef(); loads.len()])];
+        let mut vis = HashSet::new();
+        while let Some((bb, mut values)) = worklist.pop() {
+            if vis.contains(&bb) {
                 continue;
             }
-            visited.insert(w);
-
-            if memphi.contains_key(&w) {
-                let id = counter;
-                counter += 1;
-                v = id;
-                // defs.insert(w, id);
-                def_by.insert(id, MemoryDef::MemoryPhi(w));
+            vis.insert(bb);
+            let memphis = self.blocks[bb].mphi_lts.clone();
+            for &phi in &memphis {
+                let mphi = self.values.get_mut(phi).unwrap().as_mphi();
+                let id = loads.get(&mphi.bind_ptr).unwrap().id;
+                values[id] = phi;
             }
-
-            let mut iter = unit.blocks[w].insts_start;
+            let mut iter = self.blocks[bb].insts_start;
             while let Some(vid) = iter {
-                let value = &unit.values[vid];
+                let value = &self.values[vid];
                 iter = value.next;
 
-                match value.value.as_inst() {
-                    InstructionValue::Load(_) => {
-                        memuse.insert(vid, v);
-                    },
-                    InstructionValue::Store(_) => {
-                        let id = counter;
-                        counter += 1;
-                        // kill old version
-                        memdef.insert(vid, v);
-                        v = id;
-                        store_defs.insert(vid, id);
-                        def_by.insert(id, MemoryDef::Instruction(vid));
-                    },
-                    InstructionValue::Call(_) => {
-                        // todo: check if the function is pure
-                        let id = counter;
-                        counter += 1;
-                        // kill old version
-                        memdef.insert(vid, v);
-                        v = id;
-                        store_defs.insert(vid, id);
-                        def_by.insert(id, MemoryDef::Instruction(vid));
-                    },
-                    _ => {}
-                }
-            }
-
-            for succ in unit.succ(w) {
-                worklist.push((succ, v));
-
-                if memphi.contains_key(&succ) {
-                    let phi = memphi.get_mut(&succ).unwrap();
-                    phi.iter_mut().for_each(|(x, y)| {
-                        if *x == w {
-                            *y = v;
+                let memdef = match value.value.as_inst() {
+                    InstructionValue::Load(l) => {
+                        let base = self.get_base_object(l.ptr);
+                        values[loads.get(&base).unwrap().id]
+                    }
+                    InstructionValue::Store(_) | InstructionValue::Call(_) => {
+                        for (_, info) in &mut loads {
+                            if info.stores.contains(&vid) {
+                                values[info.id] = vid;
+                            }
                         }
-                    });
-                }
-            }
-        }
+                        continue;
+                    }
+                    _ => continue
+                };
 
-        MemoryDependency {
-            memuse,
-            memdef,
-            store_defs,
-            def_by,
-            memphi,
-            results: HashMap::new(),
-            mr: mr.clone(),
-        }
-    }
-
-    fn locate_impl(&self, unit: &TransUnit, val: ValueId, ver: u32, depth: u32) -> u32 {
-        if ver == 0 {
-            return 0;
-        }
-        if depth > 5 {
-            return ver;
-        }
-        let def = self.def_by.get(&ver).unwrap();
-        match def {
-            MemoryDef::Instruction(inst) => {
-                let value = &unit.values[*inst];
-                match value.value.as_inst() {
-                    InstructionValue::Store(s) => {
-                        if unit.may_alias(val, s.ptr, &self.mr) {
-                            return ver;
-                        } else {
-                            let last_def = self.memdef.get(inst).unwrap();
-                            return self.locate_impl(unit, val, *last_def, depth + 1);
+                let value = &mut self.values[vid];
+                match value.value.as_inst_mut() {
+                    InstructionValue::Load(l) => {
+                        l.use_store = Some(memdef);
+                        let memdef_val = &self.values[memdef];
+                        // track usage of memphi only
+                        // FIXME: add used_by not only for memphi?
+                        if matches!(
+                            memdef_val.value,
+                            ValueType::Instruction(InstructionValue::MemPhi(_))
+                        ) {
+                            self.add_used_by(memdef, vid);
                         }
                     }
-                    InstructionValue::Call(call) => {
-                        if unit.call_may_alias(val, call.clone(), &self.mr) {
-                            return ver;
-                        } else {
-                            let last_def = self.memdef.get(inst).unwrap();
-                            return self.locate_impl(unit, val, *last_def, depth + 1);
+                    _ => unreachable!()
+                }
+            }
+            for succ in &self.succ(bb) {
+                worklist.push((*succ, values.clone()));
+                let memphis = self.blocks[*succ].mphi_lts.clone();
+                for &phi in &memphis {
+                    let mphi = self.values.get_mut(phi).unwrap().as_mphi();
+                    let id = loads.get(&mphi.bind_ptr).unwrap().id;
+                    mphi.args.iter_mut().find(|x| x.1 == bb).unwrap().0 = values[id];
+                    // self.add_used_by(values[id], phi);
+                }
+            }
+        }
+
+        let mut load_id = HashMap::new();
+        for (_, ra) in &loads {
+            for &load in &ra.loads {
+                load_id.insert(load, load_id.len());
+                for &store in &ra.stores {
+                    let op = self.memop(load);
+                    self.insert_before2(op, store);
+                }
+            }
+        }
+
+        let mut worklist = vec![];
+        let mut visited = HashSet::new();
+        for (load, _) in &load_id {
+            visited.clear();
+            let load_bb = self.inst_bb[load];
+            worklist.push(load_bb);
+            while let Some(bb) = worklist.pop() {
+                for &df in &self.blocks[bb].df.clone() {
+                    if !visited.contains(&df) {
+                        visited.insert(df);
+                        let phi = self.memphi(*load, df);
+                        self.blocks.get_mut(df).unwrap().mphi_stl.push(phi);
+                        self.inst_bb.insert(phi, df);
+                        worklist.push(df);
+                    }
+                }
+            }
+        }
+
+        let mut worklist = vec![
+            (f.entry_bb, vec![self.undef(); load_id.len()])
+        ];
+        let mut visited = HashSet::new();
+        while let Some((bb, mut values)) = worklist.pop() {
+            if visited.contains(&bb) {
+                continue;
+            }
+            visited.insert(bb);
+            let memphis = self.blocks[bb].mphi_stl.clone();
+            for &phi in &memphis {
+                let mphi = self.values.get_mut(phi).unwrap().as_mphi();
+                let id = load_id.get(&mphi.bind_ptr).unwrap();
+                values[*id] = phi;
+            }
+            let mut iter = self.blocks[bb].insts_start;
+            while let Some(vid) = iter {
+                let value = &self.values[vid];
+                iter = value.next;
+
+                let memuse = match value.value.as_inst() {
+                    InstructionValue::MemOp(op) => {
+                        let idx = load_id.get(&op.load).unwrap();
+                        values[*idx]
+                    }
+                    InstructionValue::Load(_l) => {
+                        values[load_id[&vid]] = vid;
+                        continue;
+                    }
+                    _ => continue
+                };
+
+                let value = &mut self.values[vid];
+                match value.value.as_inst_mut() {
+                    InstructionValue::MemOp(op) => {
+                        op.after_load = Some(memuse);
+                        let memuse_val = &self.values[memuse];
+                        // track usage of memphi only
+                        if matches!(
+                            memuse_val.value,
+                            ValueType::Instruction(InstructionValue::MemPhi(_))
+                        ) {
+                            self.add_used_by(memuse, vid);
                         }
                     }
-                    _ => return ver,
+                    _ => unreachable!()
                 }
             }
-            MemoryDef::MemoryPhi(phi) => {
-                let phi = self.memphi.get(phi).unwrap();
-                let mut results = vec![];
-                for (_, ver) in phi {
-                    results.push(self.locate_impl(unit, val, *ver, depth + 1));
-                }
-                results.sort();
-                results.dedup();
-                if results.len() == 1 {
-                    return results[0];
-                } else {
-                    return ver;
+            eprintln!("{:#?}", values);
+            for succ in &self.succ(bb) {
+                worklist.push((*succ, values.clone()));
+                let memphis = self.blocks[*succ].mphi_stl.clone();
+                for &phi in &memphis {
+                    let mphi = self.values.get_mut(phi).unwrap().as_mphi();
+                    let id = *load_id.get(&mphi.bind_ptr).unwrap();
+                    mphi.args.iter_mut().find(|x| x.1 == bb).unwrap().0 = values[id];
                 }
             }
         }
-    }
 
-    pub fn locate(&mut self, unit: &TransUnit, val: ValueId) -> u32 {
-        if self.results.contains_key(&val) {
-            return self.results[&val];
-        }
-        let ver = *self.memuse.get(&val).unwrap();
-        let value = &unit.values[val];
-        let ptrval = match value.value.as_inst() {
-            InstructionValue::Load(l) => l.ptr,
-            // InstructionValue::Store(s) => s.ptr,
-            _ => panic!("not a memory value"),
-        };
-        let ver = self.locate_impl(unit, ptrval, ver, 0);
-        self.results.insert(val, ver);
-        ver
+        // let mut changed = true;
+        // while changed {
+        //     changed = false;
+        //     let mut removed = vec![];
+        //     let mut removed_lts = HashSet::new();
+        //     let mut removed_stl = HashSet::new();
+        //     for bb in &f.bbs {
+        //         let block = &self.blocks[*bb];
+        //         for &mphi in &block.mphi_lts {
+        //             let mphi_val = &self.values[mphi];
+        //             if mphi_val.used_by.len() == 0 {
+        //                 removed.push(mphi);
+        //                 removed_lts.insert(mphi);
+        //             }
+        //         }
+        //         for &mphi in &block.mphi_stl {
+        //             let mphi_val = &self.values[mphi];
+        //             if mphi_val.used_by.len() == 0 {
+        //                 removed.push(mphi);
+        //                 removed_stl.insert(mphi);
+        //             }
+        //         }
+        //     }
+        //     if removed.len() > 0 {
+        //         changed = true;
+        //         for vid in removed {
+        //             // special memphi's aren't placed in linked list, so remove directly
+        //             let phival = self.values[vid].value.as_inst();
+        //             match phival {
+        //                 InstructionValue::MemPhi(mphi) => {
+        //                     for (op, _) in mphi.args.clone() {
+        //                         self.remove_used_by(op, vid);
+        //                     }
+        //                 }
+        //                 _ => unreachable!()
+        //             }
+        //             self.values.remove(vid);
+        //             self.inst_bb.remove(&vid);
+        //         }
+        //     }
+        //     for bb in &f.bbs {
+        //         let block = &mut self.blocks[*bb];
+        //         block.mphi_lts.retain(|x| !removed_lts.contains(x));
+        //         block.mphi_stl.retain(|x| !removed_stl.contains(x));
+        //     }
+        // }
     }
-
-    // pub fn locate_bb(&mut self, unit: &TransUnit, val: ValueId) -> BlockId {
-    //     let ver = self.locate(unit, val);
-    //     let def = self.def_by.get(&ver).unwrap();
-    //     match def {
-    //         MemoryDef::Instruction(inst) => {
-    //             unit.inst_bb[inst]
-    //         }
-    //         MemoryDef::MemoryPhi(phi) => {
-    //             *phi
-    //         }
-    //     }
-    // }
 }
+
 
 #[derive(Clone)]
 pub struct ModRef {
