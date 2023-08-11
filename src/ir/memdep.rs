@@ -220,11 +220,18 @@ impl TransUnit {
 
             for &load in &ra.loads {
                 let load_value = &self.values[load];
+                let self_bb = self.inst_bb[&load];
+                let self_dom = self.blocks[self_bb].dom.clone();
                 match load_value.value.as_inst() {
                     InstructionValue::Load(l) => {
                         let st = l.use_store.unwrap();
                         if let Some(k) = ra.killed_by.get(&st) {
                             for &ks in k {
+                                // no actual inference
+                                let store_bb = self.inst_bb[&ks];
+                                if !self_dom.contains(&store_bb) {
+                                    continue;
+                                }
                                 // store depends on this load, so the load cannot be
                                 // scheduled after this store
                                 let agent = ra.store_ops[&ks];
