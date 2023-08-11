@@ -18,7 +18,9 @@ impl MachineProgram {
 
         let mut counter = 0;
 
-        for (_, f) in &self.funcs {
+        let mut funcs = self.funcs.iter().collect::<Vec<_>>();
+        funcs.sort_by_key(|(name, _)| *name);
+        for (_, f) in funcs {
             counter += 1;
             let mut counter2 = 0;
             let mut count2 = || {
@@ -116,7 +118,9 @@ impl MachineProgram {
             writeln!(writer)?;
         }
 
-        for (s, AsmGlobalObject{ data, linkage }) in &self.symbols {
+        let mut symbols = self.symbols.iter().collect::<Vec<_>>();
+        symbols.sort_by_key(|(name, _)| *name);
+        for (s, AsmGlobalObject{ data, linkage }) in symbols {
             match linkage {
                 Linkage::Global => {
                     writeln!(writer, "\t.globl\t{}", s)?;

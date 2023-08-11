@@ -1167,7 +1167,6 @@ impl<'a> AsmFuncBuilder<'a> {
                                 let value = self.unit.values[*val].clone();
                                 match value.ty().kind {
                                     TypeKind::F32 => {
-                                        let vreg = self.resolve_fp(inst, mbb);
                                         if value.value.is_constant() {
                                             outgoing_fimm
                                                 .entry(*bb)

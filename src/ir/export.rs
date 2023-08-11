@@ -66,7 +66,7 @@ impl TransUnit {
         write!(writer, "{} ", init.ty)?;
         match init.data {
             InitData::ScalarI32(i) => write!(writer, "{}", i),
-            InitData::ScalarF32(f) => write!(writer, "0x{:x}", f.to_bits()),
+            InitData::ScalarF32(f) => write!(writer, "0x{:x}", (f as f64).to_bits()),
             InitData::Aggregate(ref data) => {
                 write!(writer, "[")?;
                 for (idx, val) in data.iter().enumerate() {
@@ -310,7 +310,7 @@ impl TransUnit {
                     ConstantValue::Undef => write!(writer, "undef"),
                     ConstantValue::I1(b) => write!(writer, "{}", b),
                     ConstantValue::I32(i) => write!(writer, "{}", i),
-                    ConstantValue::F32(f) => write!(writer, "{}", f),
+                    ConstantValue::F32(f) => write!(writer, "0x{:x}", (f as f64).to_bits()),
                 }
             }
             ValueType::Instruction(ref insn) => {

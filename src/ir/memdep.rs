@@ -253,16 +253,20 @@ impl TransUnit {
                 match mphi.value.as_inst() {
                     InstructionValue::MemPhi(mphi) => {
                         let ra = &loads[&mphi.bind_ptr];
-                        let killed: HashSet<_> = mphi.args
-                            .iter()
-                            .map(|&(st, _)| st)
-                            .collect();
+                        let killed = mphi.args.clone();
                         for &l in &ra.loads {
                             let load = self.values[l].clone();
+                            let load_dom = 
+                                self.blocks[self.inst_bb[&l]].dom.clone();
                             match load.value.as_inst() {
                                 InstructionValue::Load(load) => {
                                     let st = load.use_store.unwrap();
-                                    if killed.contains(&st) {
+                                    if killed
+                                        .iter()
+                                        .any(|&(stphi, bb)| {
+                                            stphi == st && load_dom.contains(&bb)
+                                        })
+                                    {
                                         self.add_used_by(l, phi);
                                     }
                                 },
