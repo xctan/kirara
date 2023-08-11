@@ -3,10 +3,9 @@ use std::collections::{HashMap, HashSet};
 use crate::{ir::{
     structure::{TransUnit, BlockId},
     cfg::{reverse_post_order, LoopInfo, compute_dom_level, self},
-    memdep::{MemoryDependency, ModRef},
     value::{
         ValueId, BinaryInst, ConstantValue, ValueType, InstructionValue,
-        GetElemPtrInst, LoadInst, CallInst
+        GetElemPtrInst, LoadInst, CallInst, ValueTrait,
     }
 }, ctype::BinaryOpType};
 
@@ -18,20 +17,21 @@ impl IrPass for GVNGCM {
     fn run(&self, unit: &mut TransUnit) {
         let mr = unit.compute_meta();
         for k in unit.funcs() {
-            run_gvn(unit, k.as_str(), &mr);
-            // eprintln!("{}", unit);
-            super::dce::dce(unit, k.as_str());
-            // eprintln!("{}", unit);
-            run_gcm(unit, k.as_str(), &mr);
-            // eprintln!("{}", unit);
+            unit.compute_memdep(&k, &mr);
+            run_gvn(unit, &k);
+            unit.clear_memdep(&k);
+            super::dce::dce(unit, &k);
+            unit.compute_memdep(&k, &mr);
+            run_gcm(unit, &k);
+            unit.clear_memdep(&k);
         }
     }
 }
 
-fn run_gvn(unit: &mut TransUnit, func: &str, mr: &ModRef) {
+fn run_gvn(unit: &mut TransUnit, func: &str) {
     let f = unit.funcs[func].clone();
-    let dep = MemoryDependency::build(unit, func, mr);
-    let mut table = ValueRegistry::new(dep);
+    
+    let mut table = ValueRegistry::new();
     let rpo = reverse_post_order(unit, f.entry_bb);
 
     for bb in &rpo {
@@ -62,8 +62,7 @@ fn run_gvn_on_bb(unit: &mut TransUnit, bb: BlockId, table: &mut ValueRegistry) {
                 }
             },
             InstructionValue::Store(s) => {
-                let ver = table.dep.store_defs[&vid];
-                let key = (s.ptr, ver);
+                let key = (s.ptr, vid);
                 table.loads.insert(key, s.value);
             },
             _ => {
@@ -81,19 +80,17 @@ struct ValueRegistry {
     binop: HashMap<(BinaryOpType, ValueId, ValueId), ValueId>,
     constant: HashMap<ConstantValue, ValueId>,
     gep: HashMap<(ValueId, Vec<ValueId>), ValueId>,
-    dep: MemoryDependency,
-    loads: HashMap<(ValueId, u32), ValueId>,
+    loads: HashMap<(ValueId, ValueId), ValueId>,
     calls: HashMap<(String, Vec<ValueId>), ValueId>,
 }
 
 impl ValueRegistry {
-    fn new(dep: MemoryDependency) -> Self {
+    fn new() -> Self {
         Self {
             resolved: HashMap::new(),
             binop: HashMap::new(),
             constant: HashMap::new(),
             gep: HashMap::new(),
-            dep,
             loads: HashMap::new(),
             calls: HashMap::new(),
         }
@@ -172,8 +169,8 @@ impl ValueRegistry {
 
     fn find_load(&mut self, unit: &mut TransUnit, val: ValueId, l: LoadInst) -> ValueId {
         let ptr = self.lookup_or_add(unit, l.ptr);
-        let ver = self.dep.locate(unit, val);
-        let key = (ptr, ver);
+        let store = l.use_store.unwrap();
+        let key = (ptr, store);
         // store can be cached in main loop
         if self.loads.contains_key(&key) {
             self.loads[&key]
@@ -192,9 +189,8 @@ impl ValueRegistry {
 
 }
 
-fn run_gcm(unit: &mut TransUnit, func: &str, mr: &ModRef) {
+fn run_gcm(unit: &mut TransUnit, func: &str) {
     let f = unit.funcs[func].clone();
-    let mut dep = MemoryDependency::build(unit, func, mr);
     let info = LoopInfo::compute(unit, func);
     let dom_level = compute_dom_level(unit, func);
     let mut insts = vec![];
@@ -212,7 +208,7 @@ fn run_gcm(unit: &mut TransUnit, func: &str, mr: &ModRef) {
     }
 
     for inst in &insts {
-        schedule_early(unit, &mut vis, *inst, &dom_level, entry, &mut dep);
+        schedule_early(unit, &mut vis, *inst, &dom_level, entry);
     }
     vis.clear();
     // eprintln!("{}", unit);
@@ -225,7 +221,7 @@ fn run_gcm(unit: &mut TransUnit, func: &str, mr: &ModRef) {
 fn schedule_early(
     unit: &mut TransUnit, vis: &mut HashSet<ValueId>,
     inst: ValueId, dom_level: &HashMap<BlockId, u32>,
-    entry: BlockId, dep: &mut MemoryDependency,
+    entry: BlockId,
 ) {
     if vis.contains(&inst) {
         return;
@@ -242,7 +238,7 @@ fn schedule_early(
         ($op:expr) => {
             let value1 = unit.values[$op].clone();
             if value1.value.is_inst() {
-                schedule_early(unit, vis, $op, dom_level, entry, dep);
+                schedule_early(unit, vis, $op, dom_level, entry);
                 let op_bb = unit.inst_bb[&$op];
                 schedule!(@op_bb);
             }
@@ -273,11 +269,11 @@ fn schedule_early(
                 schedule!(*i);
             }
         }
-        // InstructionValue::Load(l) => {
-        //     transfer!(entry, inst);
-        //     schedule!(l.ptr);
-        //     schedule!(@dep.locate_bb(unit, inst));
-        // }
+        InstructionValue::Load(l) => {
+            transfer!(entry, inst);
+            schedule!(l.ptr);
+            schedule!(l.use_store.unwrap());
+        }
         // TODO: pure function
         _ => {}
     }
@@ -298,7 +294,7 @@ fn schedule_late(
     }
     if !matches!(
         value.value.as_inst(),
-        InstructionValue::Binary(_) | InstructionValue::GetElemPtr(_) /*| InstructionValue::Load(_) */
+        InstructionValue::Binary(_) | InstructionValue::GetElemPtr(_) | InstructionValue::Load(_)
         /* TODO: pure function */
     ) {
         return;
@@ -306,25 +302,48 @@ fn schedule_late(
     
     let mut user_bbs = vec![];
     // eprintln!("{:#?}", value);
+    eprintln!("schedule {:?} {}", inst, value.name());
     for u in &value.used_by {
+        // eprintln!("value id {:?}", u);
         schedule_late(unit, vis, *u, info, entry);
         let user = unit.inst_bb[u];
         let user_value = unit.values[*u].clone();
-        if let InstructionValue::Phi(phi) = user_value.value.as_inst() {
-            for (arg, bb) in &phi.args {
-                if *arg == inst {
-                    user_bbs.push(*bb);
+        match user_value.value.as_inst() {
+            InstructionValue::Phi(phi) => {
+                for (arg, bb) in &phi.args {
+                    if *arg == inst {
+                        user_bbs.push(*bb);
+                    }
                 }
             }
-        } else {
-            user_bbs.push(user);
+            InstructionValue::MemPhi(mphi) => {
+                eprintln!("memphi {:?}", mphi);
+                for (arg, bb) in &mphi.args {
+                    if *arg == inst {
+                        eprintln!("added {}", unit.blocks[*bb].name);
+                        user_bbs.push(*bb);
+                    }
+                }
+            }
+            _ => {
+                user_bbs.push(user);
+            }
         }
     }
+
+    eprint!(" users at: ");
+    for u in &user_bbs {
+        let block = &unit.blocks[*u];
+        eprint!("{} ", block.name);
+    }
+    eprintln!();
 
     let mut lca = user_bbs[0];
     for i in user_bbs.iter().skip(1) {
         lca = cfg::intersect(unit, entry, lca, *i);
     }
+
+    eprintln!("lca bb: {}", unit.blocks[lca].name);
 
     let mut best_bb = lca;
     let mut best_loop_depth = info.depth(best_bb);
@@ -337,6 +356,8 @@ fn schedule_late(
             best_loop_depth = loop_depth;
         }
     }
+
+    eprintln!("best bb: {}, loop depth {}", unit.blocks[best_bb].name, best_loop_depth);
 
     unit.takeout(inst);
     unit.insert_before_end(best_bb, inst);

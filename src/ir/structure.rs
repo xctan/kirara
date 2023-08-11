@@ -10,7 +10,7 @@ use crate::ir::value::{
 };
 
 use super::builder::IrFuncBuilder;
-use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue, CallInst, UnaryOp};
+use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue, CallInst, UnaryOp, MemPhiInst, MemOpInst};
 
 #[derive(Debug, Clone)]
 pub struct IrFunc {
@@ -40,6 +40,9 @@ pub struct BasicBlock {
 
     pub insts_start: Option<ValueId>,
     pub insts_end: Option<ValueId>,
+
+    pub mphi_lts: Vec<ValueId>,
+    pub mphi_stl: Vec<ValueId>,
 }
 
 impl BasicBlock {
@@ -55,6 +58,8 @@ impl BasicBlock {
             df: Vec::new(),
             insts_start: None,
             insts_end: None,
+            mphi_lts: Vec::new(),
+            mphi_stl: Vec::new(),
         }
     }
 
@@ -134,6 +139,12 @@ impl TransUnit {
             .map(|value| value.used_by.insert(user));
     }
 
+    pub fn remove_used_by(&mut self, value: ValueId, user: ValueId) {
+        self.values
+            .get_mut(value)
+            .map(|value| value.used_by.remove(&user));
+    }
+
     // methods for modifying insts in bb
 
     // insert before some inst in bb
@@ -157,6 +168,11 @@ impl TransUnit {
             let bb = self.blocks.get_mut(bb).unwrap();
             bb.insts_start = Some(value);
         }
+    }
+
+    pub fn insert_before2(&mut self, value: ValueId, before: ValueId) {
+        let bb = self.inst_bb.get(&before).unwrap();
+        self.insert_before(*bb, value, before);
     }
 
     /// insert a inst at the beginning of a bb
@@ -241,15 +257,17 @@ impl TransUnit {
 
     /// remove a inst from bb and delete it
     pub fn remove(&mut self, _bb: BlockId, value: ValueId) {
+        // eprintln!("removing {:?}", value);
+        // let val = self.values.get(value).unwrap();
+        // eprintln!("value: {:?}", val);
+        self.remove2(value)
+    }
+
+    pub fn remove2(&mut self, value: ValueId) {
         self.takeout(value);
         let oprs = self.get_operands(value);
         for opr in oprs {
-            match self.values.get_mut(opr) {
-                Some(opr) => {
-                    opr.used_by.remove(&value);
-                }
-                None => {}
-            }
+            self.remove_used_by(opr, value);
         }
         self.values.remove(value);
     }
@@ -286,6 +304,14 @@ impl TransUnit {
             InstructionValue::Call(call) => {
                 let mut ret = vec![];
                 ret.extend(call.args);
+                ret
+            },
+            InstructionValue::MemOp(_) => vec![],
+            InstructionValue::MemPhi(mphi) => {
+                let mut ret = vec![];
+                for (val, _) in mphi.args {
+                    ret.push(val);
+                }
                 ret
             },
         }
@@ -363,6 +389,8 @@ impl TransUnit {
                         .for_each(|arg| *arg = new);
                     InstructionValue::Call(new_call)
                 }
+                raw @ InstructionValue::MemOp(_) => raw,
+                raw @ InstructionValue::MemPhi(_) => raw,
             };
             let user = self.values.get_mut(oc).unwrap();
             user.value = ValueType::Instruction(new_value);
@@ -507,6 +535,7 @@ impl TransUnit {
             name: self.gen_local_name(),
             ty,
             ptr,
+            use_store: None,
         };
         let val = ValueType::Instruction(InstructionValue::Load(inst));
         let val = Value::new(val);
@@ -645,5 +674,31 @@ impl TransUnit {
             self.add_used_by(arg, id);
         }
         id
+    }
+
+    pub fn memphi(&mut self, bind_ptr: ValueId, blk: BlockId) -> ValueId {
+        let undef = self.undef();
+        let block = &self.blocks[blk];
+        let preds: Vec<_> = block.preds
+            .iter()
+            .map(|&id| (undef, id))
+            .collect();
+        let inst = MemPhiInst {
+            args: preds,
+            bind_ptr,
+        };
+        let val = ValueType::Instruction(InstructionValue::MemPhi(inst));
+        let val = Value::new(val);
+        self.values.alloc(val)
+    }
+
+    pub fn memop(&mut self, load: ValueId) -> ValueId {
+        let inst = MemOpInst {
+            load,
+            after_load: None,
+        };
+        let val = ValueType::Instruction(InstructionValue::MemOp(inst));
+        let val = Value::new(val);
+        self.values.alloc(val)
     }
 }

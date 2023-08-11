@@ -1096,6 +1096,8 @@ impl<'a> AsmFuncBuilder<'a> {
                             ReturnValue::Void => {},
                         }
                     },
+                    InstructionValue::MemOp(_) => unreachable!("remaining memdep in codegen"),
+                    InstructionValue::MemPhi(_) => unreachable!("remaining memdep in codegen"),
                 }
             }
         }
