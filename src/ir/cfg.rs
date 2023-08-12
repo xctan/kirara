@@ -250,6 +250,7 @@ pub fn compute_dom_level(unit: &TransUnit, func: &str) -> HashMap<BlockId, u32> 
     dom_level
 }
 
+#[derive(Debug)]
 pub struct Loop {
     pub parent: Weak<RefCell<Loop>>,
     pub sub_loops: Vec<Rc<RefCell<Loop>>>,
@@ -280,6 +281,7 @@ impl Loop {
     }
 }
 
+#[derive(Debug)]
 pub struct LoopInfo {
     // top level loops
     pub loops: Vec<Rc<RefCell<Loop>>>,
@@ -299,11 +301,18 @@ impl LoopInfo {
         let entry = unit.funcs.get(func).unwrap().entry_bb;
         loopinfo.dfs(&mut worklist, unit, entry);
         loopinfo.populate(&mut vis, unit, entry);
+        
+        // for bb in &unit.funcs[func].bbs {
+        //     let block = &unit.blocks[*bb];
+        //     eprintln!("bb {} loop depth = {}", block.name, loopinfo.depth(*bb));
+        // }
+
         loopinfo
     }
 
     fn dfs(&mut self, worklist: &mut Vec<BlockId>, unit: &mut TransUnit, this: BlockId) {
-        let children = unit.blocks[this].dom.clone();
+        let block = &unit.blocks[this];
+        let children = block.dom.clone();
         for child in children {
             if child == this {
                 continue;
@@ -319,7 +328,7 @@ impl LoopInfo {
 
         // look for predecessors dominated by this node (i.e. back edge)
         for pred in &unit.blocks[this].preds {
-            if unit.blocks[*pred].dom.contains(&this) {
+            if unit.blocks[this].dom.contains(pred) {
                 worklist.push(*pred);
             }
         }

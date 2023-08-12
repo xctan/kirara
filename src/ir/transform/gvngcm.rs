@@ -360,12 +360,19 @@ fn schedule_late(
     let mut best_bb = lca;
     let mut best_loop_depth = info.depth(best_bb);
     let inst_bb = unit.inst_bb[&inst]; // upper bound
+    let mut candicates = vec![];
     while lca != inst_bb {
         lca = match unit.blocks[lca].idom {
             Some(idom) => idom,
             None => break, // already at entry
         };
+        candicates.push(lca);
+    }
+    candicates.push(inst_bb);
+    for lca in candicates {
+        // eprint!("visit {} loop depth ", unit.blocks[lca].name);
         let loop_depth = info.depth(lca);
+        // eprintln!("{}", loop_depth);
         if loop_depth < best_loop_depth {
             best_bb = lca;
             best_loop_depth = loop_depth;
