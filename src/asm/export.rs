@@ -2,7 +2,7 @@ use std::{fmt::{Display, Debug}, collections::HashMap};
 
 use crate::ctype::Linkage;
 
-use super::{GPOperand, RVGPR, MachineProgram, RV64Instruction, DataLiteral, AsmGlobalObject, FPOperand, RVFPR};
+use super::{GPOperand, RVGPR, MachineProgram, RV64Instruction, DataLiteral, AsmGlobalObject, FPOperand, RVFPR, OperandBase};
 
 impl Display for MachineProgram {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -312,6 +312,52 @@ impl Display for RV64Instruction {
                 write!(f, "fsd\t{}, {}({})", rs2, imm, rs1),
             RV64Instruction::FLD { rd, rs1, imm } =>
                 write!(f, "fld\t{}, {}({})", rd, imm, rs1),
+            RV64Instruction::ADDUW { rd, rs1, rs2 } =>
+                write!(f, "add.uw\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::SH1ADD { rd, rs1, rs2 } =>
+                write!(f, "sh1add\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::SH1ADDUW { rd, rs1, rs2 } =>
+                write!(f, "sh1add.uw\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::SH2ADD { rd, rs1, rs2 } => {
+                match (rd.color(), rs1.color(), rs2.color()) {
+                    (Some(rd), Some(rs1), Some(rs2)) => {
+                        // registers are allocated, but we need to encode it ourself
+                        let instruction: u32 =
+                            0b0010000 << 25 |
+                            (rs2 as u16 as u32) << 20 |
+                            (rs1 as u16 as u32) << 15 |
+                            0b100 << 12 |
+                            (rd as u16 as u32) << 7 |
+                            0b0110011;
+                        write!(f, ".word\t0x{instruction:08x}\t# sh2add\t{rd}, {rs1}, {rs2}")
+                    }
+                    // not allocated, so it won't be used by the assembler, and we call it directly
+                    _ => write!(f, "sh2add\t{}, {}, {}", rd, rs1, rs2)
+                }
+            },
+            RV64Instruction::SH2ADDUW { rd, rs1, rs2 } =>
+                write!(f, "sh2add.uw\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::SH3ADD { rd, rs1, rs2 } => {
+                match (rd.color(), rs1.color(), rs2.color()) {
+                    (Some(rd), Some(rs1), Some(rs2)) => {
+                        // registers are allocated, but we need to encode it ourself
+                        let instruction: u32 =
+                            0b0010000 << 25 |
+                            (rs2 as u16 as u32) << 20 |
+                            (rs1 as u16 as u32) << 15 |
+                            0b110 << 12 |
+                            (rd as u16 as u32) << 7 |
+                            0b0110011;
+                        write!(f, ".word\t0x{:08x}", instruction)
+                    }
+                    // not allocated, so it won't be used by the assembler, and we call it directly
+                    _ => write!(f, "sh3add\t{}, {}, {}", rd, rs1, rs2)
+                }
+            },
+            RV64Instruction::SH3ADDUW { rd, rs1, rs2 } =>
+                write!(f, "sh3add.uw\t{}, {}, {}", rd, rs1, rs2),
+            RV64Instruction::SLLIUW { rd, rs1, imm } =>
+                write!(f, "slli.uw\t{}, {}, {}", rd, rs1, imm),
             RV64Instruction::COMMENT { comment } =>
                 write!(f, "# {}", comment),
             RV64Instruction::CALL { callee, .. } =>

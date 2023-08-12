@@ -910,7 +910,9 @@ impl<'a> AsmFuncBuilder<'a> {
                         let dst = self.resolve(inst, mbb);
                         let mut ptr = self.resolve(g.ptr, mbb);
                         let mut ty = Type::ptr_to(g.base_ty);
+                        let mut acc = ptr;
                         for index in g.indices {
+                            acc = self.new_vreg64();
                             let elem_size = ty.base_type().size() as i32;
                             ty = ty.base_type();
                             let constant_index = self.resolve_constant(index);
@@ -922,49 +924,66 @@ impl<'a> AsmFuncBuilder<'a> {
                                     if let RV64Instruction::ADDI { rd, rs1, imm } = ptr_inst {
                                         let merged = offset + imm;
                                         if is_imm12(merged) {
-                                            emit!(ADDI dst, rs1, merged);
+                                            emit!(ADDI acc, rs1, merged);
                                         } else if is_imm12(offset) {
-                                            emit!(ADDI dst, rd, offset);
+                                            emit!(ADDI acc, rd, offset);
                                         } else {
                                             let tmp = self.new_vreg64();
                                             emit!(LIMM tmp, offset);
-                                            emit!(ADD dst, rd, tmp);
+                                            emit!(ADD acc, rd, tmp);
                                         }
                                     } else {
                                         if is_imm12(offset) {
-                                            emit!(ADDI dst, ptr, offset);
+                                            emit!(ADDI acc, ptr, offset);
                                         } else {
                                             let tmp = self.new_vreg64();
                                             emit!(LIMM tmp, offset);
-                                            emit!(ADD dst, ptr, tmp);
+                                            emit!(ADD acc, ptr, tmp);
                                         }
                                     }
                                 } else {
                                     if is_imm12(offset) {
-                                        emit!(ADDI dst, ptr, offset);
+                                        emit!(ADDI acc, ptr, offset);
                                     } else {
                                         let tmp = self.new_vreg64();
                                         emit!(LIMM tmp, offset);
-                                        emit!(ADD dst, ptr, tmp);
+                                        emit!(ADD acc, ptr, tmp);
                                     }
                                 }
                             } else {
                                 let idx = self.resolve(index, mbb);
-                                let tmp = self.new_vreg64();
+                                
                                 if elem_size.count_ones() == 1 {
                                     // FIXME: Zba shift and add instructions
-                                    if  elem_size.trailing_zeros() > 0 {
-                                        emit!(SLLI tmp, idx, elem_size.trailing_zeros() as i32);
+                                    match elem_size.trailing_zeros() {
+                                        0 => {
+                                            emit!(ADD acc, ptr, idx);
+                                        },
+                                        1 => {
+                                            emit!(SH1ADD acc, idx, ptr);
+                                        },
+                                        2 => {
+                                            emit!(SH2ADD acc, idx, ptr);
+                                        },
+                                        3 => {
+                                            emit!(SH3ADD acc, idx, ptr);
+                                        },
+                                        _ => {
+                                            let tmp = self.new_vreg64();
+                                            emit!(SLLI tmp, idx, elem_size.trailing_zeros() as i32);
+                                            emit!(ADD acc, ptr, tmp);
+                                        }
                                     }
-                                    emit!(ADD dst, ptr, tmp);
                                 } else {
+                                    let tmp = self.new_vreg64();
                                     emit!(LIMM tmp, elem_size);
                                     emit!(MUL tmp, idx, tmp);
-                                    emit!(ADD dst, ptr, tmp);
+                                    emit!(ADD acc, ptr, tmp);
                                 }
                             }
-                            ptr = dst;
+                            ptr = acc;
                         }
+                        emit!(MV dst, acc);
                     },
                     InstructionValue::Call(c) => {
                         enum ReturnValue {
