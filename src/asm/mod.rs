@@ -809,6 +809,16 @@ pub enum RV64Instruction {
     FCVTDLU { rd: FPOperand, rs1: GPOperand },
     FMVDX { rd: FPOperand, rs1: GPOperand },
 
+    // Zba extension
+    ADDUW { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
+    SH1ADD { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
+    SH1ADDUW { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
+    SH2ADD { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
+    SH2ADDUW { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
+    SH3ADD { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
+    SH3ADDUW { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
+    SLLIUW { rd: GPOperand, rs1: GPOperand, imm: i32 },
+
     // pseudo instructions for convenience
     COMMENT { comment: String },
     CALL { callee: String, params: Vec<bool> },
@@ -904,6 +914,15 @@ macro_rules! implement_typed_instruction {
         $implementer!(r; DIVUW);
         $implementer!(r; REMW);
         $implementer!(r; REMUW);
+
+        $implementer!(r; ADDUW);
+        $implementer!(r; SH1ADD);
+        $implementer!(r; SH1ADDUW);
+        $implementer!(r; SH2ADD);
+        $implementer!(r; SH2ADDUW);
+        $implementer!(r; SH3ADD);
+        $implementer!(r; SH3ADDUW);
+        $implementer!(i; SLLIUW);
 
         $implementer!(cj; JEQ);
         $implementer!(cj; JNE);
