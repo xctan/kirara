@@ -162,7 +162,7 @@ impl TransUnit {
         let that = self.values.get_mut(before).unwrap();
         that.prev = Some(value);
         if let Some(prev) = prev {
-            let mut prev = self.values.get_mut(prev).unwrap();
+            let prev = self.values.get_mut(prev).unwrap();
             prev.next = Some(value);
         } else {
             let bb = self.blocks.get_mut(bb).unwrap();
@@ -186,9 +186,9 @@ impl TransUnit {
                 bb.insts_end = Some(value);
             }
             Some(start) => {
-                let mut this = self.values.get_mut(value).unwrap();
+                let this = self.values.get_mut(value).unwrap();
                 this.next = Some(start);
-                let mut start = self.values.get_mut(start).unwrap();
+                let start = self.values.get_mut(start).unwrap();
                 start.prev = Some(value);
                 let bb = self.blocks.get_mut(bb).unwrap();
                 bb.insts_start = Some(value);
@@ -206,9 +206,9 @@ impl TransUnit {
                 bb.insts_end = Some(value);
             }
             Some(end) => {
-                let mut this = self.values.get_mut(value).unwrap();
+                let this = self.values.get_mut(value).unwrap();
                 this.prev = Some(end);
-                let mut end = self.values.get_mut(end).unwrap();
+                let end = self.values.get_mut(end).unwrap();
                 end.next = Some(value);
                 let bb = self.blocks.get_mut(bb).unwrap();
                 bb.insts_end = Some(value);
@@ -233,21 +233,21 @@ impl TransUnit {
         let this = self.values.get(value).unwrap().clone();
         match this.prev {
             Some(prev) => {
-                let mut prev = self.values.get_mut(prev).unwrap();
+                let prev = self.values.get_mut(prev).unwrap();
                 prev.next = this.next;
             }
             None => {
-                let mut bb = self.blocks.get_mut(bb).unwrap();
+                let bb = self.blocks.get_mut(bb).unwrap();
                 bb.insts_start = this.next;
             }
         }
         match this.next {
             Some(next) => {
-                let mut next = self.values.get_mut(next).unwrap();
+                let next = self.values.get_mut(next).unwrap();
                 next.prev = this.prev;
             }
             None => {
-                let mut bb = self.blocks.get_mut(bb).unwrap();
+                let bb = self.blocks.get_mut(bb).unwrap();
                 bb.insts_end = this.prev;
             }
         }

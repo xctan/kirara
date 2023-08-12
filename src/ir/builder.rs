@@ -112,9 +112,9 @@ impl IrFuncBuilder<'_> {
                 bb.insts_end = Some(value);
             }
             (Some(_), Some(end)) => {
-                let mut this = self.unit.values.get_mut(value).unwrap();
+                let this = self.unit.values.get_mut(value).unwrap();
                 this.prev = Some(end);
-                let mut end = self.unit.values.get_mut(end).unwrap();
+                let end = self.unit.values.get_mut(end).unwrap();
                 end.next = Some(value);
                 bb.insts_end = Some(value);
             }

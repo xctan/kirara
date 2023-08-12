@@ -891,7 +891,6 @@ fn function((cursor, ty): (TokenSpan, Rc<Type>)) -> IResult<TokenSpan, ()> {
 
     let obj = get_object(obj_id).unwrap();
     let params = obj.ty.as_function().params;
-    drop(obj);
 
     enter_scope();
     let params: Vec<_> = params.into_iter()

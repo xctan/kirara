@@ -7,7 +7,7 @@ pub struct Arguments {
     #[clap(short, long)]
     /// Dump every intermediate representation
     pub dump: bool,
-    #[clap(short = 'O', default_value = "1")]
+    #[clap(short = 'O', default_value = "2")]
     /// Optimization level
     pub optimize: String,
     /// Input file
@@ -73,9 +73,11 @@ fn main() {
 
     let mut unit = ast.emit_ir();
     
-    if ARGS.optimize != "0" {
-        let mut cnt = 0;
-        let passes: Vec<Box<dyn IrPass>> = vec![
+    let passes: Vec<Box<dyn IrPass>> = match ARGS.optimize.as_str() {
+        "0" => vec![
+            Box::new(ir::transform::rename::Canonicalize),
+        ],
+        "2" => vec![
             Box::new(ir::transform::rename::Canonicalize),
             Box::new(ir::transform::mem2reg::Mem2Reg),
             Box::new(ir::transform::bbopt::BasicBlockOptimization),
@@ -85,17 +87,27 @@ fn main() {
             Box::new(ir::transform::instcomb::InstructionCombination),
             Box::new(ir::transform::dce::DeadCodeElimination),
             Box::new(ir::transform::rename::Canonicalize),
-        ];
-        for pass in &passes {
-            if ARGS.dump {
-                std::fs::write(
-                    pwd.join(format!("{}.{cnt:02}.ll", input_basename)),
-                    unit.to_string()
-                ).unwrap();
-                cnt += 1;
-            }
-            pass.run(&mut unit);
+        ],
+        _ => vec![
+            Box::new(ir::transform::rename::Canonicalize),
+            Box::new(ir::transform::mem2reg::Mem2Reg),
+            Box::new(ir::transform::bbopt::BasicBlockOptimization),
+            Box::new(ir::transform::mem2reg::Mem2Reg),
+            Box::new(ir::transform::instcomb::InstructionCombination),
+            Box::new(ir::transform::dce::DeadCodeElimination),
+            Box::new(ir::transform::rename::Canonicalize),
+        ],
+    };
+    let mut cnt = 0;
+    for pass in &passes {
+        if ARGS.dump {
+            std::fs::write(
+                pwd.join(format!("{}.{cnt:02}.ll", input_basename)),
+                unit.to_string()
+            ).unwrap();
+            cnt += 1;
         }
+        pass.run(&mut unit);
     }
     if ARGS.dump {
         std::fs::write(

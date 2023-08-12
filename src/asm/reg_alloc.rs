@@ -49,6 +49,7 @@ impl MachineProgram {
 
     fn gpr_pass(&mut self, loopinfo: &LoopInfo, func: &str, ir: &mut TransUnit) {
         let mut done = false;
+        // let mut counter = 1;
 
         while !done {
             let liveness = 
@@ -68,6 +69,11 @@ impl MachineProgram {
                 func.used_regs.extend(used_regs_allocated);
             } else {
                 RegisterSpilling::<GPOperand, RVGPR, VirtGPR>::apply(self, allocator.spilled_nodes, func);
+                // std::fs::write(
+                //     format!("RegAllocGPR.{counter:02}.s"),
+                //     self.to_string()
+                // ).unwrap();
+                // counter += 1;
             }
         }
     }
@@ -106,18 +112,18 @@ where
 {
     loopinfo: &'a LoopInfo,
 
-    adj_list: HashMap<O, HashSet<O>>,
-    adj_set: HashSet<(O, O)>,
-    degree: HashMap<O, isize>,
-    alias: HashMap<O, O>,
-    move_list: HashMap<O, BTreeSet<Move<O, R, V>>>,
+    adj_list: BTreeMap<O, BTreeSet<O>>,
+    adj_set: BTreeSet<(O, O)>,
+    degree: BTreeMap<O, isize>,
+    alias: BTreeMap<O, O>,
+    move_list: BTreeMap<O, BTreeSet<Move<O, R, V>>>,
     simplify_worklist: BTreeSet<O>,
     freeze_worklist: BTreeSet<O>,
     spill_worklist: BTreeSet<(OrderedF32, O)>,
-    spilled_nodes: HashSet<O>,
+    spilled_nodes: BTreeSet<O>,
     coalesced_nodes: BTreeSet<O>,
     select_stack: Vec<O>,
-    select_stack_set: HashSet<O>,
+    select_stack_set: BTreeSet<O>,
     coalesced_moves: BTreeSet<Move<O, R, V>>,
     constrained_moves: BTreeSet<Move<O, R, V>>,
     frozen_moves: BTreeSet<Move<O, R, V>>,
@@ -145,18 +151,18 @@ where
     ) -> Self {
         let mut init = Self {
             loopinfo,
-            adj_list: HashMap::new(),
-            adj_set: HashSet::new(),
-            degree: HashMap::new(),
-            alias: HashMap::new(),
-            move_list: HashMap::new(),
+            adj_list: BTreeMap::new(),
+            adj_set: BTreeSet::new(),
+            degree: BTreeMap::new(),
+            alias: BTreeMap::new(),
+            move_list: BTreeMap::new(),
             simplify_worklist: BTreeSet::new(),
             freeze_worklist: BTreeSet::new(),
             spill_worklist: BTreeSet::new(),
-            spilled_nodes: HashSet::new(),
+            spilled_nodes: BTreeSet::new(),
             coalesced_nodes: BTreeSet::new(),
             select_stack: Vec::new(),
-            select_stack_set: HashSet::new(),
+            select_stack_set: BTreeSet::new(),
             coalesced_moves: BTreeSet::new(),
             constrained_moves: BTreeSet::new(),
             frozen_moves: BTreeSet::new(),
@@ -230,7 +236,7 @@ where
         if self.loop_count[x] == 0 {
             OrderedF32(self.degree[x] as f32 * 2.0)
         } else {
-            OrderedF32(self.degree[x] as f32 / self.loop_count[x] as f32)
+            OrderedF32(self.degree[x] as f32 / f32::powi(2.0, self.loop_count[x] as i32))
         }
     }
 
@@ -392,8 +398,8 @@ where
     }
 
     fn simplify(&mut self) {
-        // let n = self.simplify_worklist.pop_first().unwrap();
-        let n = self.simplify_worklist.iter().next().unwrap().clone();
+        let n = self.simplify_worklist.pop_first().unwrap();
+        // let n = self.simplify_worklist.iter().next().unwrap().clone();
         self.simplify_worklist.remove(&n);
         self.select_stack.push(n);
         self.select_stack_set.insert(n);
@@ -513,8 +519,8 @@ where
     }
 
     fn freeze(&mut self) {
-        // let u = self.freeze_worklist.pop_first().unwrap();
-        let u = self.freeze_worklist.iter().next().unwrap().clone();
+        let u = self.freeze_worklist.pop_first().unwrap();
+        // let u = self.freeze_worklist.iter().next().unwrap().clone();
         self.freeze_worklist.remove(&u);
         self.simplify_worklist.insert(u);
         self.freeze_moves(u);
@@ -522,14 +528,14 @@ where
 
     fn select_spill(&mut self) -> O {
         let m = self.spill_worklist
-            // .pop_last()
-            .iter()
-            .rev()
-            .next()
+            .pop_last()
+            // .iter()
+            // .rev()
+            // .next()
             .map(|(_, m)| m)
             .unwrap()
             .clone();
-        self.spill_worklist.retain(|(_, x)| x != &m);
+        // self.spill_worklist.retain(|(_, x)| x != &m);
         self.simplify_worklist.insert(m);
         self.freeze_moves(m);
 
@@ -640,6 +646,7 @@ where
     first_use: Option<Id<MachineInst>>,
     last_def: Option<Id<MachineInst>>,
     vreg: Option<V>,
+    orig: V,
     offset: u32,
     load: fn(O, GPOperand, i32) -> RV64Instruction,
     save: fn(O, GPOperand, i32) -> RV64Instruction,
@@ -654,6 +661,7 @@ where
 {
     fn new(
         offset: u32,
+        orig: V,
         load: fn(O, GPOperand, i32) -> RV64Instruction,
         save: fn(O, GPOperand, i32) -> RV64Instruction
     ) -> Self {
@@ -661,6 +669,7 @@ where
             first_use: None,
             last_def: None,
             vreg: None,
+            orig,
             offset,
             load,
             save,
@@ -677,7 +686,7 @@ where
             let vreg = self.vreg.unwrap();
             unit.insert_before(
                 first_use,
-                RV64InstBuilder::COMMENT(format!("reload {}", vreg))
+                RV64InstBuilder::COMMENT(format!("reload {}", self.orig))
             );
             if self.offset < 2048 {
                 unit.insert_before(
@@ -772,7 +781,7 @@ where
             }
             unit.insert_after(
                 last_def,
-                RV64InstBuilder::COMMENT(format!("spill {}", vreg))
+                RV64InstBuilder::COMMENT(format!("spill {}", self.orig))
             );
 
             self.last_def = None;
@@ -921,7 +930,7 @@ where
     R: PhysicalRegister,
     V: VirtualRegister,
 {
-    spilled_nodes: HashSet<O>,
+    spilled_nodes: BTreeSet<O>,
     vregs: BTreeSet<V>,
     vgpr: BTreeSet<VirtGPR>,
     stack_size: u32,
@@ -930,7 +939,7 @@ where
 }
 
 impl<'a> RegisterSpilling<GPOperand, RVGPR, VirtGPR> {
-    pub fn apply(unit: &mut MachineProgram, spilled_nodes: HashSet<GPOperand>, func: &str) {
+    pub fn apply(unit: &mut MachineProgram, spilled_nodes: BTreeSet<GPOperand>, func: &str) {
         let mut bbs = vec![];
         std::mem::swap(&mut bbs, &mut unit.funcs.get_mut(func).unwrap().bbs);
         let mut vregs = BTreeSet::new();
@@ -958,7 +967,7 @@ impl<'a> RegisterSpilling<GPOperand, RVGPR, VirtGPR> {
 }
 
 impl<'a> RegisterSpilling<FPOperand, RVFPR, VirtFPR> {
-    pub fn apply(unit: &mut MachineProgram, spilled_nodes: HashSet<FPOperand>, func: &str) {
+    pub fn apply(unit: &mut MachineProgram, spilled_nodes: BTreeSet<FPOperand>, func: &str) {
         let mut bbs = vec![];
         std::mem::swap(&mut bbs, &mut unit.funcs.get_mut(func).unwrap().bbs);
         let mut vregs = BTreeSet::new();
@@ -1010,7 +1019,7 @@ where
             self.stack_size = round_up(self.stack_size, alignment);
             let offset = self.stack_size;
             self.stack_size += size;
-            let mut checkpoint = Checkpoint::new(offset, load, store);
+            let mut checkpoint = Checkpoint::new(offset, n.as_virtual(), load, store);
 
             for bb in bbs {
                 let mut span = 0;
