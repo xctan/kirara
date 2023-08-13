@@ -117,9 +117,9 @@ where
     degree: BTreeMap<O, isize>,
     alias: BTreeMap<O, O>,
     move_list: BTreeMap<O, BTreeSet<Move<O, R, V>>>,
-    simplify_worklist: BTreeSet<O>,
-    freeze_worklist: BTreeSet<O>,
-    spill_worklist: BTreeSet<(OrderedF32, O)>,
+    simplify_worklist: RBTree<O, ()>,
+    freeze_worklist: RBTree<O, ()>,
+    spill_worklist: BTreeMap<O, OrderedF32>,
     spilled_nodes: BTreeSet<O>,
     coalesced_nodes: BTreeSet<O>,
     select_stack: Vec<O>,
@@ -156,9 +156,9 @@ where
             degree: BTreeMap::new(),
             alias: BTreeMap::new(),
             move_list: BTreeMap::new(),
-            simplify_worklist: BTreeSet::new(),
-            freeze_worklist: BTreeSet::new(),
-            spill_worklist: BTreeSet::new(),
+            simplify_worklist: RBTree::new(),
+            freeze_worklist: RBTree::new(),
+            spill_worklist: BTreeMap::new(),
             spilled_nodes: BTreeSet::new(),
             coalesced_nodes: BTreeSet::new(),
             select_stack: Vec::new(),
@@ -356,11 +356,11 @@ where
             self.degree.entry(v).or_insert(0);
             self.adj_list.entry(v).or_default();
             if self.degree[&v] >= R::NUM {
-                self.spill_worklist.insert((self.estimate_cost(&v), v));
+                self.spill_worklist.insert(v, self.estimate_cost(&v));
             } else if self.move_related(v) {
-                self.freeze_worklist.insert(v);
+                self.freeze_worklist.insert(v, ());
             } else {
-                self.simplify_worklist.insert(v);
+                self.simplify_worklist.insert(v, ());
             }
         }
     }
@@ -388,17 +388,17 @@ where
         self.degree.insert(m, d - 1);
         if d == R::NUM {
             self.enable_moves(m);
-            self.spill_worklist.insert((self.estimate_cost(&m), m));
+            self.spill_worklist.insert(m, self.estimate_cost(&m));
             if self.move_related(m) {
-                self.freeze_worklist.insert(m);
+                self.freeze_worklist.insert(m, ());
             } else {
-                self.simplify_worklist.insert(m);
+                self.simplify_worklist.insert(m, ());
             }
         }
     }
 
     fn simplify(&mut self) {
-        let n = self.simplify_worklist.pop_first().unwrap();
+        let n = self.simplify_worklist.pop_first().unwrap().0;
         // let n = self.simplify_worklist.iter().next().unwrap().clone();
         self.simplify_worklist.remove(&n);
         self.select_stack.push(n);
@@ -418,7 +418,7 @@ where
     fn add_work_list(&mut self, u: O) {
         if !u.is_precolored() && !self.move_related(u) && self.degree[&u] < R::NUM {
             self.freeze_worklist.remove(&u);
-            self.simplify_worklist.insert(u);
+            self.simplify_worklist.insert(u, ());
         }
     }
 
@@ -436,10 +436,10 @@ where
     }
 
     fn combine(&mut self, u: O, v: O) {
-        if self.freeze_worklist.contains(&v) {
+        if self.freeze_worklist.contains_key(&v) {
             self.freeze_worklist.remove(&v);
         } else {
-            self.spill_worklist.retain(|&(_, x)| x != v);
+            self.spill_worklist.remove(&v);
         }
         debugln!("coalesce {} and {}", u, v);
         self.coalesced_nodes.insert(v);
@@ -453,9 +453,9 @@ where
             self.add_edge(t, u);
             self.decrement_degree(t);
         }
-        if self.degree[&u] >= R::NUM && self.freeze_worklist.contains(&u) {
+        if self.degree[&u] >= R::NUM && self.freeze_worklist.contains_key(&u) {
             self.freeze_worklist.remove(&u);
-            self.spill_worklist.insert((self.estimate_cost(&u), u));
+            self.spill_worklist.insert(u, self.estimate_cost(&u));
         }
     }
 
@@ -513,30 +513,28 @@ where
             };
             if !self.move_related(v) && self.degree[&v] < R::NUM {
                 self.freeze_worklist.remove(&v);
-                self.simplify_worklist.insert(v);
+                self.simplify_worklist.insert(v, ());
             }
         }
     }
 
     fn freeze(&mut self) {
-        let u = self.freeze_worklist.pop_first().unwrap();
+        let u = self.freeze_worklist.pop_first().unwrap().0;
         // let u = self.freeze_worklist.iter().next().unwrap().clone();
         self.freeze_worklist.remove(&u);
-        self.simplify_worklist.insert(u);
+        self.simplify_worklist.insert(u, ());
         self.freeze_moves(u);
     }
 
     fn select_spill(&mut self) -> O {
         let m = self.spill_worklist
-            .pop_last()
-            // .iter()
-            // .rev()
-            // .next()
-            .map(|(_, m)| m)
+            .iter()
+            .max_by_key(|(_, cost)| *cost)
+            .map(|(m, _)| m)
             .unwrap()
             .clone();
-        // self.spill_worklist.retain(|(_, x)| x != &m);
-        self.simplify_worklist.insert(m);
+        self.spill_worklist.remove(&m);
+        self.simplify_worklist.insert(m, ());
         self.freeze_moves(m);
 
         m

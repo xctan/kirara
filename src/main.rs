@@ -7,7 +7,7 @@ pub struct Arguments {
     #[clap(short, long)]
     /// Dump every intermediate representation
     pub dump: bool,
-    #[clap(short = 'O', default_value = "2")]
+    #[clap(short = 'O', default_value = "1")]
     /// Optimization level
     pub optimize: String,
     /// Input file
@@ -77,7 +77,7 @@ fn main() {
         "0" => vec![
             Box::new(ir::transform::rename::Canonicalize),
         ],
-        "2" => vec![
+        "1" => vec![
             Box::new(ir::transform::rename::Canonicalize),
             Box::new(ir::transform::mem2reg::Mem2Reg),
             Box::new(ir::transform::bbopt::BasicBlockOptimization),
