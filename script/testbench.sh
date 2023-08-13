@@ -15,7 +15,7 @@ testbench_root=${KIRARA_BENCH:-"$kirara_root/testbench"}
 sysyc=${KIRARA_SYSYC:-"target/debug/compiler"}
 # location of (riscv) compiler (for assembly and linking)
 _host=$(uname -m)
-case $host in
+case $_host in
     riscv64)
         _default_cc=${KIRARA_CC:-"gcc"}
         ;;
@@ -26,11 +26,22 @@ esac
 cc=${KIRARA_CC:-$_default_cc}
 # extra flags
 cflags=${KIRARA_CFLAGS:-"-L$testbench_root -lsysy"}
+# qemu config
+case $_host in
+    riscv64)
+        qemu=
+        qemu_flags=
+        ;;
+    *)
+        qemu=${KIRARA_QEMU:-"qemu-riscv64-static"}
+        qemu_flags=${KIRARA_QEMU_FLAGS:-"-cpu rv64,zba=true,zbb=true"}
+        ;;
+esac
 # enabled benchmarks
 benchmarks=(
-    debug
+    # debug
     functional
-    # hidden_functional
+    hidden_functional
     # performance
     # hidden_performance
 )
@@ -104,9 +115,9 @@ function run_test_case() {
     export QEMU_LD_PREFIX=$kirara_sysroot
     # input is optional
     if [ ! -f $_input ]; then
-        $_out > $_output
+        $qemu $qemu_flags $_out > $_output
     else
-        $_out < $_input > $_output
+        $qemu $qemu_flags $_out < $_input > $_output
     fi
     # read from _output
     _exit_code=$?
