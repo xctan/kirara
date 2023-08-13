@@ -49,7 +49,7 @@ impl MachineProgram {
 
     fn gpr_pass(&mut self, loopinfo: &LoopInfo, func: &str, ir: &mut TransUnit) {
         let mut done = false;
-        // let mut counter = 1;
+        let mut counter = 1;
 
         while !done {
             let liveness = 
@@ -73,7 +73,8 @@ impl MachineProgram {
                 //     format!("RegAllocGPR.{counter:02}.s"),
                 //     self.to_string()
                 // ).unwrap();
-                // counter += 1;
+                eprintln!("spill pass {}", counter);
+                counter += 1;
             }
         }
     }
@@ -184,10 +185,32 @@ where
         init
     }
 
+    #[allow(unused)]
+    pub fn check(&mut self, unit: &MachineProgram, func: &str) {
+        let bbs = unit.funcs[func].bbs.clone();
+        let mut visited = HashSet::new();
+        for bb in bbs.iter().rev() {
+            visited.clear();
+            let block = &unit.blocks[*bb];
+            let mut iter = block.insts_tail;
+            while let Some(inst) = iter {
+                let insn = unit.insts[inst].clone();
+                iter = insn.prev;
+
+                // debugln!("{}", insn.inst);
+                let (defs, _) = OperandInfo::<O, R, V>::get_def_use(&insn.inst);
+                for d in defs.iter().filter(|d| d.is_virtual()) {
+                    assert!(visited.insert(*d), "vreg SSA violation: {d}");
+                }
+            }
+        }
+    }
+
     pub fn prepare(&mut self, unit: &MachineProgram, func: &str)
     where
         MachineFunc: FuncVirtReg<V>,
     {
+        // self.check(unit, func);
         self.build(unit, func);
         let f = unit.funcs.get(func).unwrap();
         self.make_worklist(FuncVirtReg::<V>::get_vreg(f));
@@ -702,6 +725,12 @@ where
                 );
                 allocator.vgpr.insert(tmp);
                 let tmp = GPOperand::virt(tmp);
+                let addr = VirtGPR::new(
+                    allocator.next_vreg(),
+                    VirtGPRType::Int64,
+                );
+                allocator.vgpr.insert(addr);
+                let addr = GPOperand::virt(addr);
                 let (upper, lower) = split_imm32(self.offset as i32);
 
                 unit.insert_before(
@@ -714,7 +743,7 @@ where
                 unit.insert_before(
                     first_use,
                     RV64InstBuilder::ADD(
-                        tmp,
+                        addr,
                         tmp,
                         GPOperand::pre(RVGPR::sp())
                     )
@@ -723,7 +752,7 @@ where
                     first_use,
                     (self.load)(
                         O::virt(vreg),
-                        tmp,
+                        addr,
                         lower
                     )
                 );
@@ -751,20 +780,26 @@ where
                 );
                 allocator.vgpr.insert(tmp);
                 let tmp = GPOperand::virt(tmp);
+                let addr = VirtGPR::new(
+                    allocator.next_vreg(),
+                    VirtGPRType::Int64,
+                );
+                allocator.vgpr.insert(addr);
+                let addr = GPOperand::virt(addr);
                 let (upper, lower) = split_imm32(self.offset as i32);
 
                 unit.insert_after(
                     last_def,
                     (self.save)(
                         O::virt(vreg),
-                        tmp,
+                        addr,
                         lower
                     )
                 );
                 unit.insert_after(
                     last_def,
                     RV64InstBuilder::ADD(
-                        tmp,
+                        addr,
                         tmp,
                         GPOperand::pre(RVGPR::sp())
                     )

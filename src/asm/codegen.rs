@@ -538,7 +538,7 @@ impl<'a> AsmFuncBuilder<'a> {
 
                                     if (imm as u32).count_ones() == 1 {
                                         let shift = imm.trailing_zeros();
-                                        emit!(SLLI dst, mo_lhs, shift as i32);
+                                        emit!(SLLIW dst, mo_lhs, shift as i32);
                                         continue;
                                     }
                                 }
@@ -557,14 +557,9 @@ impl<'a> AsmFuncBuilder<'a> {
 
                                     if imm == 0 {
                                         // what???
-                                        emit!(MV dst, mo_lhs);
-                                        continue;
-                                    }
-
-                                    if (imm as u32).count_ones() == 1 {
-                                        let shift = imm.trailing_zeros();
-                                        emit!(SRAI dst, mo_lhs, shift as i32);
-                                        continue;
+                                        // emit!(MV dst, mo_lhs);
+                                        // continue;
+                                        panic!("div by zero");
                                     }
 
                                     let (m, s, n_add_sign) = fastdiv_magic(imm);
@@ -600,21 +595,11 @@ impl<'a> AsmFuncBuilder<'a> {
                                 if val_rhs.value.is_constant() {
                                     let imm = val_rhs.value.as_constant().as_i32();
 
-                                    if (imm as u32).count_ones() == 1 {
-                                        let mask = imm - 1;
-                                        if is_imm12(mask) {
-                                            emit!(ANDI dst, mo_lhs, mask);
-                                        } else {
-                                            emit!(LIMM dst, mask);
-                                            emit!(AND dst, mo_lhs, dst);
-                                        }
-                                        continue;
-                                    }
-
                                     if imm == 0 {
                                         // what???
-                                        emit!(MV dst, mo_lhs);
-                                        continue;
+                                        // emit!(MV dst, mo_lhs);
+                                        // continue;
+                                        panic!("div by zero");
                                     }
 
                                     let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
@@ -1047,9 +1032,10 @@ impl<'a> AsmFuncBuilder<'a> {
                                         if is_imm12(offset) {
                                             emit!(SD reg, pre!(sp), offset);
                                         } else {
+                                            let rel = self.new_vreg64();
                                             let tmp = self.new_vreg64();
-                                            emit!(LIMM tmp, offset);
-                                            emit!(ADD tmp, pre!(sp), tmp);
+                                            emit!(LIMM rel, offset);
+                                            emit!(ADD tmp, pre!(sp), rel);
                                             emit!(SD reg, tmp, 0);
                                         }
                                         // integer, not float
@@ -1061,9 +1047,10 @@ impl<'a> AsmFuncBuilder<'a> {
                                             // just memory op, so dismiss its type
                                             emit!(FSD reg, pre!(sp), offset);
                                         } else {
+                                            let rel = self.new_vreg64();
                                             let tmp = self.new_vreg64();
-                                            emit!(LIMM tmp, offset);
-                                            emit!(ADD tmp, pre!(sp), tmp);
+                                            emit!(LIMM rel, offset);
+                                            emit!(ADD tmp, pre!(sp), rel);
                                             emit!(FSD reg, tmp, 0);
                                         }
                                         // float
@@ -1407,10 +1394,11 @@ impl<'a> AsmFuncBuilder<'a> {
                         } else {
                             // panic!("offset too large: {}", offset)
                             // temporary version
+                            let rel = self.new_vreg64();
                             let tmp = self.new_vreg64();
                             self.prog.push_to_begin(entry, RV64InstBuilder::FLD(res, tmp, 0));
-                            self.prog.push_to_begin(entry, RV64InstBuilder::ADD(tmp, tmp, GPOperand::PreColored(RVGPR::fp())));
-                            self.prog.push_to_begin(entry, RV64InstBuilder::LIMM(tmp, offset));
+                            self.prog.push_to_begin(entry, RV64InstBuilder::ADD(tmp, rel, GPOperand::PreColored(RVGPR::fp())));
+                            self.prog.push_to_begin(entry, RV64InstBuilder::LIMM(rel, offset));
                         }
 
                         // todo: the "omit frame pointer" version
@@ -1509,10 +1497,11 @@ impl<'a> AsmFuncBuilder<'a> {
                             // }
                             
                             // temporary version
+                            let rel = self.new_vreg64();
                             let tmp = self.new_vreg64();
                             self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, tmp, 0));
-                            self.prog.push_to_begin(entry, RV64InstBuilder::ADD(tmp, tmp, GPOperand::PreColored(RVGPR::fp())));
-                            self.prog.push_to_begin(entry, RV64InstBuilder::LIMM(tmp, offset));
+                            self.prog.push_to_begin(entry, RV64InstBuilder::ADD(tmp, rel, GPOperand::PreColored(RVGPR::fp())));
+                            self.prog.push_to_begin(entry, RV64InstBuilder::LIMM(rel, offset));
                         }
 
                         // todo: the "omit frame pointer" version
