@@ -2,6 +2,7 @@ pub use std::{
     collections::{HashMap, HashSet, BTreeSet, BTreeMap}, ops::AddAssign, cmp::Ordering,
     marker::PhantomData,
 };
+pub use rbtree::RBTree;
 
 pub use crate::{
     alloc::Id,

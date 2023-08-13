@@ -117,6 +117,7 @@ dependencies = [
  "clap",
  "lazy_static",
  "nom",
+ "rbtree",
 ]
 
 [[package]]
@@ -226,6 +227,12 @@ checksum = "5fe8a65d69dd0808184ebb5f836ab526bb259db23c657efa38711b1072ee47f0"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "rbtree"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c30302bfb88dd71dce9b3577ab7f607a246ecee387717e937d49466a6d4d4760"
 
 [[package]]
 name = "rustix"
