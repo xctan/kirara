@@ -218,6 +218,13 @@ where
 
     pub fn run(&mut self) {
         while !self.is_empty() {
+            // eprintln!(
+            //     "simplify {}, moves {}, freeze {}, spill {}",
+            //     self.simplify_worklist.len(),
+            //     self.worklist_moves.len(),
+            //     self.freeze_worklist.len(),
+            //     self.spill_worklist.len(),
+            // );
             if !self.simplify_worklist.is_empty() {
                 self.simplify();
             }

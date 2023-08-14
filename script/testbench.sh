@@ -113,6 +113,7 @@ function run_test_case() {
 
     echo "Running $_suite::$_case"
     export QEMU_LD_PREFIX=$kirara_sysroot
+    export QEMU_STACK_SIZE=100000000
     # input is optional
     if [ ! -f $_input ]; then
         $qemu $qemu_flags $_out > $_output

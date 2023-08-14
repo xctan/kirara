@@ -1051,6 +1051,28 @@ impl RV64Instruction {
             _ => None,
         }
     }
+
+    pub fn is_terminal(&self) -> bool {
+        match self.clone() {
+            RV64Instruction::JAL { .. } => true,
+            RV64Instruction::JALR { .. } => true,
+            RV64Instruction::RET { .. } => true,
+            RV64Instruction::JUMP { .. } => true,
+            RV64Instruction::BEQ { .. } => true,
+            RV64Instruction::BNE { .. } => true,
+            RV64Instruction::BLT { .. } => true,
+            RV64Instruction::BGE { .. } => true,
+            RV64Instruction::BLTU { .. } => true,
+            RV64Instruction::BGEU { .. } => true,
+            RV64Instruction::JEQ { .. } => true,
+            RV64Instruction::JNE { .. } => true,
+            RV64Instruction::JLT { .. } => true,
+            RV64Instruction::JGE { .. } => true,
+            RV64Instruction::JLTU { .. } => true,
+            RV64Instruction::JGEU { .. } => true,
+            _ => false,
+        }
+    }
 }
 
 macro_rules! builder_impl_rv64 {
@@ -1372,7 +1394,7 @@ impl MachineProgram {
         self.blocks[mbb].insts_head = Some(minst_id);
     }
 
-    pub fn insert_before(&mut self, before: Id<MachineInst>, inst: RV64Instruction) {
+    pub fn insert_before(&mut self, before: Id<MachineInst>, inst: RV64Instruction) -> Id<MachineInst> {
         let minst = MachineInst {
             inst: inst.clone(),
             bb: self.insts[before].bb,
@@ -1391,6 +1413,21 @@ impl MachineProgram {
             self.blocks[self.insts[before].bb].insts_head = Some(minst_id);
         }
         self.insts[before].prev = Some(minst_id);
+        minst_id
+    }
+
+    pub fn insert_before_end(&mut self, mbb: Id<MachineBB>, inst: RV64Instruction) -> Id<MachineInst> {
+        // insert before branch instructions
+        if let Some(last) = self.blocks[mbb].insts_tail {
+            let minst = &self.insts[last];
+            if minst.inst.is_terminal() {
+                self.insert_before(last, inst)
+            } else {
+                self.push_to_end(mbb, inst)
+            }
+        } else {
+            self.push_to_end(mbb, inst)
+        }
     }
 
     pub fn insert_after(&mut self, after: Id<MachineInst>, inst: RV64Instruction) {
