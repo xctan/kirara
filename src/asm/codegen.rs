@@ -1128,7 +1128,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                             outgoing
                                                 .entry(*bb)
                                                 .or_insert(Vec::new())
-                                                .push((vreg, self.resolve(*val, mbb)));
+                                                .push((vreg, self.resolve(*val, self.bb_map[bb])));
                                         }
                                     }
                                     TypeKind::Void => {
@@ -1154,7 +1154,7 @@ impl<'a> AsmFuncBuilder<'a> {
                                             outgoing_f
                                                 .entry(*bb)
                                                 .or_insert(Vec::new())
-                                                .push((vreg, self.resolve_fp(*val, mbb)));
+                                                .push((vreg, self.resolve_fp(*val, self.bb_map[bb])));
                                         }
                                     }
                                     TypeKind::Void => {}
@@ -1344,7 +1344,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     self.val_mapf[&val]
                 } else {
                     let res = self.type_to_regf(value.ty());
-                    let marker = self.entry_marker.unwrap();
+                    // let marker = self.entry_marker.unwrap();
 
                     let params = self.unit.funcs[self.name.as_str()].params.clone();
                     let idx = params.iter().position(|&x| x == val).unwrap();
@@ -1353,20 +1353,22 @@ impl<'a> AsmFuncBuilder<'a> {
                         // first 8 params are passed in registers
                         self.used_regs.insert(RVGPR::a(idx));
                         self.prog.push_to_begin(entry, RV64InstBuilder::FMVDD(res, FPOperand::PreColored(RVFPR::fa(idx))));
+                        self.val_mapf.insert(val, res);
+                        res
                     } else {
                         // extra args are passed on stack, 8 bytes aligned
                         // for i-th arg, it is at [fp + 8 * (i - 8)]
                         self.used_regs.insert(RVGPR::fp());
                         let offset = 8 * (idx - 8) as i32;
                         let (base, rel12) = self.resolve_stack_address(RVGPR::fp(), offset);
-                        self.prog.insert_after(marker, RV64InstBuilder::FLD(res, base, rel12));
+                        self.prog.insert_before_end(_mbb, RV64InstBuilder::FLD(res, base, rel12));
+
+                        // don't waste too much register here!
+                        res
 
                         // todo: the "omit frame pointer" version
                         // save a worklist of loads needed to be fixed with actual offset (with stack size added)
                     }
-
-                    self.val_mapf.insert(val, res);
-                    res
                 }
             },
             ValueType::Global(ref _g) => {
@@ -1426,7 +1428,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     self.val_map[&val]
                 } else {
                     let res = self.type_to_reg(value.ty());
-                    let marker = self.entry_marker.unwrap();
+                    // let marker = self.entry_marker.unwrap();
 
                     let params = self.unit.funcs[self.name.as_str()].params.clone();
                     let idx = params.iter().position(|&x| x == val).unwrap();
@@ -1435,20 +1437,22 @@ impl<'a> AsmFuncBuilder<'a> {
                         // first 8 params are passed in registers
                         self.used_regs.insert(RVGPR::a(idx));
                         self.prog.push_to_begin(entry, RV64InstBuilder::MV(res, GPOperand::PreColored(RVGPR::a(idx))));
+
+                        self.val_map.insert(val, res);
+                        res
                     } else {
                         // extra args are passed on stack, 8 bytes aligned
                         // for i-th arg, it is at [fp + 8 * (i - 8)]
                         self.used_regs.insert(RVGPR::fp());
                         let offset = 8 * (idx - 8) as i32;
                         let (base, rel12) = self.resolve_stack_address(RVGPR::fp(), offset);
-                        self.prog.insert_after(marker, RV64InstBuilder::LD(res, base, rel12));
+                        self.prog.insert_before_end(_mbb, RV64InstBuilder::LD(res, base, rel12));
+
+                        res
 
                         // todo: the "omit frame pointer" version
                         // save a worklist of loads needed to be fixed with actual offset (with stack size added)
                     }
-
-                    self.val_map.insert(val, res);
-                    res
                 }
             },
             ValueType::Global(ref g) => {
