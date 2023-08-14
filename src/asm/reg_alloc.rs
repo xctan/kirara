@@ -49,7 +49,7 @@ impl MachineProgram {
 
     fn gpr_pass(&mut self, loopinfo: &LoopInfo, func: &str, ir: &mut TransUnit) {
         let mut done = false;
-        let mut counter = 1;
+        // let mut counter = 1;
 
         while !done {
             let liveness = 
@@ -73,8 +73,8 @@ impl MachineProgram {
                 //     format!("RegAllocGPR.{counter:02}.s"),
                 //     self.to_string()
                 // ).unwrap();
-                eprintln!("spill pass {}", counter);
-                counter += 1;
+                // debugln!("spill pass {}", counter);
+                // counter += 1;
             }
         }
     }

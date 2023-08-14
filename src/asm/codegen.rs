@@ -102,6 +102,8 @@ struct AsmFuncBuilder<'a> {
     pub virtual_gprs: HashSet<VirtGPR>,
     pub virtual_fprs: HashSet<VirtFPR>,
 
+    pub stack_address: HashMap<(RVGPR, i32), GPOperand>,
+
     entry_marker: Option<Id<MachineInst>>,
 }
 
@@ -128,6 +130,7 @@ impl<'a> AsmFuncBuilder<'a> {
             used_regs: HashSet::new(),
             virtual_gprs: HashSet::new(),
             virtual_fprs: HashSet::new(),
+            stack_address: HashMap::new(),
             entry_marker: None,
         }
     }
@@ -786,24 +789,8 @@ impl<'a> AsmFuncBuilder<'a> {
                         let object_begin = mfunc.stack_size;
                         mfunc.stack_size += object_size;
                         // FIXME: sp changed if any register is spilled, so offset should be fixed later
-                        if is_imm12(object_begin as i32) {
-                            emit!(ADDI dst, pre!(sp), object_begin as i32);
-                        } else {
-                            emit!(LIMM dst, object_begin as i32);
-                            emit!(ADD dst, pre!(sp), dst);
-                            // let mut amount = object_begin as i32;
-                            // let mut first = true;
-                            // while amount > 0 {
-                            //     let chip = i32::min(2032, amount);
-                            //     amount -= chip;
-                            //     if first {
-                            //         emit!(ADDI dst, pre!(sp), chip);
-                            //         first = false;
-                            //     } else {
-                            //         emit!(ADDI dst, dst, chip);
-                            //     }
-                            // }
-                        }
+                        let (base, rel12) = self.resolve_stack_address(RVGPR::sp(), object_begin as i32);
+                        emit!(ADDI dst, base, rel12);
                         // // alternative stack layout
                         // if is_imm12(-(mfunc.stack_size as i32) - 16) {
                         //     emit!(ADDI dst, pre!(fp), -(mfunc.stack_size as i32) - 16);
@@ -1029,30 +1016,15 @@ impl<'a> AsmFuncBuilder<'a> {
                                 match value.ty().kind {
                                     TypeKind::I32 | TypeKind::Ptr(_) => {
                                         let reg = self.resolve_ensure_reg(arg, mbb);
-                                        if is_imm12(offset) {
-                                            emit!(SD reg, pre!(sp), offset);
-                                        } else {
-                                            let rel = self.new_vreg64();
-                                            let tmp = self.new_vreg64();
-                                            emit!(LIMM rel, offset);
-                                            emit!(ADD tmp, pre!(sp), rel);
-                                            emit!(SD reg, tmp, 0);
-                                        }
+                                        let (base, rel12) = self.resolve_stack_address(RVGPR::sp(), offset);
+                                        emit!(SD reg, base, rel12);
                                         // integer, not float
                                         args.push(false);
                                     }
                                     TypeKind::F32 => {
                                         let reg = self.resolve_fp(arg, mbb);
-                                        if is_imm12(offset) {
-                                            // just memory op, so dismiss its type
-                                            emit!(FSD reg, pre!(sp), offset);
-                                        } else {
-                                            let rel = self.new_vreg64();
-                                            let tmp = self.new_vreg64();
-                                            emit!(LIMM rel, offset);
-                                            emit!(ADD tmp, pre!(sp), rel);
-                                            emit!(FSD reg, tmp, 0);
-                                        }
+                                        let (base, rel12) = self.resolve_stack_address(RVGPR::sp(), offset);
+                                        emit!(FSD reg, base, rel12);
                                         // float
                                         args.push(true);
                                     }
@@ -1372,6 +1344,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     self.val_mapf[&val]
                 } else {
                     let res = self.type_to_regf(value.ty());
+                    let marker = self.entry_marker.unwrap();
 
                     let params = self.unit.funcs[self.name.as_str()].params.clone();
                     let idx = params.iter().position(|&x| x == val).unwrap();
@@ -1385,21 +1358,8 @@ impl<'a> AsmFuncBuilder<'a> {
                         // for i-th arg, it is at [fp + 8 * (i - 8)]
                         self.used_regs.insert(RVGPR::fp());
                         let offset = 8 * (idx - 8) as i32;
-                        if is_imm12(offset) {
-                            self.prog.push_to_begin(
-                                entry, 
-                                RV64InstBuilder::FLD(res, GPOperand::PreColored(RVGPR::fp()),
-                                offset
-                            ));
-                        } else {
-                            // panic!("offset too large: {}", offset)
-                            // temporary version
-                            let rel = self.new_vreg64();
-                            let tmp = self.new_vreg64();
-                            self.prog.push_to_begin(entry, RV64InstBuilder::FLD(res, tmp, 0));
-                            self.prog.push_to_begin(entry, RV64InstBuilder::ADD(tmp, rel, GPOperand::PreColored(RVGPR::fp())));
-                            self.prog.push_to_begin(entry, RV64InstBuilder::LIMM(rel, offset));
-                        }
+                        let (base, rel12) = self.resolve_stack_address(RVGPR::fp(), offset);
+                        self.prog.insert_after(marker, RV64InstBuilder::FLD(res, base, rel12));
 
                         // todo: the "omit frame pointer" version
                         // save a worklist of loads needed to be fixed with actual offset (with stack size added)
@@ -1466,6 +1426,7 @@ impl<'a> AsmFuncBuilder<'a> {
                     self.val_map[&val]
                 } else {
                     let res = self.type_to_reg(value.ty());
+                    let marker = self.entry_marker.unwrap();
 
                     let params = self.unit.funcs[self.name.as_str()].params.clone();
                     let idx = params.iter().position(|&x| x == val).unwrap();
@@ -1479,30 +1440,8 @@ impl<'a> AsmFuncBuilder<'a> {
                         // for i-th arg, it is at [fp + 8 * (i - 8)]
                         self.used_regs.insert(RVGPR::fp());
                         let offset = 8 * (idx - 8) as i32;
-                        if is_imm12(offset) {
-                            self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, GPOperand::PreColored(RVGPR::fp()), offset));
-                        } else {
-                            // panic!("offset too large: {}", offset)
-                            // // try to use itself as scratch register; should it cause any problem?
-                            
-                            // let (load_high, lo12) = AsmFuncBuilder::load_imm32_hi20(res, offset);
-                            // if let Some(minst) = load_high {
-                            //     // pushed in reverse order
-                            //     self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, res, lo12));
-                            //     self.prog.push_to_begin(entry, RV64InstBuilder::ADD(res, res, GPOperand::PreColored(RVGPR::fp())));
-                            //     self.prog.push_to_begin(entry, minst);
-                            // } else {
-                            //     // hi20 cannot be zero, or we can use LD directly
-                            //     unreachable!()
-                            // }
-                            
-                            // temporary version
-                            let rel = self.new_vreg64();
-                            let tmp = self.new_vreg64();
-                            self.prog.push_to_begin(entry, RV64InstBuilder::LD(res, tmp, 0));
-                            self.prog.push_to_begin(entry, RV64InstBuilder::ADD(tmp, rel, GPOperand::PreColored(RVGPR::fp())));
-                            self.prog.push_to_begin(entry, RV64InstBuilder::LIMM(rel, offset));
-                        }
+                        let (base, rel12) = self.resolve_stack_address(RVGPR::fp(), offset);
+                        self.prog.insert_after(marker, RV64InstBuilder::LD(res, base, rel12));
 
                         // todo: the "omit frame pointer" version
                         // save a worklist of loads needed to be fixed with actual offset (with stack size added)
@@ -1523,6 +1462,10 @@ impl<'a> AsmFuncBuilder<'a> {
                     self.val_map.insert(val, res);
                     res
                 }
+                // // FIXME: %pcrel
+                // let res = self.type_to_reg(value.ty());
+                // self.prog.push_to_end(_mbb, RV64InstBuilder::LADDR(res, g.name.clone()));
+                // res
             },
         }
     }
@@ -1541,18 +1484,31 @@ impl<'a> AsmFuncBuilder<'a> {
         }
     }
 
-    // fn resolve_constantf(&mut self, val: Id<Value>) -> Option<f32> {
-    //     let value = self.unit.values[val].clone();
-    //     match value.value {
-    //         ValueType::Constant(c) => {
-    //             match c {
-    //                 ConstantValue::F32(num) => Some(num),
-    //                 _ => None,
-    //             }
-    //         },
-    //         _ => None,
-    //     }
-    // }
+    fn resolve_stack_address(&mut self, base: RVGPR, rel: i32) -> (GPOperand, i32) {
+        if is_imm12(rel) {
+            return (GPOperand::PreColored(base), rel);
+        }
+        // imm12 can address -2048 ~ 2047
+        // so we need auxiliary address register
+        // %N = floor((%rel + 2048) / 4096.0)
+        // %aux = %base + 4K * %N
+        // %auxrel = (%rel + 2048) % 4096 - 2048
+        let n = f64::floor((rel as f64 + 2048.0) / 4096.0) as i32;
+        let auxrel = rel - n * 4096;
+        let aux = if self.stack_address.contains_key(&(base, n)) {
+            self.stack_address.get(&(base, n)).unwrap().clone()
+        } else {
+            let aux = self.new_vreg64();
+            let baserel = self.new_vreg64();
+            let marker = self.entry_marker.unwrap();
+            self.prog.insert_before(marker, RV64InstBuilder::LIMM(baserel, n * 4096));
+            self.prog.insert_before(marker, RV64InstBuilder::ADD(aux, GPOperand::PreColored(base), baserel));
+            self.stack_address.insert((base, n), aux.clone());
+            aux
+        };
+        assert!(is_imm12(auxrel));
+        (aux, auxrel)
+    }
 
     fn is_integral(&self, val: Id<Value>) -> bool {
         let value = self.unit.values[val].clone();
