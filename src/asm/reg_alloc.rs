@@ -40,7 +40,7 @@ impl MachineProgram {
             // let vmax = self.funcs[&func].virtual_max;
             // assert!(vmax <= 2048, "todo: use another allocation algorithm for large functions");
 
-            let loopinfo = LoopInfo::compute(ir, func.as_str());
+            let loopinfo = ir.loopinfo.get(&func).unwrap().clone();
             
             self.gpr_pass(&loopinfo, &func, ir);
             self.fpr_pass(&loopinfo, &func, ir);

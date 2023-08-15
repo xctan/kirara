@@ -955,6 +955,7 @@ impl<'a> AsmFuncBuilder<'a> {
                             }
                             ptr = acc;
                         }
+                        // FIXME: add to dst directly in the last run
                         emit!(MV dst, acc);
                     },
                     InstructionValue::Call(c) => {

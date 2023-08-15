@@ -2,29 +2,54 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{ir::{
     structure::{TransUnit, BlockId},
-    cfg::{reverse_post_order, LoopInfo, compute_dom_level, self},
+    cfg::{reverse_post_order, LoopInfo, self, ComputeControlFlow},
     value::{
         ValueId, BinaryInst, ConstantValue, ValueType, InstructionValue,
         GetElemPtrInst, LoadInst, CallInst,
     }
 }, ctype::BinaryOpType};
 
-use super::IrPass;
+use super::{IrPass, IrFuncPass, bbopt::bbopt, instcomb::combine};
 
 pub struct GVNGCM;
 
 impl IrPass for GVNGCM {
     fn run(&self, unit: &mut TransUnit) {
-        let mr = unit.compute_meta();
         for k in unit.funcs() {
-            unit.compute_memdep(&k, &mr);
-            run_gvn(unit, &k);
-            unit.clear_memdep(&k);
-            super::dce::dce(unit, &k);
-            unit.compute_memdep(&k, &mr);
-            run_gcm(unit, &k);
-            unit.clear_memdep(&k);
+            let mut done = false;
+            let mr = unit.modref.clone().unwrap();
+            // let mut iteration = 0;
+            while !done {
+                let comb = combine(unit, k.as_str());
+                let bbopt = bbopt(unit, k.as_str());
+                done = !comb && !bbopt;
+                ComputeControlFlow.run_on_func(unit, &k);
+                unit.compute_memdep(&k, &mr);
+                run_gvn(unit, &k);
+                unit.clear_memdep(&k);
+                super::dce::dce(unit, &k);
+                unit.compute_memdep(&k, &mr);
+                run_gcm(unit, &k);
+                unit.clear_memdep(&k);
+
+                // iteration += 1;
+                // println!("GVNGCM iteration {} on {}", iteration, k);
+            }
         }
+    }
+}
+
+impl IrFuncPass for GVNGCM {
+    fn run_on_func(&self, unit: &mut TransUnit, func: &str) {
+        ComputeControlFlow.run_on_func(unit, func);
+        let mr = unit.modref.clone().unwrap();
+        unit.compute_memdep(func, &mr);
+        run_gvn(unit, func);
+        unit.clear_memdep(func);
+        super::dce::dce(unit, func);
+        unit.compute_memdep(func, &mr);
+        run_gcm(unit, func);
+        unit.clear_memdep(func);
     }
 }
 
@@ -181,18 +206,29 @@ impl ValueRegistry {
     }
 
     fn find_call(&mut self, unit: &mut TransUnit, val: ValueId, call: CallInst) -> ValueId {
-        // todo: check if the function is pure
-        let _ = (unit, call);
-        let _ = &self.calls;
-        val
+        if unit.func_is_const(&call.func) {
+            let mut args = Vec::new();
+            for arg in call.args {
+                args.push(self.lookup_or_add(unit, arg));
+            }
+            let key = (call.func, args);
+            if self.calls.contains_key(&key) {
+                self.calls[&key]
+            } else {
+                self.calls.insert(key, val);
+                val
+            }
+        } else {
+            val
+        }
     }
 
 }
 
 fn run_gcm(unit: &mut TransUnit, func: &str) {
     let f = unit.funcs[func].clone();
-    let info = LoopInfo::compute(unit, func);
-    let dom_level = compute_dom_level(unit, func);
+    let info = unit.loopinfo[func].clone();
+    let dom_level = unit.dom_level[func].clone();
     let mut insts = vec![];
     let mut vis = HashSet::new();
     let entry = f.entry_bb;
@@ -211,7 +247,7 @@ fn run_gcm(unit: &mut TransUnit, func: &str) {
         schedule_early(unit, &mut vis, *inst, &dom_level, entry);
     }
     vis.clear();
-    // eprintln!("{}", unit);
+    // println!("{}", unit);
 
     for inst in insts.iter().rev() {
         schedule_late(unit, &mut vis, *inst, &info, entry, &dom_level);
@@ -239,15 +275,22 @@ fn schedule_early(
             let value1 = unit.values[$op].clone();
             if value1.value.is_inst() {
                 schedule_early(unit, vis, $op, dom_level, entry);
-                let op_bb = unit.inst_bb[&$op];
+                let op_bb = unit.inst_bb($op);
                 schedule!(@op_bb);
             }
         };
         (@ $bb:expr) => {
             let op_bb = $bb;
-            let x_bb = unit.inst_bb[&inst];
-            if dom_level[&x_bb] < dom_level[&op_bb] {
-                transfer!(op_bb, inst);
+            let x_bb = unit.inst_bb(inst);
+            let x_dom = x_bb.map(|bb| dom_level[&bb]).unwrap_or(0);
+            let op_dom = op_bb.map(|bb| dom_level[&bb]).unwrap_or(0);
+            // println!("x_dom: {}, op_dom: {}", x_dom, op_dom);
+            if x_dom < op_dom {
+                if let Some(op_bb) = op_bb {
+                    transfer!(op_bb, inst);
+                } else {
+                    transfer!(entry, inst);
+                }
             }
         }
     }
@@ -256,6 +299,7 @@ fn schedule_early(
     if !value.value.is_inst() {
         return;
     }
+    // println!("value: {:?}", value);
     match value.value.as_inst(){
         InstructionValue::Binary(bin) => {
             transfer!(entry, inst);
@@ -275,8 +319,17 @@ fn schedule_early(
             schedule!(l.use_store.unwrap());
         }
         // TODO: pure function
+        InstructionValue::Call(c) => {
+            if unit.func_is_const(&c.func) {
+                transfer!(entry, inst);
+                for arg in &c.args {
+                    schedule!(*arg);
+                }
+            }
+        }
         _ => {}
     }
+    // println!("new bb: {}", unit.blocks[unit.inst_bb[&inst]].name);
 }
 
 fn schedule_late(
@@ -296,7 +349,9 @@ fn schedule_late(
     if !matches!(
         value.value.as_inst(),
         InstructionValue::Binary(_) | InstructionValue::GetElemPtr(_) | InstructionValue::Load(_)
-        /* TODO: pure function */
+    ) && !matches!(
+        value.value.as_inst(),
+        InstructionValue::Call(c) if unit.func_is_const(&c.func)
     ) {
         return;
     }
@@ -315,6 +370,7 @@ fn schedule_late(
             InstructionValue::Phi(phi) => {
                 for (arg, bb) in &phi.args {
                     if *arg == inst {
+                        assert!(unit.blocks.get(*bb).is_some());
                         user_bbs.push(*bb);
                     }
                 }
@@ -329,6 +385,7 @@ fn schedule_late(
                         for (arg, bb) in &mphi.args {
                             if *arg == st && load_dom.contains(bb) {
                                 // eprintln!("added {}", unit.blocks[*bb].name);
+                                assert!(unit.blocks.get(*bb).is_some());
                                 user_bbs.push(*bb);
                             }
                         }
@@ -337,6 +394,7 @@ fn schedule_late(
                 }
             }
             _ => {
+                assert!(unit.blocks.get(user).is_some(), "ghost user: {:?}", user_value);
                 user_bbs.push(user);
             }
         }
