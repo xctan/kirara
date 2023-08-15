@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use super::{value::{ValueId, InstructionValue, ValueType, CallInst}, structure::TransUnit};
+use super::{
+    value::{ValueId, InstructionValue, ValueType, CallInst},
+    structure::TransUnit, IrPass
+};
 
 impl TransUnit {
     pub fn clear_memdep(&mut self, func: &str) {
@@ -77,7 +80,8 @@ impl TransUnit {
             }
         }
 
-        super::cfg::compute_dom(self, func);
+        // super::cfg::compute_dom(self, func);
+        // ensure cfg info is calculated before this!
         let f = self.funcs[func].clone();
         
         let mut loads = HashMap::<_, RelatedAccess>::new();
@@ -283,9 +287,27 @@ impl TransUnit {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ModRef {
     pref: HashMap<ValueId, HashSet<ValueId>>,
+    gwrite: HashMap<String, HashSet<ValueId>>,
+    gread: HashMap<String, HashSet<ValueId>>,
+    pwrite: HashMap<String, Vec<bool>>,
+    pread: HashMap<String, Vec<bool>>,
+}
+
+impl ModRef {
+    pub fn has_side_effect(&self, func: &str) -> bool {
+        self.gwrite.get(func).map(|x| !x.is_empty()).unwrap_or(true) ||
+        self.pwrite.get(func).map(|x| x.iter().any(|x| *x)).unwrap_or(true)
+    }
+
+    pub fn is_const(&self, func: &str) -> bool {
+        self.gread.get(func).map(|x| x.is_empty()).unwrap_or(false) &&
+        self.gwrite.get(func).map(|x| x.is_empty()).unwrap_or(false) &&
+        self.pread.get(func).map(|x| x.iter().all(|x| !*x)).unwrap_or(false) &&
+        self.pwrite.get(func).map(|x| x.iter().all(|x| !*x)).unwrap_or(false)
+    }
 }
 
 impl TransUnit {
@@ -351,7 +373,21 @@ impl TransUnit {
             }
             ValueType::Global(_) => {
                 // todo: check whether the global is mutated by the function
-                true
+                // use crate::ir::value::ValueTrait;
+                // let value = &self.values[val];
+                // print!("[ check whether {:?} clobbers {:?}: ", call.func, value.name());
+
+
+                let res = mr.gwrite
+                    .get(&call.func)
+                    .map(|set| set.contains(&val))
+                    .unwrap_or(false)
+                || call.args.iter().any(|x| self.may_alias(val, *x, mr));
+
+                // println!("{} ]", res);
+
+                res
+                // true
             }
             _ => {
                 // todo: check whether the function writes to the pointer
@@ -360,10 +396,44 @@ impl TransUnit {
         }
     }
 
-    fn collect_param_ref(&self) -> HashMap<ValueId, HashSet<ValueId>> {
+    fn collect_param_ref(&self) -> ModRef {
         let mut res = HashMap::new();
-        let mut changed = true;
+        let mut global_write = HashMap::new();
+        let mut global_read = HashMap::new();
+        let mut param_write = HashMap::new();
+        let mut param_read = HashMap::new();
 
+        // external functions
+        for (name, ty) in &self.external {
+            global_read
+                .entry(name.clone())
+                .or_insert(HashSet::new())
+                .insert(self.undef());
+            global_write
+                .entry(name.clone())
+                .or_insert(HashSet::new())
+                .insert(self.undef());
+            // assume external functions read and write its ptr args
+            let pwrite = ty.as_function()
+                .params
+                .iter()
+                .map(|p| p.1.is_ptr())
+                .collect::<Vec<_>>();
+            let pread = pwrite.clone();
+            param_write.insert(name.clone(), pwrite);
+            param_read.insert(name.clone(), pread);
+        }
+        for (name, f) in &self.funcs {
+            let func_ty = &f.ty;
+            let pwrite = vec![false; func_ty.as_function().params.len()];
+            let pread = pwrite.clone();
+            param_write.insert(name.clone(), pwrite);
+            param_read.insert(name.clone(), pread);
+        }
+
+        // trial version of Steensgaard’s algorithm :)
+        // should run mem2reg first because we don't actually analyze pointers
+        let mut changed = true;
         while changed {
             changed = false;
             for (_, f) in &self.funcs {
@@ -424,10 +494,191 @@ impl TransUnit {
             }
         }
 
-        res
+        for (name, f) in &self.funcs {
+            for bb in &f.bbs {
+                let block = &self.blocks[*bb];
+                let mut iter = block.insts_start;
+                while let Some(vid) = iter {
+                    let value = &self.values[vid];
+                    iter = value.next;
+
+                    if let InstructionValue::Store(s) = value.value.as_inst() {
+                        let o = self.get_base_object(s.ptr);
+                        let ovalue = &self.values[o];
+                        match ovalue.value {
+                            ValueType::Global(_) => {
+                                global_write
+                                    .entry(name.clone())
+                                    .or_insert(HashSet::new())
+                                    .insert(o);
+                            }
+                            ValueType::Parameter(_) => {
+                                let idx = f.params.iter().position(|x| *x == o).unwrap();
+                                param_write
+                                    .get_mut(name)
+                                    .unwrap()[idx] = true;
+                            }
+                            _ => {}
+                        }
+                    } else if let InstructionValue::Load(l) = value.value.as_inst() {
+                        let o = self.get_base_object(l.ptr);
+                        let ovalue = &self.values[o];
+                        match ovalue.value {
+                            ValueType::Global(_) => {
+                                global_read
+                                    .entry(name.clone())
+                                    .or_insert(HashSet::new())
+                                    .insert(o);
+                            }
+                            ValueType::Parameter(_) => {
+                                let idx = f.params.iter().position(|x| *x == o).unwrap();
+                                param_read
+                                    .get_mut(name)
+                                    .unwrap()[idx] = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        // propagate global/param read/write
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for (name, f) in &self.funcs {
+                // caller <= callee
+                for callee in &self.callgraph[name].callee {
+                    global_write.entry(name.clone()).or_default();
+                    global_write.entry(callee.clone()).or_default();
+                    global_read.entry(name.clone()).or_default();
+                    global_read.entry(callee.clone()).or_default();
+
+                    let write_union = global_write
+                        .get(name)
+                        .unwrap()
+                        .union(global_write.get(callee).unwrap())
+                        .cloned()
+                        .collect::<HashSet<_>>();
+                    if write_union.len() != global_write.get(name).unwrap().len() {
+                        changed = true;
+                        global_write
+                            .insert(name.clone(), write_union);
+                    }
+
+                    let read_union = global_read
+                        .get(name)
+                        .unwrap()
+                        .union(global_read.get(callee).unwrap())
+                        .cloned()
+                        .collect::<HashSet<_>>();
+                    if read_union.len() != global_read.get(name).unwrap().len() {
+                        changed = true;
+                        global_read
+                            .insert(name.clone(), read_union);
+                    }
+                }
+
+                // caller <= callee
+                for bb in &f.bbs {
+                    let block = &self.blocks[*bb];
+                    let mut iter = block.insts_start;
+                    while let Some(vid) = iter {
+                        let value = &self.values[vid];
+                        iter = value.next;
+
+                        match value.value.as_inst() {
+                            InstructionValue::Call(call) => {
+                                for (_, arg) in param_write[&call.func]
+                                    .clone()
+                                    .iter()
+                                    .zip(call.args.iter())
+                                    .filter(|(b, _)| **b)
+                                {
+                                    let orig = self.get_base_object(*arg);
+                                    let argvalue = &self.values[orig];
+                                    match argvalue.value {
+                                        ValueType::Global(_) => {
+                                            if global_write
+                                                .entry(name.clone())
+                                                .or_insert(HashSet::new())
+                                                .insert(orig)
+                                            {
+                                                changed = true;
+                                            }
+                                        }
+                                        ValueType::Parameter(_) => {
+                                            let idx: usize = f.params.iter().position(|x| *x == orig).unwrap();
+                                            if param_write
+                                                .get_mut(name)
+                                                .unwrap()[idx]
+                                            {
+                                                continue;
+                                            } else {
+                                                changed = true;
+                                                param_write
+                                                    .get_mut(name)
+                                                    .unwrap()[idx] = true;
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+
+                                for (_, arg) in param_read[&call.func]
+                                    .clone()
+                                    .iter()
+                                    .zip(call.args.iter())
+                                    .filter(|(b, _)| **b)
+                                {
+                                    let orig = self.get_base_object(*arg);
+                                    let argvalue = &self.values[orig];
+                                    match argvalue.value {
+                                        ValueType::Global(_) => {
+                                            if global_read
+                                                .entry(name.clone())
+                                                .or_insert(HashSet::new())
+                                                .insert(orig)
+                                            {
+                                                changed = true;
+                                            }
+                                        }
+                                        ValueType::Parameter(_) => {
+                                            let idx: usize = f.params.iter().position(|x| *x == orig).unwrap();
+                                            if param_read
+                                                .get_mut(name)
+                                                .unwrap()[idx]
+                                            {
+                                                continue;
+                                            } else {
+                                                changed = true;
+                                                param_read
+                                                    .get_mut(name)
+                                                    .unwrap()[idx] = true;
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        
+
+        ModRef {
+            pref: res,
+            gwrite: global_write,
+            gread: global_read,
+            pwrite: param_write,
+            pread: param_read,
+        }
     }
 
-    fn get_base_object(&self, val: ValueId) -> ValueId {
+    pub fn get_base_object(&self, val: ValueId) -> ValueId {
         let value = self.values[val].clone();
         match value.value {
             ValueType::Instruction(InstructionValue::GetElemPtr(gep)) => {
@@ -438,10 +689,15 @@ impl TransUnit {
         }
     }
 
-    pub fn compute_meta(&self) -> ModRef {
-        let pref = self.collect_param_ref();
-        ModRef {
-            pref,
-        }
+}
+
+pub struct ComputeGlobalModRef;
+
+impl IrPass for ComputeGlobalModRef {
+    fn run(&self, unit: &mut TransUnit) {
+        // should run callgraph pass before this?
+        let mr = unit.collect_param_ref();
+        // println!("{:#?}\n", mr);
+        unit.modref = Some(mr);
     }
 }

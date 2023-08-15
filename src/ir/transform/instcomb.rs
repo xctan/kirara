@@ -3,24 +3,25 @@ use crate::{
     ctype::BinaryOpType
 };
 
-use super::{IrPass, bbopt::bbopt};
+use super::IrPass;
 
 pub struct InstructionCombination;
 
 impl IrPass for InstructionCombination {
     fn run(&self, unit: &mut TransUnit) {
         for k in unit.funcs() {
-            let mut done = false;
-            while !done {
-                let comb = combine(unit, k.as_str());
-                let bbopt = bbopt(unit, k.as_str());
-                done = !comb && !bbopt;
-            }
+            // let mut done = false;
+            // while !done {
+            //     let comb = combine(unit, k.as_str());
+            //     let bbopt = bbopt(unit, k.as_str());
+            //     done = !comb && !bbopt;
+            // }
+            combine(unit, k.as_str());
         }
     }
 }
 
-fn combine(unit: &mut TransUnit, func: &str) -> bool {
+pub fn combine(unit: &mut TransUnit, func: &str) -> bool {
     let mut changed = false;
 
     // calculate_used_by(unit, func);

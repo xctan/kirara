@@ -193,6 +193,14 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
                     }
                 }
             }
+
+            let mut iter = unit.blocks[*bb].insts_start;
+            while let Some(vid) = iter {
+                let inst = &mut unit.values[vid];
+                iter = inst.next;
+                unit.remove2(vid);
+            }
+
             unit.blocks.remove(*bb);
         }
     }

@@ -1,6 +1,34 @@
 use std::{collections::{HashSet, HashMap}, rc::{Weak, Rc}, cell::RefCell};
 
-use super::{structure::TransUnit, structure::BlockId};
+use super::{structure::TransUnit, structure::BlockId, IrPass, transform::IrFuncPass};
+
+pub struct ComputeControlFlow;
+
+impl IrPass for ComputeControlFlow {
+    fn run(&self, unit: &mut TransUnit) {
+        let funcs = unit.funcs.keys().cloned().collect::<Vec<_>>();
+        for func in &funcs {
+            self.run_on_func(unit, func);
+        }
+    }
+}
+
+impl IrFuncPass for ComputeControlFlow {
+    fn run_on_func(&self, unit: &mut TransUnit, func: &str) {
+        compute_idom(unit, func);
+        compute_df(unit, func);
+        compute_dom(unit, func);
+        let li = LoopInfo::compute(unit, func);
+        unit.loopinfo.insert(func.to_owned(), li);
+        unit.dom_level.insert(func.to_owned(), compute_dom_level(unit, func));
+
+        for bb in &unit.funcs[func].bbs {
+            let block = &unit.blocks[*bb];
+            assert!(block.idom.is_some() || bb == &unit.funcs[func].entry_bb);
+            assert!(block.idom.map(|id| unit.blocks.get(id).is_some()).unwrap_or(true));
+        }
+    }
+}
 
 pub fn dfs_order(unit: &TransUnit, entry_bb: BlockId) -> Vec<BlockId> {
     let mut stack = Vec::new();
@@ -171,9 +199,7 @@ fn compute_idom(unit: &mut TransUnit, func: &str) {
     // }
 }
 
-pub fn compute_dom(unit: &mut TransUnit, func: &str) {
-    compute_idom(unit, func);
-
+fn compute_dom(unit: &mut TransUnit, func: &str) {
     let func = unit.funcs.get(func).unwrap().clone();
 
     for n in &func.bbs {
@@ -199,8 +225,7 @@ pub fn compute_dom(unit: &mut TransUnit, func: &str) {
 }
 
 /// Compute dominance frontier
-pub fn compute_df(unit: &mut TransUnit, func: &str) {
-    compute_idom(unit, func);
+fn compute_df(unit: &mut TransUnit, func: &str) {
     let bbs = unit.funcs.get(func).unwrap().bbs.clone();
 
     for n in &bbs {
@@ -229,7 +254,7 @@ pub fn compute_df(unit: &mut TransUnit, func: &str) {
     }
 }
 
-pub fn compute_dom_level(unit: &TransUnit, func: &str) -> HashMap<BlockId, u32> {
+fn compute_dom_level(unit: &TransUnit, func: &str) -> HashMap<BlockId, u32> {
     let mut dom_level = HashMap::new();
     let func = unit.funcs.get(func).unwrap().clone();
     let entry_bb = func.entry_bb;
@@ -281,7 +306,7 @@ impl Loop {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LoopInfo {
     // top level loops
     pub loops: Vec<Rc<RefCell<Loop>>>,
@@ -290,8 +315,7 @@ pub struct LoopInfo {
 }
 
 impl LoopInfo {
-    pub fn compute(unit: &mut TransUnit, func: &str) -> Self {
-        compute_dom(unit, func);
+    fn compute(unit: &mut TransUnit, func: &str) -> Self {
         let mut worklist = Vec::new();
         let mut vis = HashSet::new();
         let mut loopinfo = LoopInfo {

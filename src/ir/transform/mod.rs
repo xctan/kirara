@@ -11,6 +11,10 @@ pub trait IrPass {
     fn run(&self, unit: &mut TransUnit);
 }
 
+pub trait IrFuncPass {
+    fn run_on_func(&self, unit: &mut TransUnit, func: &str);
+}
+
 #[macro_export]
 macro_rules! for_each_bb_and_inst {
     ($unit:ident , $func:ident ( $bid:ident ,  $block:ident , $vid:ident , $value:ident ) , $baction:tt , $vaction:tt ) => {

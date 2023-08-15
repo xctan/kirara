@@ -10,6 +10,9 @@ use crate::ir::value::{
 };
 
 use super::builder::IrFuncBuilder;
+use super::callgraph::CallGraphInfo;
+use super::cfg::LoopInfo;
+use super::memdep::ModRef;
 use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue, CallInst, UnaryOp, MemPhiInst, MemOpInst};
 
 #[derive(Debug, Clone)]
@@ -76,12 +79,19 @@ pub struct TransUnit {
     pub values: Arena<Value>,
     pub blocks: Arena<BasicBlock>,
     pub inst_bb: HashMap<ValueId, BlockId>,
+    pub undef: Option<ValueId>,
     // global variable defs
     pub globals: HashMap<String, GlobalObject>,
 
     // funcs
     pub funcs: HashMap<String, IrFunc>,
     pub external: HashMap<String, Rc<Type>>,
+
+    // analysis results
+    pub callgraph: HashMap<String, CallGraphInfo>,
+    pub loopinfo: HashMap<String, LoopInfo>,
+    pub modref: Option<ModRef>,
+    pub dom_level: HashMap<String, HashMap<BlockId, u32>>,
 
     counter: usize,
 }
@@ -94,15 +104,25 @@ pub struct GlobalObject {
 
 impl TransUnit {
     pub fn new() -> Self {
-        Self {
+        let mut s = Self {
             values: Arena::new(),
             blocks: Arena::new(),
             inst_bb: HashMap::new(),
+            undef: None,
             globals: HashMap::new(),
             external: HashMap::new(),
             funcs: HashMap::new(),
+            callgraph: HashMap::new(),
+            loopinfo: HashMap::new(),
+            modref: None,
+            dom_level: HashMap::new(),
             counter: 0,
-        }
+        };
+        let val = ConstantValue::Undef;
+        let val = ValueType::Constant(val);
+        let val = Value::new(val);
+        s.undef = Some(s.values.alloc(val));
+        s
     }
 
     pub fn builder<'a>(&'a mut self, ty: Rc<Type>) -> IrFuncBuilder<'a> {
@@ -441,13 +461,27 @@ impl TransUnit {
             InstructionValue::Jump(_) |
             InstructionValue::Return(_) |
             InstructionValue::Store(_) => true,
-            InstructionValue::Call(_) => {
+            InstructionValue::Call(c) => {
                 // TODO: check if function is pure or const
                 // pure: a function does not modify any global memory.
                 // const: a function does not read/modify any global memory.
-                true
+                let cg = self.modref.as_ref().unwrap();
+                cg.has_side_effect(&c.func)
             }
             _ => false,
+        }
+    }
+
+    pub fn func_is_const(&self, func: &str) -> bool {
+        let cg = self.modref.as_ref().unwrap();
+        cg.is_const(func)
+    }
+
+    pub fn inst_bb(&self, inst: ValueId) -> Option<BlockId> {
+        let val = &self.values[inst];
+        match val.value {
+            ValueType::Instruction(_) => self.inst_bb.get(&inst).cloned(),
+            _ => None,
         }
     }
 
@@ -458,11 +492,8 @@ impl TransUnit {
     }
 
     // global value builders
-    pub fn undef(&mut self) -> ValueId {
-        let val = ConstantValue::Undef;
-        let val = ValueType::Constant(val);
-        let val = Value::new(val);
-        self.values.alloc(val)
+    pub fn undef(&self) -> ValueId {
+        self.undef.unwrap()
     }
 
     pub fn const_i32(&mut self, val: i32) -> ValueId {
