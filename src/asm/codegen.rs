@@ -818,6 +818,8 @@ impl<'a> AsmFuncBuilder<'a> {
                         }
                         emit!(LEAVE);
                         emit!(RET);
+                        // end of this bb. don't emit unreachable code
+                        break;
                     },
                     InstructionValue::Branch(b) => {
                         let cond_reg = self.resolve_ensure_reg(b.cond, mbb);
@@ -849,9 +851,11 @@ impl<'a> AsmFuncBuilder<'a> {
                         } else {
                             emit!(JNE cond_reg, pre!(zero), self.bb_map[&b.succ], self.bb_map[&b.fail]);
                         }
+                        break;
                     },
                     InstructionValue::Jump(j) => {
                         emit!(JUMP self.bb_map[&j.succ]);
+                        break;
                     },
                     InstructionValue::Unary(c) => {
                         match c.op {
@@ -1074,6 +1078,40 @@ impl<'a> AsmFuncBuilder<'a> {
                             },
                             ReturnValue::Void => {},
                         }
+                    },
+                    InstructionValue::TailCall(c) => {
+                        assert!(c.args.len() <= 8);
+
+                        // record parameter type
+                        let mut args = Vec::new();
+
+                        for (idx, arg) in c.args.iter().take(8).enumerate() {
+                            let value = self.unit.values[*arg].clone();
+                            match value.ty().kind {
+                                TypeKind::I32 | TypeKind::Ptr(_) => {
+                                    let target = pre!(a idx);
+                                    if let Some(imm) = self.resolve_constant(*arg) {
+                                        emit!(LIMM target, imm);
+                                        continue;
+                                    }
+                                    let reg = self.resolve(*arg, mbb);
+                                    emit!(MV target, reg);
+                                    args.push(false);
+                                },
+                                TypeKind::F32 => {
+                                    let target = pre!(fa idx);
+                                    let reg = self.resolve_fp(*arg, mbb);
+                                    emit!(FMVDD target, reg);
+                                    args.push(true);
+                                }
+                                _ => unimplemented!("call arg type: {:?}", value.ty()),
+                            };
+                        }
+
+                        emit!(LEAVE);
+                        emit!(TAIL c.func.clone(), args.clone());
+                        // never return
+                        break;
                     },
                     InstructionValue::MemOp(_) => unreachable!("remaining memdep in codegen"),
                     InstructionValue::MemPhi(_) => unreachable!("remaining memdep in codegen"),

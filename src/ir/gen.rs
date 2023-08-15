@@ -101,9 +101,25 @@ impl EmitIr for AstNode {
                 expr.emit_ir_expr(builder, ctx);
             }
             AstNodeType::Return(expr) => {
-                // current implementation is not correct for multiple returns
-                let expr = expr.emit_ir_expr(builder, ctx);
-                builder.ret(Some(expr)).push();
+                if let AstNodeType::FunCall(call) = &expr.borrow().node {
+                    let ret = match call.func.borrow().node.clone() {
+                        AstNodeType::Variable(v) => {
+                            let function = ctx.get_object(v).unwrap().name.clone();
+                            let func_ty = ctx.get_object(v).unwrap().ty.as_function();
+                            let args = call.args
+                                .iter()
+                                .map(|arg| arg.emit_ir_expr(builder, ctx)).collect();
+                            builder.tailcall(&function, func_ty.ret_type.clone(), args).push()
+                        }
+                        _ => unimplemented!(),
+                    };
+                    builder.ret(Some(ret)).push();
+                    builder.start_new_bb();
+                } else {
+                    // current implementation is not correct for multiple returns
+                    let expr = expr.emit_ir_expr(builder, ctx);
+                    builder.ret(Some(expr)).push();
+                }
             }
             AstNodeType::Block(stmts) => {
                 for stmt in stmts {

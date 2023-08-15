@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::ir::structure::TransUnit;
 
-use super::IrPass;
+use super::{IrPass, IrFuncPass};
 
 pub struct DeadCodeElimination;
 
@@ -11,6 +11,12 @@ impl IrPass for DeadCodeElimination {
         for k in unit.funcs() {
             dce(unit, k.as_str());
         }
+    }
+}
+
+impl IrFuncPass for DeadCodeElimination {
+    fn run_on_func(&self, unit: &mut TransUnit, func: &str) {
+        dce(unit, func);
     }
 }
 

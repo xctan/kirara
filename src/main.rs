@@ -76,9 +76,18 @@ fn main() {
     let passes: Vec<Box<dyn IrPass>> = match ARGS.optimize.as_str() {
         "0" => vec![
             Box::new(ir::transform::rename::Canonicalize),
+            Box::new(ir::cfg::ComputeControlFlow),
+            Box::new(ir::transform::mem2reg::Mem2Reg),
+            Box::new(ir::transform::bbopt::BasicBlockOptimization),
+            Box::new(ir::cfg::ComputeControlFlow),
+            Box::new(ir::transform::mem2reg::Mem2Reg),
+            Box::new(ir::transform::instcomb::InstructionCombination),
+            Box::new(ir::transform::dce::DeadCodeElimination),
+            Box::new(ir::transform::rename::Canonicalize),
         ],
         "1" => vec![
             Box::new(ir::transform::rename::Canonicalize),
+            Box::new(ir::transform::bbopt::BasicBlockOptimization),
             Box::new(ir::callgraph::ComputeCallGraph),
             Box::new(ir::cfg::ComputeControlFlow),
             Box::new(ir::transform::mem2reg::Mem2Reg),

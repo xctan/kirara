@@ -274,6 +274,22 @@ impl TransUnit {
                                 }
                                 writeln!(writer, ")")?;
                             }
+                            InstructionValue::TailCall(ref call) => {
+                                if call.ty.is_void() {
+                                    write!(writer, "tail call {} @{}", call.ty, call.func)?;
+                                } else {
+                                    write!(writer, "{} = tail call {} @{}", call.name, call.ty, call.func)?;
+                                }
+                                write!(writer, "(")?;
+                                for (idx, arg) in call.args.iter().enumerate() {
+                                    if idx != 0 {
+                                        write!(writer, ", ")?;
+                                    }
+                                    write!(writer, "{} ", arena.get(*arg).unwrap().ty())?;
+                                    self.print_value(*arg, writer)?;
+                                }
+                                writeln!(writer, ")")?;
+                            }
                             InstructionValue::MemOp(ref mop) => {
                                 write!(writer, "\r; memop")?;
                                 if let Some(l) = mop.after_load {

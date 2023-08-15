@@ -143,6 +143,19 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
                 .collect();
             return (defs, uses);
         }
+        if let RV64Instruction::TAIL { params, .. } = self {
+            let uses: Vec<_> = params
+                .iter()
+                .take(8)
+                .enumerate()
+                .filter(|(_, t)| !**t)
+                .map(|(i, _)| GPOperand::PreColored(RVGPR::a(i)))
+                .collect();
+            let defs: Vec<_> = (0..=7).map(|i| GPOperand::PreColored(RVGPR::a(i)))
+                .chain((0..=6).map(|i| GPOperand::PreColored(RVGPR::t(i))))
+                .collect();
+            return (defs, uses);
+        }
 
         panic!("unimplemented: {:?}", self)
     }
@@ -253,6 +266,7 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
         nop!(LEAVE);
         nop!(COMMENT);
         nop!(CALL);
+        nop!(TAIL);
 
         panic!("unimplemented: {:?}", self)
     }
@@ -334,6 +348,7 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
         nop!(LEAVE);
         nop!(COMMENT);
         nop!(CALL);
+        nop!(TAIL);
 
         if let RV64Instruction::FMVWX { rs1, .. } = self {
             return vec![rs1]
@@ -479,6 +494,19 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
                 .collect();
             return (defs, uses);
         }
+        if let RV64Instruction::TAIL { params, .. } = self {
+            let uses: Vec<_> = params
+                .iter()
+                .take(8)
+                .enumerate()
+                .filter(|(_, t)| **t)
+                .map(|(i, _)| FPOperand::PreColored(RVFPR::fa(i)))
+                .collect();
+            let defs: Vec<_> = (0..=7).map(|i| FPOperand::PreColored(RVFPR::fa(i)))
+                .chain((0..=11).map(|i| FPOperand::PreColored(RVFPR::ft(i))))
+                .collect();
+            return (defs, uses);
+        }
 
         panic!("unimplemented: {:?}", self)
     }
@@ -589,6 +617,7 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
         nop!(LEAVE);
         nop!(COMMENT);
         nop!(CALL);
+        nop!(TAIL);
 
         panic!("unimplemented: {:?}", self)
     }
@@ -670,6 +699,7 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
         nop!(LEAVE);
         nop!(COMMENT);
         nop!(CALL);
+        nop!(TAIL);
 
         nop!(FMVWX);
         if let RV64Instruction::FMVXW { rs1, .. } = self {

@@ -13,7 +13,7 @@ use super::builder::IrFuncBuilder;
 use super::callgraph::CallGraphInfo;
 use super::cfg::LoopInfo;
 use super::memdep::ModRef;
-use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue, CallInst, UnaryOp, MemPhiInst, MemOpInst};
+use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue, CallInst, UnaryOp, MemPhiInst, MemOpInst, TailCallInst};
 
 #[derive(Debug, Clone)]
 pub struct IrFunc {
@@ -326,6 +326,11 @@ impl TransUnit {
                 ret.extend(call.args);
                 ret
             },
+            InstructionValue::TailCall(call) => {
+                let mut ret = vec![];
+                ret.extend(call.args);
+                ret
+            },
             InstructionValue::MemOp(_) => vec![],
             InstructionValue::MemPhi(mphi) => {
                 let mut ret = vec![];
@@ -409,6 +414,15 @@ impl TransUnit {
                         .for_each(|arg| *arg = new);
                     InstructionValue::Call(new_call)
                 }
+                InstructionValue::TailCall(call) => {
+                    let mut new_call = call.clone();
+                    new_call
+                        .args
+                        .iter_mut()
+                        .filter(|arg| **arg == old)
+                        .for_each(|arg| *arg = new);
+                    InstructionValue::TailCall(new_call)
+                }
                 raw @ InstructionValue::MemOp(_) => raw,
                 raw @ InstructionValue::MemPhi(_) => raw,
             };
@@ -460,6 +474,7 @@ impl TransUnit {
             InstructionValue::Branch(_) |
             InstructionValue::Jump(_) |
             InstructionValue::Return(_) |
+            InstructionValue::TailCall(_) |
             InstructionValue::Store(_) => true,
             InstructionValue::Call(c) => {
                 // TODO: check if function is pure or const
@@ -699,6 +714,24 @@ impl TransUnit {
             args: args.clone(),
         };
         let val = ValueType::Instruction(InstructionValue::Call(inst));
+        let val = Value::new(val);
+        let id = self.values.alloc(val);
+        for arg in args {
+            self.add_used_by(arg, id);
+        }
+        id
+    }
+
+    // tail call
+    pub fn tailcall(&mut self, func: &str, ret: Rc<Type>, args: Vec<ValueId>) -> ValueId {
+        let func = func.to_string();
+        let inst = TailCallInst {
+            name: if ret.is_void() {"".to_string()} else {self.gen_local_name()},
+            func,
+            ty: ret,
+            args: args.clone(),
+        };
+        let val = ValueType::Instruction(InstructionValue::TailCall(inst));
         let val = Value::new(val);
         let id = self.values.alloc(val);
         for arg in args {
