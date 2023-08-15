@@ -362,6 +362,8 @@ impl Display for RV64Instruction {
                 write!(f, "# {}", comment),
             RV64Instruction::CALL { callee, .. } =>
                 write!(f, "call\t{}", callee),
+            RV64Instruction::TAIL { callee, .. } =>
+                write!(f, "tail\t{}", callee),
             RV64Instruction::RET =>
                 write!(f, "ret"),
             RV64Instruction::MV { rd, rs } =>

@@ -59,12 +59,21 @@ impl ReturnVariableRewriter {
 impl AstRewriteVisitor for ReturnVariableRewriter {
     fn visit_return(&mut self, _expr: Rc<RefCell<AstNode>>) -> Option<Rc<RefCell<AstNode>>> {
         self.rewrite(_expr.clone());
-        let var = AstNode::variable(self.ret_var, 0..0);
-        let assign = AstNode::binary(var, _expr.clone(), BinaryOpType::Assign, 0..0);
-        let stmt = AstNode::expr_stmt(assign, 0..0);
-        let goto = AstNode::goto(".exit".to_string(), 0..0);
-        let block = AstNode::block(vec![stmt, goto], 0..0);
-        Some(block)
+        // println!("{:?}", _expr.borrow().node);
+        match &_expr.borrow().node {
+            AstNodeType::FunCall(call) if call.args.len() <= 8 => {
+                // enable sibling call opt
+                None
+            }
+            _ => {
+                let var = AstNode::variable(self.ret_var, 0..0);
+                let assign = AstNode::binary(var, _expr.clone(), BinaryOpType::Assign, 0..0);
+                let stmt = AstNode::expr_stmt(assign, 0..0);
+                let goto = AstNode::goto(".exit".to_string(), 0..0);
+                let block = AstNode::block(vec![stmt, goto], 0..0);
+                Some(block)
+            }
+        }
     }
 }
 

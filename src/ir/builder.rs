@@ -167,6 +167,7 @@ impl IrFuncBuilder<'_> {
     inst_proxy!(phi(args: Vec<(ValueId, BlockId)>, ty: Rc<Type>));
     inst_proxy!(gep(ptr: ValueId, idx: Vec<ValueId>));
     inst_proxy!(call(func: &str, ret: Rc<Type>, args: Vec<ValueId>));
+    inst_proxy!(tailcall(func: &str, ret: Rc<Type>, args: Vec<ValueId>));
 }
 
 pub trait LocalInstExt {

@@ -822,6 +822,7 @@ pub enum RV64Instruction {
     // pseudo instructions for convenience
     COMMENT { comment: String },
     CALL { callee: String, params: Vec<bool> },
+    TAIL { callee: String, params: Vec<bool> },
     RET,
     // alias for addi
     MV { rd: GPOperand, rs: GPOperand },
@@ -1189,6 +1190,10 @@ impl RV64InstBuilder {
     #[allow(non_snake_case, unused)]
     pub fn CALL(callee: String, params: Vec<bool>) -> RV64Instruction {
         RV64Instruction::CALL { callee, params }
+    }
+    #[allow(non_snake_case, unused)]
+    pub fn TAIL(callee: String, params: Vec<bool>) -> RV64Instruction {
+        RV64Instruction::TAIL { callee, params }
     }
     #[allow(non_snake_case)]
     pub fn RET() -> RV64Instruction {

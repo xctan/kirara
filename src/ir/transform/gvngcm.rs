@@ -9,7 +9,7 @@ use crate::{ir::{
     }
 }, ctype::BinaryOpType};
 
-use super::{IrPass, IrFuncPass, bbopt::bbopt, instcomb::combine};
+use super::{IrPass, IrFuncPass, bbopt::bbopt, instcomb::combine, dce::DeadCodeElimination};
 
 pub struct GVNGCM;
 
@@ -20,17 +20,17 @@ impl IrPass for GVNGCM {
             let mr = unit.modref.clone().unwrap();
             // let mut iteration = 0;
             while !done {
-                let comb = combine(unit, k.as_str());
-                let bbopt = bbopt(unit, k.as_str());
-                done = !comb && !bbopt;
+                done = !combine(unit, k.as_str());
+                done &= !bbopt(unit, k.as_str());
                 ComputeControlFlow.run_on_func(unit, &k);
                 unit.compute_memdep(&k, &mr);
                 run_gvn(unit, &k);
                 unit.clear_memdep(&k);
-                super::dce::dce(unit, &k);
+                DeadCodeElimination.run_on_func(unit, &k);
                 unit.compute_memdep(&k, &mr);
                 run_gcm(unit, &k);
                 unit.clear_memdep(&k);
+                done &= !bbopt(unit, k.as_str());
 
                 // iteration += 1;
                 // println!("GVNGCM iteration {} on {}", iteration, k);

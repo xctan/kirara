@@ -273,6 +273,7 @@ pub enum InstructionValue {
     Phi(PhiInst),
     GetElemPtr(GetElemPtrInst),
     Call(CallInst),
+    TailCall(TailCallInst),
     MemOp(MemOpInst),
     MemPhi(MemPhiInst),
 }
@@ -289,6 +290,7 @@ impl_value_trait!{InstructionValue{
     Phi,
     GetElemPtr,
     Call,
+    TailCall,
     MemOp,
     MemPhi,
 }}
@@ -396,6 +398,16 @@ pub struct CallInst {
 impl_value_trait!(CallInst);
 
 #[derive(Debug, Clone)]
+pub struct TailCallInst {
+    pub name: String,
+    pub ty: Rc<Type>,
+    pub func: String,
+    pub args: Vec<ValueId>,
+}
+
+impl_value_trait!(TailCallInst);
+
+#[derive(Debug, Clone)]
 pub struct MemOpInst {
     pub load: ValueId,
     pub after_load: Option<ValueId>,
@@ -471,6 +483,12 @@ pub fn calculate_used_by(unit: &mut TransUnit, func: &str) {
                     }
                 },
                 InstructionValue::Call(c) => {
+                    for arg in c.args.iter() {
+                        let arg_mut = unit.values.get_mut(*arg).unwrap();
+                        arg_mut.used_by.insert(inst);
+                    }
+                },
+                InstructionValue::TailCall(c) => {
                     for arg in c.args.iter() {
                         let arg_mut = unit.values.get_mut(*arg).unwrap();
                         arg_mut.used_by.insert(inst);
