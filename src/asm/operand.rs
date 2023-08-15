@@ -124,7 +124,10 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
         if let RV64Instruction::JUMP { .. } = self {
             return (vec![], vec![]);
         }
-        if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE | RV64Instruction::COMMENT { .. }) {
+        if matches!(self,
+            RV64Instruction::ENTER | RV64Instruction::LEAVE | RV64Instruction::COMMENT { .. }
+            | RV64Instruction::LABEL { .. }
+        ) {
             return (vec![], vec![]);
         }
         if let RV64Instruction::NOP = self {
@@ -265,6 +268,7 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
         nop!(ENTER);
         nop!(LEAVE);
         nop!(COMMENT);
+        nop!(LABEL);
         nop!(CALL);
         nop!(TAIL);
 
@@ -347,6 +351,7 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
         nop!(ENTER);
         nop!(LEAVE);
         nop!(COMMENT);
+        nop!(LABEL);
         nop!(CALL);
         nop!(TAIL);
 
@@ -475,7 +480,10 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
         if let RV64Instruction::JUMP { .. } = self {
             return (vec![], vec![]);
         }
-        if matches!(self, RV64Instruction::ENTER | RV64Instruction::LEAVE | RV64Instruction::COMMENT { .. }) {
+        if matches!(self, 
+            RV64Instruction::ENTER | RV64Instruction::LEAVE | RV64Instruction::COMMENT { .. }
+            | RV64Instruction::LABEL { .. }
+        ) {
             return (vec![], vec![]);
         }
         if let RV64Instruction::NOP = self {
@@ -616,6 +624,7 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
         nop!(ENTER);
         nop!(LEAVE);
         nop!(COMMENT);
+        nop!(LABEL);
         nop!(CALL);
         nop!(TAIL);
 
@@ -698,6 +707,7 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
         nop!(ENTER);
         nop!(LEAVE);
         nop!(COMMENT);
+        nop!(LABEL);
         nop!(CALL);
         nop!(TAIL);
 

@@ -474,9 +474,15 @@ impl TransUnit {
             InstructionValue::Branch(_) |
             InstructionValue::Jump(_) |
             InstructionValue::Return(_) |
-            InstructionValue::TailCall(_) |
             InstructionValue::Store(_) => true,
             InstructionValue::Call(c) => {
+                // TODO: check if function is pure or const
+                // pure: a function does not modify any global memory.
+                // const: a function does not read/modify any global memory.
+                let cg = self.modref.as_ref().unwrap();
+                cg.has_side_effect(&c.func)
+            }
+            InstructionValue::TailCall(c) => {
                 // TODO: check if function is pure or const
                 // pure: a function does not modify any global memory.
                 // const: a function does not read/modify any global memory.
