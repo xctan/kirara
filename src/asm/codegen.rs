@@ -1108,8 +1108,12 @@ impl<'a> AsmFuncBuilder<'a> {
                             };
                         }
 
-                        emit!(LEAVE);
-                        emit!(TAIL c.func.clone(), args.clone());
+                        if c.func != self.name {
+                            emit!(LEAVE);
+                            emit!(TAIL c.func.clone(), args.clone());
+                        } else {
+                            emit!(TAIL format!("{}$ENTRY", c.func), args.clone());
+                        }
                         // never return
                         break;
                     },
@@ -1299,6 +1303,10 @@ impl<'a> AsmFuncBuilder<'a> {
         }
 
         // 4. add real prolouge
+        self.prog.push_to_begin(
+            mfunc.entry.unwrap(),
+            RV64InstBuilder::LABEL(format!("{}$ENTRY", self.name))
+        );
         self.prog.push_to_begin(
             mfunc.entry.unwrap(),
             // placeholder for prolouge

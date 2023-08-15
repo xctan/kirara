@@ -108,6 +108,9 @@ impl MachineProgram {
                             writeln!(writer, "\tsltu\t{}, {}, {}", rd, rs1, rs2)?;
                             writeln!(writer, "\txori\t{}, {}, 1", rd, rd)?;
                         }
+                        RV64Instruction::LABEL { comment } => {
+                            writeln!(writer, "{}:", comment)?;
+                        }
                         _ => {
                             writeln!(writer, "\t{}", inst.inst)?;
                         }

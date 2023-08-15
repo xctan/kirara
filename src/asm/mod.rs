@@ -821,6 +821,7 @@ pub enum RV64Instruction {
 
     // pseudo instructions for convenience
     COMMENT { comment: String },
+    LABEL { comment: String },
     CALL { callee: String, params: Vec<bool> },
     TAIL { callee: String, params: Vec<bool> },
     RET,
@@ -1182,6 +1183,10 @@ impl RV64InstBuilder {
     #[allow(non_snake_case, unused)]
     pub fn COMMENT(comment: String) -> RV64Instruction {
         RV64Instruction::COMMENT { comment }
+    }
+    #[allow(non_snake_case, unused)]
+    pub fn LABEL(comment: String) -> RV64Instruction {
+        RV64Instruction::LABEL { comment }
     }
     #[allow(non_snake_case)]
     pub fn JUMP(target: Id<MachineBB>) -> RV64Instruction {
