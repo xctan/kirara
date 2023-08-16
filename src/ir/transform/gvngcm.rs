@@ -6,7 +6,7 @@ use crate::{ir::{
     value::{
         ValueId, BinaryInst, ConstantValue, ValueType, InstructionValue,
         GetElemPtrInst, LoadInst, CallInst,
-    }
+    },
 }, ctype::BinaryOpType};
 
 use super::{IrPass, IrFuncPass, bbopt::bbopt, instcomb::combine, dce::DeadCodeElimination};
@@ -20,8 +20,12 @@ impl IrPass for GVNGCM {
             let mr = unit.modref.clone().unwrap();
             // let mut iteration = 0;
             while !done {
+                // eprintln!("{}", IrFuncFormatter::new(unit, &k));
+
                 done = !combine(unit, k.as_str());
                 done &= !bbopt(unit, k.as_str());
+                // eprintln!("{}", IrFuncFormatter::new(unit, &k));
+
                 ComputeControlFlow.run_on_func(unit, &k);
                 unit.compute_memdep(&k, &mr);
                 run_gvn(unit, &k);
@@ -30,12 +34,16 @@ impl IrPass for GVNGCM {
                 unit.compute_memdep(&k, &mr);
                 run_gcm(unit, &k);
                 unit.clear_memdep(&k);
+
+                // eprintln!("{}", IrFuncFormatter::new(unit, &k));
                 done &= !bbopt(unit, k.as_str());
+                // eprintln!("{}", IrFuncFormatter::new(unit, &k));
 
                 // iteration += 1;
-                // println!("GVNGCM iteration {} on {}", iteration, k);
+                // eprintln!("GVNGCM iteration {} on {}", iteration, k);
             }
         }
+        // eprintln!("GVNGCM done");
     }
 }
 

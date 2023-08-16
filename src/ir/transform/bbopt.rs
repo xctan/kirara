@@ -56,6 +56,7 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
                     unit.insert_at_end(*bb, jump);
                     changed = true;
                 }
+                // eprintln!("optimize const branch: {}", unit.blocks[*bb].name);
                 if let Some(deleted) = deleted {
                     unit.remove(*bb, last);
                     let deleted_bb = &mut unit.blocks[deleted];
@@ -66,22 +67,30 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
                         .unwrap();
                     deleted_bb.preds.remove(idx);
                     let mut iter = deleted_bb.insts_start;
-                    while let Some(inst) = iter {
-                        let inst = &mut unit.values[inst];
+                    while let Some(vid) = iter {
+                        let inst = &mut unit.values[vid];
                         iter = inst.next;
                         let inst = inst.value.as_inst_mut();
-                        if let InstructionValue::Phi(phi) = inst {
+                        let orig = if let InstructionValue::Phi(phi) = inst {
+                            let orig = phi.args[idx].0;
                             phi.args.remove(idx);
+                            orig
                         } else {
                             break;
-                        }
+                        };
+                        // maintain usage info, remove phi from its user
+                        let value = &mut unit.values[orig];
+                        value.used_by.remove(&vid);
                     }
                 }
             }
         }
 
         // remove empty bb
-        'bb: for bb in bbs.iter().skip(1) {
+        'bb: for bb in bbs.iter() {
+            if matches!(unit.blocks.get(*bb), Some(block) if block.is_entry) {
+                continue;
+            }
             let last = 
                 match unit.blocks.get(*bb) {
                     Some(block) => block,
@@ -94,6 +103,7 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
                 assert!(unit.blocks[*bb].insts_start == unit.blocks[*bb].insts_end);
                 if succ != bb {
                     let target = &unit.blocks[*succ];
+                    // eprintln!("optimize empty bb: {}", unit.blocks[*bb].name);
                     let target_first = unit.values[target.insts_start.unwrap()].clone();
                     if let InstructionValue::Phi(_phi) = target_first.value.as_inst() {
                         for p in &target.preds {
@@ -201,6 +211,7 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
                 unit.remove2(vid);
             }
 
+            // eprintln!("remove unreachable bb: {}", unit.blocks[*bb].name);
             unit.blocks.remove(*bb);
         }
     }
@@ -215,11 +226,13 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
     for bb in &bbs {
         let block = &unit.blocks[*bb];
         if block.preds.len() == 1 {
+            // eprintln!("remove redundant phi: {}", unit.blocks[*bb].name);
             let mut iter = block.insts_start;
             while let Some(inst) = iter {
                 let insn = unit.values[inst].clone();
                 iter = insn.next;
                 if let InstructionValue::Phi(phi) = insn.value.as_inst() {
+                    assert!(phi.args.len() == 1);
                     let v = phi.args[0].0;
                     unit.replace(inst, v);
                     unit.remove(*bb, inst);
@@ -240,6 +253,7 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
                 if let InstructionValue::Jump(br) = last.value.as_inst() {
                     let target = &unit.blocks[br.succ];
                     if target.preds.len() == 1 {
+                        // eprintln!("merge bb: {} with {}", unit.blocks[*bb].name, target.name);
                         let mut iter = target.insts_start;
                         while let Some(inst) = iter {
                             let insn = unit.values[inst].clone();
