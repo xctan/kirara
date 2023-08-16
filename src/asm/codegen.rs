@@ -185,23 +185,9 @@ impl<'a> AsmFuncBuilder<'a> {
                 // as for the first operand:
                 // - for SW/SD, the first operand is also rs
                 ($mnemonic:ident $($operand0:expr)? $(, $($operand:expr),*)?) => {{
-                    $(if
-                        RV64InstBuilder::$mnemonic as usize == RV64InstBuilder::SD as usize ||
-                        RV64InstBuilder::$mnemonic as usize == RV64InstBuilder::SW as usize
-                    {
-                        self.mark_usage($operand0);
-                    })?
-                    $($(self.mark_usage($operand);)*)?
                     self.prog.push_to_end(mbb, RV64InstBuilder::$mnemonic($($operand0, )? $($($operand),*)?))
                 }};
                 ($mnemonic:expr ; $($operand0:expr)? $(, $($operand:expr),*)?) => {{
-                    $(if
-                        $mnemonic as usize == RV64InstBuilder::SD as usize ||
-                        $mnemonic as usize == RV64InstBuilder::SW as usize
-                    {
-                        self.mark_usage($operand0);
-                    })?
-                    $($(self.mark_usage($operand);)*)?
                     self.prog.push_to_end(mbb, $mnemonic($($operand0, )? $($($operand),*)?))
                 }};
             }
@@ -1041,9 +1027,7 @@ impl<'a> AsmFuncBuilder<'a> {
                             }
 
                             if stack_size < 2032 {
-                                let inst = emit!(ADDI pre!(sp), pre!(sp), -(stack_size as i32));
-                                // please do not inline this!
-                                self.prog.mark_inline(inst, false);
+                                emit!(ADDI pre!(sp), pre!(sp), -(stack_size as i32));
                             } else {
                                 let tmp = self.new_vreg64();
                                 emit!(LIMM tmp, -(stack_size as i32));
@@ -1063,8 +1047,7 @@ impl<'a> AsmFuncBuilder<'a> {
                             };
                             // assert!(stack_size <= 2032);
                             if stack_size < 2032 {
-                                let inst = emit!(ADDI pre!(sp), pre!(sp), stack_size as i32);
-                                self.prog.mark_inline(inst, false);
+                                emit!(ADDI pre!(sp), pre!(sp), stack_size as i32);
                             } else {
                                 let tmp = self.new_vreg64();
                                 emit!(LIMM tmp, stack_size as i32);
@@ -1287,20 +1270,6 @@ impl<'a> AsmFuncBuilder<'a> {
                     for inst in loads {
                         self.prog.push_to_end(mbb, inst);
                     }
-                }
-            }
-        }
-
-        // remove useless instructions (already inlined)
-        for bb in &irfunc.bbs {
-            let mbb = self.bb_map[bb];
-            let mut iter = self.prog.blocks[mbb].insts_head;
-            while let Some(inst) = iter {
-                let insn = self.prog.insts[inst].clone();
-                iter = insn.next;
-
-                if insn.inlined {
-                    self.prog.remove(inst);
                 }
             }
         }
@@ -1601,17 +1570,6 @@ impl<'a> AsmFuncBuilder<'a> {
     //         (None, lo12)
     //     }
     // }
-
-    fn mark_usage<R>(&mut self, reg: R)
-    where
-        R: PseudoMachineOperand
-    {
-        if let Some(reg) = reg.as_machopr() {
-            if let Some(reg_id) = self.prog.vreg_def.get(&reg) {
-                self.prog.mark_inline(*reg_id, false);
-            }
-        }
-    }
 }
 
 trait PseudoMachineOperand {

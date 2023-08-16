@@ -35,6 +35,8 @@ impl Ord for OrderedF32 {
 
 impl MachineProgram {
     pub fn allocate_registers(&mut self, ir: &mut TransUnit) {
+        self.remove_useless_instruction(ir);
+
         let funcs = ir.funcs.keys().cloned().collect::<Vec<_>>();
         for func in funcs {
             // let vmax = self.funcs[&func].virtual_max;
@@ -44,6 +46,85 @@ impl MachineProgram {
             
             self.gpr_pass(&loopinfo, &func, ir);
             self.fpr_pass(&loopinfo, &func, ir);
+        }
+    }
+
+    pub fn remove_useless_instruction(&mut self, unit: &mut TransUnit) {
+        let funcs = unit.funcs.keys().cloned().collect::<Vec<_>>();
+        for func in funcs {
+            let bbs = self.funcs[&func].bbs.clone();
+
+            let liveness = 
+                liveness_analysis::<GPOperand, RVGPR, VirtGPR>(self, &func, unit);
+            for bb in &bbs {
+                let useful_regs = liveness[bb].liveout
+                    .iter()
+                    .cloned()
+                    .collect::<HashSet<_>>();
+                let mut useless_regs = liveness[bb].livedef
+                    .difference(&useful_regs)
+                    .filter(|r| r.is_virtual())
+                    .cloned()
+                    .collect::<HashSet<_>>();
+                let mut iter = self.blocks[*bb].insts_tail;
+                while let Some(inst) = iter {
+                    let insn = &mut self.insts[inst];
+                    iter = insn.prev;
+                    let (_, uses) = 
+                        OperandInfo::<GPOperand, RVGPR, VirtGPR>::get_def_use(&insn.inst);
+                    uses.iter().for_each(|u| { useless_regs.remove(u); });
+                }
+                // eprintln!("bb: {}", self.blocks[*bb].name);
+                // eprintln!("livein: {:?}", liveness[bb].livein);
+                // eprintln!("liveout: {:?}", liveness[bb].liveout);
+                // eprintln!("liveuse: {:?}", liveness[bb].liveuse);
+                // eprintln!("livedef: {:?}", liveness[bb].livedef);
+                // eprintln!("useful_regs: {:?}", useful_regs);
+                // eprintln!("useless_regs: {:?}", useless_regs);
+                let mut iter = self.blocks[*bb].insts_tail;
+                while let Some(inst) = iter {
+                    let insn = &mut self.insts[inst];
+                    iter = insn.prev;
+                    let (defs, _) = 
+                        OperandInfo::<GPOperand, RVGPR, VirtGPR>::get_def_use(&insn.inst);
+                    if defs.len() >= 1 && defs.iter().all(|d| useless_regs.contains(d)) {
+                        // eprintln!("remove defs {:?}", defs);
+                        self.remove(inst);
+                    }
+                }
+            }
+
+            let liveness = 
+                liveness_analysis::<FPOperand, RVFPR, VirtFPR>(self, &func, unit);
+            for bb in &bbs {
+                let useful_regs = liveness[bb].liveout
+                    .iter()
+                    .cloned()
+                    .collect::<HashSet<_>>();
+                let mut useless_regs = liveness[bb].livedef
+                    .difference(&useful_regs)
+                    .filter(|r| r.is_virtual())
+                    .cloned()
+                    .collect::<HashSet<_>>();
+                let mut iter = self.blocks[*bb].insts_tail;
+                while let Some(inst) = iter {
+                    let insn = &mut self.insts[inst];
+                    iter = insn.prev;
+                    let (_, uses) = 
+                        OperandInfo::<FPOperand, RVFPR, VirtFPR>::get_def_use(&insn.inst);
+                    uses.iter().for_each(|u| { useless_regs.remove(u); });
+                }
+                let mut iter = self.blocks[*bb].insts_tail;
+                while let Some(inst) = iter {
+                    let insn = &mut self.insts[inst];
+                    iter = insn.prev;
+                    let (defs, _) = 
+                        OperandInfo::<FPOperand, RVFPR, VirtFPR>::get_def_use(&insn.inst);
+                    if defs.len() >= 1 && defs.iter().all(|d| useless_regs.contains(d)) {
+                        self.remove(inst);
+                    }
+                }
+            }
         }
     }
 
