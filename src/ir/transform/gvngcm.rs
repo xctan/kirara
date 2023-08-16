@@ -20,6 +20,7 @@ impl IrPass for GVNGCM {
             let mr = unit.modref.clone().unwrap();
             // let mut iteration = 0;
             while !done {
+                // use crate::ir::export::IrFuncFormatter;
                 // eprintln!("{}", IrFuncFormatter::new(unit, &k));
 
                 done = !combine(unit, k.as_str());

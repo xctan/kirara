@@ -1,17 +1,38 @@
 use std::collections::HashMap;
 
-use crate::ir::{structure::{TransUnit, BasicBlock}, value::{InstructionValue, CallInst, ValueType, JumpInst}};
+use crate::ir::{
+    structure::{TransUnit, BasicBlock},
+    value::{InstructionValue, CallInst, ValueType, JumpInst}
+};
 
 use super::IrPass;
 
 pub static INLINE_CALLER_LIMIT: usize = 1024;
 pub static INLINE_CALLEE_LIMIT: usize = 128;
+pub static INLINE_CALLEE_ARGS: usize = 64;
 
 pub struct FunctionInlining;
 
 impl IrPass for FunctionInlining {
     fn run(&self, unit: &mut TransUnit) {
         do_inline(unit);
+    }
+}
+
+pub struct RemoveUnusedFunction;
+
+impl IrPass for RemoveUnusedFunction {
+    fn run(&self, unit: &mut TransUnit) {
+        // calculate call graph before!
+        let funcs: Vec<_> = unit.funcs.keys().cloned().collect();
+        for f in &funcs {
+            if f == "main" {
+                continue;
+            }
+            if unit.callgraph[f].caller.len() == 0 {
+                unit.funcs.remove(f);
+            }
+        }
     }
 }
 
@@ -65,7 +86,13 @@ fn inline_func(
                         .entry(call.func.clone())
                         .or_insert_with(|| unit.func_inst_count(&call.func))
                         .clone();
-                    if callee_inst_count >= INLINE_CALLEE_LIMIT {
+                    let limit = if call.args.len() > INLINE_CALLEE_ARGS {
+                        // rediculous number of arguments?
+                        INLINE_CALLER_LIMIT * 2
+                    } else {
+                        INLINE_CALLEE_LIMIT
+                    };
+                    if callee_inst_count >= limit {
                         continue;
                     }
                     changed = true;

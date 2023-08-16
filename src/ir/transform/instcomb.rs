@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 use crate::{
-    ir::{structure::TransUnit, value::{InstructionValue, ConstantValue}},
+    ir::{structure::TransUnit, value::{InstructionValue, ConstantValue, ValueId, ValueTrait}},
     ctype::BinaryOpType
 };
 
-use super::IrPass;
+use super::{IrPass, IrFuncPass};
 
 pub struct InstructionCombination;
 
@@ -17,6 +19,114 @@ impl IrPass for InstructionCombination {
             //     done = !comb && !bbopt;
             // }
             combine(unit, k.as_str());
+        }
+    }
+}
+
+pub struct ScalarLinearInduction;
+
+impl IrPass for ScalarLinearInduction {
+    fn run(&self, unit: &mut TransUnit) {
+        let funcs: Vec<_> = unit.funcs.keys().cloned().collect();
+        for func in funcs {
+            self.run_on_func(unit, &func);
+        }
+    }
+}
+
+impl IrFuncPass for ScalarLinearInduction {
+    fn run_on_func(&self, unit: &mut TransUnit, func: &str) {
+        let bbs = unit.funcs[func].bbs.clone();
+        for bb in &bbs {
+            // optimize many additions chained together
+            // is this a kind of linear variable induction?
+            let mut iter = unit.blocks[*bb].insts_start;
+            let mut linvars: HashMap<ValueId, HashMap<ValueId, isize>> = HashMap::new();
+            while let Some(inst) = iter {
+                let insn = unit.values[inst].clone();
+                iter = insn.next;
+                let instruction = insn.value.as_inst();
+
+                if !insn.value.ty().is_int() {
+                    continue;
+                }
+
+                if let InstructionValue::Binary(bin) = instruction {
+                    match bin.op {
+                        BinaryOpType::Add => {
+                            let lhs = linvars
+                                .get(&bin.lhs)
+                                .map(|x| x.clone())
+                                .unwrap_or_else(|| vec![(bin.lhs, 1)].into_iter().collect());
+                            let rhs = linvars
+                                .get(&bin.rhs)
+                                .map(|x| x.clone())
+                                .unwrap_or_else(|| vec![(bin.rhs, 1)].into_iter().collect());
+                            let mut new_lhs = lhs.clone();
+                            for (k, v) in rhs {
+                                *new_lhs.entry(k).or_insert(0) += v;
+                            }
+                            new_lhs.retain(|_, v| *v != 0);
+                            linvars.insert(inst, new_lhs);
+                        }
+                        BinaryOpType::Sub => {
+                            let lhs = linvars
+                                .get(&bin.lhs)
+                                .map(|x| x.clone())
+                                .unwrap_or_else(|| vec![(bin.lhs, 1)].into_iter().collect());
+                            let rhs = linvars
+                                .get(&bin.rhs)
+                                .map(|x| x.clone())
+                                .unwrap_or_else(|| vec![(bin.rhs, 1)].into_iter().collect());
+                            let mut new_lhs = lhs.clone();
+                            for (k, v) in rhs {
+                                *new_lhs.entry(k).or_insert(0) -= v;
+                            }
+                            new_lhs.retain(|_, v| *v != 0);
+                            linvars.insert(inst, new_lhs);
+                        }
+                        _ => {}
+                    }
+                }
+
+                if let Some(linvar) = linvars.get(&inst) {
+                    if linvar.len() == 2 && linvar.iter().all(|(_, v)| *v == 1) {
+                        // just added, no need to optimize
+                    } else if linvar.len() == 0 {
+                        // reduced to constant, replace it
+                        let new_val = unit.const_i32(0);
+                        unit.replace(inst, new_val);
+                    } else {
+                        // assert!(linvar.len() < 10);
+                        let (k, &v) = linvar.iter().next().unwrap();
+                        let mut acc = if v != 1 {
+                            let multiplier = unit.const_i32(v as i32);
+                            let new_val = unit.binary(BinaryOpType::Mul, *k, multiplier);
+                            unit.insert_before2(new_val, inst);
+                            new_val
+                        } else {
+                            *k
+                        };
+                        for (k, v) in linvar.iter().skip(1) {
+                            if *v == 1 {
+                                acc = unit.binary(BinaryOpType::Add, acc, *k);
+                                unit.insert_before2(acc, inst);
+                            } else {
+                                let multiplier = unit.const_i32(*v as i32);
+                                let new_val = unit.binary(BinaryOpType::Mul, *k, multiplier);
+                                acc = unit.binary(BinaryOpType::Add, acc, new_val);
+                                unit.insert_before2(acc, inst);
+                                unit.insert_before2(new_val, inst);
+                            }
+                        }
+                        unit.replace(inst, acc);
+                        unit.remove2(inst);
+                        let var = linvar.clone();
+                        linvars.remove(&inst);
+                        linvars.insert(acc, var);
+                    }
+                }
+            }
         }
     }
 }
