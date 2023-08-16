@@ -88,9 +88,6 @@ impl MachineProgram {
                         continue;
                     }
 
-                    // if inst.inlined {
-                    //     continue;
-                    // }
                     match inst.inst {
                         RV64Instruction::SEQ { rd, rs1, rs2 } => {
                             writeln!(writer, "\txor\t{}, {}, {}", rd, rs1, rs2)?;

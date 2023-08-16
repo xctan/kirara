@@ -1226,8 +1226,6 @@ impl RV64InstBuilder {
 pub struct MachineInst {
     pub inst: RV64Instruction,
     pub bb: Id<MachineBB>,
-    /// identify whether this instruction is always inlined, e.g. addi
-    pub inlined: bool,
     pub prev: Option<Id<MachineInst>>,
     pub next: Option<Id<MachineInst>>,
 }
@@ -1362,7 +1360,6 @@ impl MachineProgram {
         let minst = MachineInst {
             inst: inst.clone(),
             bb: mbb,
-            inlined: false,
             prev: mblock_tail,
             next: None,
         };
@@ -1370,7 +1367,6 @@ impl MachineProgram {
         if let Some(rd) = inst.get_rd() {
             self.define_vreg(rd, minst_id);
         }
-        self.mark_inline_inst(minst_id);
         let mblock = &mut self.blocks[mbb];
         mblock.insts_tail = Some(minst_id);
         if mblock.insts_head.is_none() {
@@ -1386,7 +1382,6 @@ impl MachineProgram {
         let minst = MachineInst {
             inst: inst.clone(),
             bb: mbb,
-            inlined: false,
             prev: None,
             next: mblock_head,
         };
@@ -1394,7 +1389,6 @@ impl MachineProgram {
         if let Some(rd) = inst.get_rd() {
             self.define_vreg(rd, minst_id);
         }
-        self.mark_inline_inst(minst_id);
         let mblock = &mut self.blocks[mbb];
         if let Some(head) = mblock_head {
             self.insts[head].prev = Some(minst_id);
@@ -1408,7 +1402,6 @@ impl MachineProgram {
         let minst = MachineInst {
             inst: inst.clone(),
             bb: self.insts[before].bb,
-            inlined: false,
             prev: self.insts[before].prev,
             next: Some(before),
         };
@@ -1416,7 +1409,6 @@ impl MachineProgram {
         if let Some(rd) = inst.get_rd() {
             self.define_vreg(rd, minst_id);
         }
-        self.mark_inline_inst(minst_id);
         if let Some(prev) = self.insts[before].prev {
             self.insts[prev].next = Some(minst_id);
         } else {
@@ -1444,7 +1436,6 @@ impl MachineProgram {
         let minst = MachineInst {
             inst: inst.clone(),
             bb: self.insts[after].bb,
-            inlined: false,
             prev: Some(after),
             next: self.insts[after].next,
         };
@@ -1452,7 +1443,6 @@ impl MachineProgram {
         if let Some(rd) = inst.get_rd() {
             self.define_vreg(rd, minst_id);
         }
-        self.mark_inline_inst(minst_id);
         if let Some(next) = self.insts[after].next {
             self.insts[next].prev = Some(minst_id);
         } else {
@@ -1479,30 +1469,12 @@ impl MachineProgram {
         self.insts.remove(inst);
     }
 
-    pub fn mark_inline(&mut self, inst: Id<MachineInst>, status: bool) {
-        self.insts[inst].inlined = status;
-    }
-
     fn define_vreg(&mut self, vreg: GPOperand, minst: Id<MachineInst>) {
         if matches!(vreg, GPOperand::Virtual(_)) {
             self.vreg_def.insert(vreg, minst);
         }
     }
 
-    fn mark_inline_inst(&mut self, minst: Id<MachineInst>) {
-        match self.insts[minst].inst {
-            RV64Instruction::ADDI { .. } |
-            RV64Instruction::SEQ { .. } |
-            RV64Instruction::SNE { .. } |
-            RV64Instruction::SLT { .. } |
-            RV64Instruction::SGE { .. } |
-            RV64Instruction::SLTU { .. } |
-            RV64Instruction::SGEU { .. } => {
-                self.mark_inline(minst, true);
-            }
-            _ => {}
-        }
-    }
 }
 
 #[inline(always)]
