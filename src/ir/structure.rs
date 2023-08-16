@@ -6,7 +6,7 @@ use crate::ast::Initializer;
 use crate::ctype::{Type, BinaryOpType, Linkage};
 use crate::ir::value::{
     InstructionValue, ReturnInst, StoreInst, LoadInst, BinaryInst, BranchInst, 
-    UnaryInst, GetElemPtrInst, ValueType, PhiInst
+    UnaryInst, GetElemPtrInst, ValueType, PhiInst, ParameterValue, calculate_used_by
 };
 
 use super::builder::IrFuncBuilder;
@@ -28,6 +28,7 @@ pub struct IrFunc {
 pub struct BasicBlock {
     pub name: String,
     
+    // for ir codegen
     pub is_labeled: bool,
     pub is_entry: bool,
 
@@ -44,8 +45,7 @@ pub struct BasicBlock {
     pub insts_start: Option<ValueId>,
     pub insts_end: Option<ValueId>,
 
-    pub mphi_lts: Vec<ValueId>,
-    pub mphi_stl: Vec<ValueId>,
+    pub mphi: Vec<ValueId>,
 }
 
 impl BasicBlock {
@@ -61,8 +61,7 @@ impl BasicBlock {
             df: Vec::new(),
             insts_start: None,
             insts_end: None,
-            mphi_lts: Vec::new(),
-            mphi_stl: Vec::new(),
+            mphi: Vec::new(),
         }
     }
 
@@ -136,6 +135,214 @@ impl TransUnit {
             ty,
             params: Vec::new(),
         }
+    }
+
+    pub fn clone_func(&mut self, src: &str, dst: &str) {
+        // eprintln!("clone func {} to {}", src, dst);
+        // eprintln!("{}", self);
+
+        let srcf = &self.funcs[src];
+        let srcbbs = srcf.bbs.clone();
+        let srcty = srcf.ty.clone();
+        
+        assert!(src != dst);
+        assert!(self.funcs.get(dst).is_none());
+        
+        let mut valuemap = HashMap::new();
+        let mut params = vec![];
+        for ((_, p), op) in srcty.as_function().params.iter().zip(&srcf.params) {
+            let var = ParameterValue {
+                name: format!(".anon"), // useless name here
+                ty: p.clone(),
+            };
+            let val = ValueType::Parameter(var);
+            let val = Value::new(val);
+            let id = self.values.alloc(val);
+            params.push(id);
+            valuemap.insert(*op, id);
+        }
+
+        // basic block pass 1
+        let mut bbs = vec![];
+        let mut bbmap = HashMap::new();
+        let mut entry_bb = None;
+        for srcbb in &srcbbs {
+            let name = format!("{}", self.count());
+            let is_entry = self.blocks[*srcbb].is_entry;
+            let mut block = BasicBlock::new(name);
+            block.is_entry = is_entry;
+            let bb = self.blocks.alloc(block);
+            if is_entry {
+                assert!(entry_bb.is_none());
+                entry_bb = Some(bb);
+            }
+            bbs.push(bb);
+            bbmap.insert(*srcbb, bb);
+        }
+
+        // instruction pass 1
+        let undef = ConstantValue::Undef;
+        let undef = ValueType::Constant(undef);
+        let undef = Value::new(undef);
+        for srcbb in &srcbbs {
+            let mut iter = self.blocks[*srcbb].insts_start;
+            while let Some(vid) = iter {
+                let inst = self.values[vid].clone();
+                iter = inst.next;
+
+                // placeholder of true instruction
+                let newid = self.values.alloc(undef.clone());
+                valuemap.insert(vid, newid);
+                let dstbb = bbmap[srcbb];
+                self.insert_at_end(dstbb, newid);
+            }
+        }
+        
+        // basic block pass 2
+        // instruction pass 2
+        let replace = move |v: ValueId| {
+            if let Some(dstv) = valuemap.get(&v) {
+                *dstv
+            } else {
+                v
+            }
+        };
+        for srcbb in &srcbbs {
+            let srcpreds = self.blocks[*srcbb].preds.clone();
+            let dstblock = self.blocks.get_mut(bbmap[srcbb]).unwrap();
+            dstblock.preds = srcpreds
+                .into_iter()
+                .map(|p| bbmap[&p])
+                .collect();
+
+            let mut iter = self.blocks[*srcbb].insts_start;
+            while let Some(vid) = iter {
+                let inst = self.values[vid].clone();
+                iter = inst.next;
+
+                let inner = match inst.value.as_inst() {
+                    InstructionValue::Binary(bin) => {
+                        InstructionValue::Binary(BinaryInst {
+                            lhs: replace(bin.lhs),
+                            rhs: replace(bin.rhs),
+                            ..bin.clone()
+                        })
+                    },
+                    InstructionValue::Load(l) => {
+                        InstructionValue::Load(LoadInst {
+                            ptr: replace(l.ptr),
+                            ..l.clone()
+                        })
+                    },
+                    InstructionValue::Store(s) => {
+                        InstructionValue::Store(StoreInst {
+                            ptr: replace(s.ptr),
+                            value: replace(s.value),
+                        })
+                    },
+                    a @ InstructionValue::Alloca(_) => {
+                        a.clone()
+                    },
+                    InstructionValue::Return(r) => {
+                        InstructionValue::Return(ReturnInst {
+                            value: r.value.map(|v| replace(v))
+                        })
+                    },
+                    InstructionValue::Branch(br) => {
+                        InstructionValue::Branch(BranchInst {
+                            cond: replace(br.cond),
+                            succ: bbmap[&br.succ],
+                            fail: bbmap[&br.fail],
+                        })
+                    },
+                    InstructionValue::Jump(j) => {
+                        InstructionValue::Jump(JumpInst {
+                            succ: bbmap[&j.succ],
+                        })
+                    },
+                    InstructionValue::Unary(un) => {
+                        InstructionValue::Unary(UnaryInst {
+                            value: replace(un.value),
+                            ..un.clone()
+                        })
+                    },
+                    InstructionValue::Phi(phi) => {
+                        InstructionValue::Phi(PhiInst {
+                            args: phi.args
+                                .iter()
+                                .map(|(v, b)| (replace(*v), bbmap[b]))
+                                .collect(),
+                            ..phi.clone()
+                        })
+                    },
+                    InstructionValue::GetElemPtr(gep) => {
+                        InstructionValue::GetElemPtr(GetElemPtrInst {
+                            ptr: replace(gep.ptr),
+                            indices: gep.indices
+                                .iter()
+                                .map(|v| replace(*v))
+                                .collect(),
+                            ..gep.clone()
+                        })
+                    },
+                    InstructionValue::Call(call) => {
+                        InstructionValue::Call(CallInst {
+                            args: call.args
+                                .iter()
+                                .map(|v| replace(*v))
+                                .collect(),
+                            ..call.clone()
+                        })
+                    },
+                    InstructionValue::TailCall(call) => {
+                        InstructionValue::TailCall(TailCallInst {
+                            args: call.args
+                                .iter()
+                                .map(|v| replace(*v))
+                                .collect(),
+                            ..call.clone()
+                        })
+                    },
+                    // can we copy memdep information?
+                    InstructionValue::MemOp(_) => todo!(),
+                    InstructionValue::MemPhi(_) => todo!(),
+                };
+
+                let dstvid = replace(vid);
+                let dstvalue = self.values.get_mut(dstvid).unwrap();
+                dstvalue.value = ValueType::Instruction(inner);
+            }
+        }
+
+        let func = IrFunc {
+            bbs,
+            entry_bb: entry_bb.unwrap(),
+            ty: srcty,
+            params,
+        };
+        self.funcs.insert(dst.to_owned(), func);
+        calculate_used_by(self, dst);
+    }
+
+    pub fn func_inst_count(&self, func: &str) -> usize {
+        let mut count = 0;
+        if self.funcs.get(func).is_none() {
+            // external
+            return super::transform::inline::INLINE_CALLER_LIMIT;
+        }
+        for bb in &self.funcs[func].bbs {
+            let mut iter = self.blocks[*bb].insts_start;
+            while let Some(vid) = iter {
+                let inst = &self.values[vid];
+                iter = inst.next;
+                count += 1;
+                if count > super::transform::inline::INLINE_CALLER_LIMIT {
+                    // too many instructions, giving up
+                    return super::transform::inline::INLINE_CALLER_LIMIT;
+                }
+            }
+        }
+        count
     }
 
     pub fn funcs(&self) -> Vec<String> {
@@ -224,10 +431,14 @@ impl TransUnit {
                 let bb = self.blocks.get_mut(bb).unwrap();
                 bb.insts_start = Some(value);
                 bb.insts_end = Some(value);
+                let this = self.values.get_mut(value).unwrap();
+                this.prev = None;
+                this.next = None;
             }
             Some(end) => {
                 let this = self.values.get_mut(value).unwrap();
                 this.prev = Some(end);
+                this.next = None;
                 let end = self.values.get_mut(end).unwrap();
                 end.next = Some(value);
                 let bb = self.blocks.get_mut(bb).unwrap();
@@ -352,15 +563,15 @@ impl TransUnit {
             };
             self.add_used_by(new, oc);
             macro_rules! rep {
-                ($this:ident, $kind:ident, $st:ident { $($member:ident),+ }) => {
-                    if false { unreachable!() }
+                ($this:ident, $kind:ident, $st:ident { $($member:ident),+ }) => {{
+                    let mut new_st = $this.clone();
                     $(
-                        else if $this.$member == old {
-                            InstructionValue::$kind($st { $member: new, ..$this })
+                        if new_st.$member == old {
+                            new_st.$member = new;
                         }
                     )+
-                    else { unreachable!() }
-                }
+                    InstructionValue::$kind(new_st)
+                }}
             }
             let new_value = match user.value.as_inst().clone() {
                 InstructionValue::Alloca(_) => unreachable!(),

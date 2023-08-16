@@ -94,7 +94,10 @@ fn main() {
             Box::new(ir::memdep::ComputeGlobalModRef),
             Box::new(ir::transform::rename::Canonicalize),
             Box::new(ir::transform::gvngcm::GVNGCM),
-            Box::new(ir::transform::dce::DeadCodeElimination),
+            Box::new(ir::transform::inline::FunctionInlining),
+            Box::new(ir::transform::bbopt::BasicBlockOptimization),
+            Box::new(ir::transform::rename::Canonicalize),
+            Box::new(ir::transform::gvngcm::GVNGCM),
             Box::new(ir::transform::rename::Canonicalize),
         ],
         _ => vec![

@@ -13,6 +13,29 @@ impl Display for TransUnit {
     }
 }
 
+#[allow(unused)]
+pub struct IrFuncFormatter<'a> {
+    unit: &'a TransUnit,
+    func: &'a str,
+}
+
+#[allow(unused)]
+impl<'a> IrFuncFormatter<'a> {
+    pub fn new(unit: &'a TransUnit, func: &'a str) -> Self {
+        Self {
+            unit,
+            func,
+        }
+    }
+}
+
+impl<'a> Display for IrFuncFormatter<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let irfunc = &self.unit.funcs[self.func];
+        self.unit.print_func(self.func, irfunc, f)
+    }
+}
+
 impl TransUnit {
     pub fn print(&self, writer: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut keys: Vec<_> = self.globals.keys().collect();
@@ -110,14 +133,23 @@ impl TransUnit {
                 } else {
                     write!(writer, ", ").unwrap();
                 }
-                write!(writer, "%{}", self.blocks[*bb].name).unwrap();
+                write!(writer, "%{}", self.blocks.get(*bb).map(|bb| bb.name.as_str()).unwrap_or("???")).unwrap();
             });
             writeln!(writer, )?;
             let mut insts = bb0.insts_start;
-            while let Some(inst) = insts {
-                write!(writer, "  ")?;
-                let inst = arena.get(inst).unwrap();
+            while let Some(vid) = insts {
+                let inst = arena.get(vid).unwrap();
                 insts = inst.next;
+                // writeln!(writer, "; id = {:?}", vid)?;
+                // write!(writer, "; used by")?;
+                // for (idx, user) in inst.used_by.iter().enumerate() {
+                //     if idx != 0 {
+                //         write!(writer, ",")?;
+                //     }
+                //     write!(writer, " {:?} [{}]", user, self.values.get(*user).is_some())?;
+                // }
+                // writeln!(writer)?;
+                write!(writer, "  ")?;
                 match inst.value {
                     ValueType::Global(_) | ValueType::Parameter(_) => unreachable!(),
                     ValueType::Instruction(ref insn) => {
@@ -245,7 +277,7 @@ impl TransUnit {
                                     }
                                     write!(writer, "[")?;
                                     self.print_value(val, writer)?;
-                                    write!(writer, ", %{}]", self.blocks.get(bb).unwrap().name)?;
+                                    write!(writer, ", %{}]", self.blocks.get(bb).map(|bb| bb.name.as_str()).unwrap_or("???"))?;
                                 }
                                 writeln!(writer, )?;
                             }
