@@ -886,9 +886,14 @@ impl<'a> AsmFuncBuilder<'a> {
                         let dst = self.resolve(inst, mbb);
                         let mut ptr = self.resolve(g.ptr, mbb);
                         let mut ty = Type::ptr_to(g.base_ty);
-                        let mut acc = ptr;
-                        for index in g.indices {
-                            acc = self.new_vreg64();
+                        let mut acc;
+                        let glen = g.indices.len();
+                        for (idx, &index) in g.indices.iter().enumerate() {
+                            if idx == glen - 1 {
+                                acc = dst;
+                            } else {
+                                acc = self.new_vreg64();
+                            }
                             let elem_size = ty.base_type().size() as i32;
                             ty = ty.base_type();
                             let constant_index = self.resolve_constant(index);
@@ -959,8 +964,6 @@ impl<'a> AsmFuncBuilder<'a> {
                             }
                             ptr = acc;
                         }
-                        // FIXME: add to dst directly in the last run
-                        emit!(MV dst, acc);
                     },
                     InstructionValue::Call(c) => {
                         enum ReturnValue {
