@@ -13,6 +13,15 @@ impl Display for TransUnit {
     }
 }
 
+pub struct IrFuncFormater<'a>(pub &'a TransUnit, pub &'a str);
+
+impl<'a> Display for IrFuncFormater<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let func = self.0.funcs.get(self.1).unwrap();
+        self.0.print_func(self.1, func, f)
+    }
+}
+
 impl TransUnit {
     pub fn print(&self, writer: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut keys: Vec<_> = self.globals.keys().collect();

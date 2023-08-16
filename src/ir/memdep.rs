@@ -5,18 +5,39 @@ use super::{
     structure::TransUnit, IrPass
 };
 
+#[derive(Debug)]
+pub struct RelatedAccess {
+    id: usize,
+    loads: Vec<ValueId>,
+    stores: HashSet<ValueId>,
+    pub killed_by: HashMap<ValueId, Vec<ValueId>>,
+    store_ops: HashMap<ValueId, ValueId>,
+}
+
+impl RelatedAccess {
+    fn new(id: usize) -> Self {
+        Self {
+            id,
+            loads: vec![],
+            stores: HashSet::new(),
+            killed_by: HashMap::new(),
+            store_ops: HashMap::new(),
+        }
+    }
+}
+
 impl TransUnit {
     pub fn clear_memdep(&mut self, func: &str) {
         let f = self.funcs[func].clone();
         let mut deleted = HashSet::new();
 
         for bb in &f.bbs {
-            for mphi in self.blocks[*bb].mphi_lts.clone() {
+            for mphi in self.blocks[*bb].mphi.clone() {
                 self.values.remove(mphi);
                 deleted.insert(mphi);
             }
             let block = &mut self.blocks[*bb];
-            block.mphi_lts.clear();
+            block.mphi.clear();
             
             let mut removed = vec![];
             let mut iter = block.insts_start;
@@ -49,6 +70,8 @@ impl TransUnit {
             }
         }
 
+        self.memdep.remove(func);
+
         // for bb in &f.bbs {
         //     let block = &self.blocks[*bb];
         //     let mut iter = block.insts_start;
@@ -61,25 +84,6 @@ impl TransUnit {
     }
 
     pub fn compute_memdep(&mut self, func: &str, mr: &ModRef) {
-        struct RelatedAccess {
-            id: usize,
-            loads: Vec<ValueId>,
-            stores: HashSet<ValueId>,
-            killed_by: HashMap<ValueId, Vec<ValueId>>,
-            store_ops: HashMap<ValueId, ValueId>,
-        }
-        impl RelatedAccess {
-            fn new(id: usize) -> Self {
-                Self {
-                    id,
-                    loads: vec![],
-                    stores: HashSet::new(),
-                    killed_by: HashMap::new(),
-                    store_ops: HashMap::new(),
-                }
-            }
-        }
-
         // super::cfg::compute_dom(self, func);
         // ensure cfg info is calculated before this!
         let f = self.funcs[func].clone();
@@ -140,7 +144,7 @@ impl TransUnit {
                     if !visited.contains(&df) {
                         visited.insert(df);
                         let phi = self.memphi(orig, df);
-                        self.blocks.get_mut(df).unwrap().mphi_lts.push(phi);
+                        self.blocks.get_mut(df).unwrap().mphi.push(phi);
                         self.inst_bb.insert(phi, df);
                         worklist.push(df);
                     }
@@ -155,7 +159,7 @@ impl TransUnit {
                 continue;
             }
             vis.insert(bb);
-            let memphis = self.blocks[bb].mphi_lts.clone();
+            let memphis = self.blocks[bb].mphi.clone();
             for &phi in &memphis {
                 let mphi = self.values.get_mut(phi).unwrap().as_mphi();
                 let id = loads.get(&mphi.bind_ptr).unwrap().id;
@@ -203,11 +207,12 @@ impl TransUnit {
             }
             for succ in &self.succ(bb) {
                 worklist.push((*succ, values.clone()));
-                let memphis = self.blocks[*succ].mphi_lts.clone();
+                let memphis = self.blocks[*succ].mphi.clone();
                 for &phi in &memphis {
                     let mphi = self.values.get_mut(phi).unwrap().as_mphi();
                     let id = loads.get(&mphi.bind_ptr).unwrap().id;
                     mphi.args.iter_mut().find(|x| x.1 == bb).unwrap().0 = values[id];
+                    loads.get_mut(&mphi.bind_ptr).unwrap().killed_by.entry(values[id]).or_default().push(phi);
                     // self.add_used_by(values[id], phi);
                 }
             }
@@ -232,6 +237,11 @@ impl TransUnit {
                         let st = l.use_store.unwrap();
                         if let Some(k) = ra.killed_by.get(&st) {
                             for &ks in k {
+                                let ksval = &self.values[ks];
+                                if matches!(ksval.value.as_inst(), InstructionValue::MemPhi(_)) {
+                                    continue;
+                                }
+
                                 // no actual inference
                                 let store_bb = self.inst_bb[&ks];
                                 if !self_dom.contains(&store_bb) {
@@ -251,7 +261,7 @@ impl TransUnit {
 
         // store killed by memory phi
         for bb in &f.bbs {
-            let phis = self.blocks[*bb].mphi_lts.clone();
+            let phis = self.blocks[*bb].mphi.clone();
             for phi in phis {
                 let mphi = self.values[phi].clone();
                 match mphi.value.as_inst() {
@@ -283,6 +293,7 @@ impl TransUnit {
             }
         }
 
+        self.memdep.insert(func.to_owned(), loads);
     }
 }
 

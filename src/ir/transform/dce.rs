@@ -39,6 +39,8 @@ pub fn dce(unit: &mut TransUnit, func: &str) {
             continue;
         }
         visited.insert(vid);
+        // let value = &unit.values[vid];
+        // println!("{:?}", value);
         for op in unit.get_operands(vid) {
             let op_val = &unit.values[op];
             if op_val.value.is_inst() {

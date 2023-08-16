@@ -12,7 +12,7 @@ use crate::ir::value::{
 use super::builder::IrFuncBuilder;
 use super::callgraph::CallGraphInfo;
 use super::cfg::LoopInfo;
-use super::memdep::ModRef;
+use super::memdep::{ModRef, RelatedAccess};
 use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue, CallInst, UnaryOp, MemPhiInst, MemOpInst, TailCallInst};
 
 #[derive(Debug, Clone)]
@@ -44,8 +44,7 @@ pub struct BasicBlock {
     pub insts_start: Option<ValueId>,
     pub insts_end: Option<ValueId>,
 
-    pub mphi_lts: Vec<ValueId>,
-    pub mphi_stl: Vec<ValueId>,
+    pub mphi: Vec<ValueId>,
 }
 
 impl BasicBlock {
@@ -61,8 +60,7 @@ impl BasicBlock {
             df: Vec::new(),
             insts_start: None,
             insts_end: None,
-            mphi_lts: Vec::new(),
-            mphi_stl: Vec::new(),
+            mphi: Vec::new(),
         }
     }
 
@@ -91,6 +89,7 @@ pub struct TransUnit {
     pub callgraph: HashMap<String, CallGraphInfo>,
     pub loopinfo: HashMap<String, LoopInfo>,
     pub modref: Option<ModRef>,
+    pub memdep: HashMap<String, HashMap<ValueId, RelatedAccess>>,
     pub dom_level: HashMap<String, HashMap<BlockId, u32>>,
 
     counter: usize,
@@ -115,6 +114,7 @@ impl TransUnit {
             callgraph: HashMap::new(),
             loopinfo: HashMap::new(),
             modref: None,
+            memdep: HashMap::new(),
             dom_level: HashMap::new(),
             counter: 0,
         };

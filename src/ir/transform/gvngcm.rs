@@ -6,10 +6,13 @@ use crate::{ir::{
     value::{
         ValueId, BinaryInst, ConstantValue, ValueType, InstructionValue,
         GetElemPtrInst, LoadInst, CallInst,
-    }
+    },
 }, ctype::BinaryOpType};
 
-use super::{IrPass, IrFuncPass, bbopt::bbopt, instcomb::combine, dce::DeadCodeElimination};
+use super::{
+    IrPass, IrFuncPass, bbopt::bbopt, instcomb::combine,
+    dce::DeadCodeElimination, dse::DeadStoreElimination
+};
 
 pub struct GVNGCM;
 
@@ -25,6 +28,7 @@ impl IrPass for GVNGCM {
                 ComputeControlFlow.run_on_func(unit, &k);
                 unit.compute_memdep(&k, &mr);
                 run_gvn(unit, &k);
+                DeadStoreElimination.run_on_func(unit, &k);
                 unit.clear_memdep(&k);
                 DeadCodeElimination.run_on_func(unit, &k);
                 unit.compute_memdep(&k, &mr);
