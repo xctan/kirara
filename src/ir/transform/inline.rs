@@ -7,7 +7,7 @@ use crate::ir::{
 
 use super::IrPass;
 
-pub static INLINE_CALLER_LIMIT: usize = 1024;
+pub static INLINE_CALLER_LIMIT: usize = 512;
 pub static INLINE_CALLEE_LIMIT: usize = 128;
 pub static INLINE_CALLEE_ARGS: usize = 64;
 
@@ -61,10 +61,6 @@ fn inline_func(
     stat: &mut HashMap<String, usize>,
     limit: &HashMap<String, usize>,
 ) -> bool {
-    // avoid infinite recursion
-    if unit.func_inst_count(func) >= limit[func] {
-        return false;
-    }
     let mut changed = false;
 
     // collection of all (including new) basic blocks in the function
@@ -72,6 +68,11 @@ fn inline_func(
     // use worklist here because we don't want recursive expansion
     let mut worklist = unit.funcs[func].bbs.clone();
     'outer: while let Some(callsite_bb) = worklist.pop() {
+        // avoid infinite recursion
+        if unit.func_inst_count(func) >= limit[func] {
+            return changed;
+        }
+
         let mut iter = unit.blocks[callsite_bb].insts_start;
         while let Some(vid) = iter {
             let inst = unit.values[vid].clone();
