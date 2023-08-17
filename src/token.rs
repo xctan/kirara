@@ -135,10 +135,15 @@ impl TryInto<f32> for TokenSpan<'_> {
         extern "C" {
             fn strtof(s: *const u8, end: *mut *mut u8) -> f32;
         }
-        let raw_str = s.as_bytes();
+        // let raw_str = s.as_bytes();
+        // pay attention to the null terminator!
+        // str in Rust is a fat pointer, but in C it decays to a pointer
+        let mut raw_str = s.as_bytes().to_vec();
+        raw_str.push(0);
         let res = unsafe {
             strtof(raw_str.as_ptr(), std::ptr::null_mut())
         };
+        // eprintln!("strtof: {:?} -> {}", s, res);
         Ok(res)
     }
 }
