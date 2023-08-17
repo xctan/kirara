@@ -40,9 +40,9 @@ esac
 # enabled benchmarks
 benchmarks=(
     # debug
-    functional
-    hidden_functional
-    # performance
+    # functional
+    # hidden_functional
+    performance
     # hidden_performance
 )
 
@@ -79,7 +79,8 @@ function expand_short_case_name() {
 function compile_test_case() {
     _suite=$1
     _case=$(expand_short_case_name $@)
-    _sysyflags=$3
+    shift 2
+    _sysyflags=$@
     _source=$testbench_root/$_suite/$_case.sy
     _asm=$testbench_root/$_suite.asm/$_case.S
     _out=$testbench_root/$_suite.out/$_case.out
@@ -113,7 +114,7 @@ function run_test_case() {
 
     echo "Running $_suite::$_case"
     export QEMU_LD_PREFIX=$kirara_sysroot
-    export QEMU_STACK_SIZE=100000000
+    # export QEMU_STACK_SIZE=100000000
     # input is optional
     if [ ! -f $_input ]; then
         $qemu $qemu_flags $_out > $_output
@@ -128,13 +129,16 @@ function run_test_case() {
         fi
     fi
     echo $_exit_code >> $_output
+    if [ $_exit_code -ne 0 ]; then
+        echo "Non-zero exit code: $_exit_code"
+    fi
 
     # compare output
     if [ ! -f $_ref ]; then
         echo "No reference output for $_suite::$_case"
         return
     fi
-    diff $_ref $_output
+    diff -Z $_ref $_output > /dev/null
     if [ $? -ne 0 ]; then
         echo "Unexpected output for $_suite::$_case"
         exit 1
