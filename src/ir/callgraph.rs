@@ -60,6 +60,10 @@ impl TransUnit {
                             res.entry(name.clone()).or_default().callee.insert(c.func.clone());
                             res.entry(c.func.clone()).or_default().caller.insert(name.clone());
                         },
+                        InstructionValue::TailCall(c) => {
+                            res.entry(name.clone()).or_default().callee.insert(c.func.clone());
+                            res.entry(c.func.clone()).or_default().caller.insert(name.clone());
+                        },
                         _ => {},
                     }
                 }
