@@ -551,25 +551,25 @@ impl<'a> AsmFuncBuilder<'a> {
                                         panic!("div by zero");
                                     }
 
-                                    let (m, s, n_add_sign) = fastdiv_magic(imm);
-                                    let tmp = self.new_vreg64();
-                                    emit!(LIMM tmp, m);
-                                    emit!(MUL tmp, tmp, mo_lhs);
-                                    emit!(SRAI dst, tmp, 32);
-                                    if n_add_sign == 1 {
-                                        emit!(ADDW dst, dst, mo_lhs);
-                                    } else if n_add_sign == -1 {
-                                        emit!(SUBW dst, dst, mo_lhs);
-                                    }
-                                    if s >= 0 {
-                                        if s > 0 {
-                                            emit!(SRAIW dst, dst, s);
-                                        }
-                                        let tmp2 = self.new_vreg();
-                                        emit!(SRLIW tmp2, dst, 31);
-                                        emit!(ADDW dst, dst, tmp2);
-                                    }
-                                    continue;
+                                    // let (m, s, n_add_sign) = fastdiv_magic(imm);
+                                    // let tmp = self.new_vreg64();
+                                    // emit!(LIMM tmp, m);
+                                    // emit!(MUL tmp, tmp, mo_lhs);
+                                    // emit!(SRAI dst, tmp, 32);
+                                    // if n_add_sign == 1 {
+                                    //     emit!(ADDW dst, dst, mo_lhs);
+                                    // } else if n_add_sign == -1 {
+                                    //     emit!(SUBW dst, dst, mo_lhs);
+                                    // }
+                                    // if s >= 0 {
+                                    //     if s > 0 {
+                                    //         emit!(SRAIW dst, dst, s);
+                                    //     }
+                                    //     let tmp2 = self.new_vreg();
+                                    //     emit!(SRLIW tmp2, dst, 31);
+                                    //     emit!(ADDW dst, dst, tmp2);
+                                    // }
+                                    // continue;
                                 }
 
                                 let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
@@ -591,29 +591,29 @@ impl<'a> AsmFuncBuilder<'a> {
                                         panic!("div by zero");
                                     }
 
-                                    let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
-                                    let (m, s, n_add_sign) = fastdiv_magic(imm);
-                                    let tmp = self.new_vreg64();
-                                    let tmp3 = self.new_vreg();
-                                    emit!(LIMM tmp, m);
-                                    emit!(MUL tmp, tmp, mo_lhs);
-                                    emit!(SRAI tmp3, tmp, 32);
-                                    if n_add_sign == 1 {
-                                        emit!(ADDW tmp3, tmp3, mo_lhs);
-                                    } else if n_add_sign == -1 {
-                                        emit!(SUBW tmp3, tmp3, mo_lhs);
-                                    }
-                                    if s >= 0 {
-                                        if s > 0 {
-                                            emit!(SRAIW tmp3, tmp3, s);
-                                        }
-                                        let tmp2 = self.new_vreg();
-                                        emit!(SRLIW tmp2, tmp3, 31);
-                                        emit!(ADDW tmp3, tmp3, tmp2);
-                                    }
-                                    emit!(MULW tmp3, tmp3, mo_rhs);
-                                    emit!(SUBW dst, mo_lhs, tmp3);
-                                    continue;
+                                    // let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
+                                    // let (m, s, n_add_sign) = fastdiv_magic(imm);
+                                    // let tmp = self.new_vreg64();
+                                    // let tmp3 = self.new_vreg();
+                                    // emit!(LIMM tmp, m);
+                                    // emit!(MUL tmp, tmp, mo_lhs);
+                                    // emit!(SRAI tmp3, tmp, 32);
+                                    // if n_add_sign == 1 {
+                                    //     emit!(ADDW tmp3, tmp3, mo_lhs);
+                                    // } else if n_add_sign == -1 {
+                                    //     emit!(SUBW tmp3, tmp3, mo_lhs);
+                                    // }
+                                    // if s >= 0 {
+                                    //     if s > 0 {
+                                    //         emit!(SRAIW tmp3, tmp3, s);
+                                    //     }
+                                    //     let tmp2 = self.new_vreg();
+                                    //     emit!(SRLIW tmp2, tmp3, 31);
+                                    //     emit!(ADDW tmp3, tmp3, tmp2);
+                                    // }
+                                    // emit!(MULW tmp3, tmp3, mo_rhs);
+                                    // emit!(SUBW dst, mo_lhs, tmp3);
+                                    // continue;
                                 }
 
                                 let mo_rhs = self.resolve_ensure_reg(b.rhs, mbb);
