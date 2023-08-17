@@ -21,11 +21,11 @@ impl IrPass for GVNGCM {
             // let mut iteration = 0;
             while !done {
                 // use crate::ir::export::IrFuncFormatter;
-                // eprintln!("{}", IrFuncFormatter::new(unit, &k));
+                // eprintln!("before gvngcm\n{}", IrFuncFormatter::new(unit, &k));
 
                 done = !combine(unit, k.as_str());
                 done &= !bbopt(unit, k.as_str());
-                // eprintln!("{}", IrFuncFormatter::new(unit, &k));
+                // eprintln!("before memdep\n{}", IrFuncFormatter::new(unit, &k));
 
                 ComputeControlFlow.run_on_func(unit, &k);
                 unit.compute_memdep(&k, &mr);
@@ -36,9 +36,9 @@ impl IrPass for GVNGCM {
                 run_gcm(unit, &k);
                 unit.clear_memdep(&k);
 
-                // eprintln!("{}", IrFuncFormatter::new(unit, &k));
+                // eprintln!("before bbopt\n{}", IrFuncFormatter::new(unit, &k));
                 done &= !bbopt(unit, k.as_str());
-                // eprintln!("{}", IrFuncFormatter::new(unit, &k));
+                // eprintln!("after gvngcm\n{}", IrFuncFormatter::new(unit, &k));
 
                 // iteration += 1;
                 // eprintln!("GVNGCM iteration {} on {}", iteration, k);

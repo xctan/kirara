@@ -42,10 +42,19 @@ pub fn do_inline(unit: &mut TransUnit) {
         .iter()
         .map(|f| (f.clone(), unit.func_inst_count(&f)))
         .collect();
+    // max expansion times for each function
+    let mut times = funcs
+        .iter()
+        .map(|f| (f.clone(), 0))
+        .collect::<HashMap<_, _>>();
     let mut stat = stat_start.clone();
     stat_start.iter_mut().for_each(|(_, v)| *v *= 2);
     let mut worklist = funcs;
     while let Some(f) = worklist.pop() {
+        if times[&f] >= 3 {
+            continue;
+        }
+        times.entry(f.clone()).and_modify(|v| *v += 1);
         // eprintln!("current {}, stat {:?}", f, stat);
         if inline_func(unit, &f, &mut stat, &stat_start) {
             stat.remove(&f);
@@ -69,7 +78,8 @@ fn inline_func(
     let mut worklist = unit.funcs[func].bbs.clone();
     'outer: while let Some(callsite_bb) = worklist.pop() {
         // avoid infinite recursion
-        if unit.func_inst_count(func) >= limit[func] {
+        let count_now = unit.func_inst_count(func);
+        if count_now >= limit[func] {
             return changed;
         }
 

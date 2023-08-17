@@ -90,35 +90,56 @@ impl IrFuncPass for ScalarLinearInduction {
                 }
 
                 if let Some(linvar) = linvars.get(&inst) {
-                    if linvar.len() == 2 && linvar.iter().all(|(_, v)| *v == 1) {
+                    if linvar.len() == 2 && linvar.iter().all(|(_, v)| v.abs() == 1) {
                         // just added, no need to optimize
                     } else if linvar.len() == 0 {
                         // reduced to constant, replace it
                         let new_val = unit.const_i32(0);
                         unit.replace(inst, new_val);
                     } else {
-                        // assert!(linvar.len() < 10);
-                        let (k, &v) = linvar.iter().next().unwrap();
-                        let mut acc = if v != 1 {
-                            let multiplier = unit.const_i32(v as i32);
-                            let new_val = unit.binary(BinaryOpType::Mul, *k, multiplier);
-                            unit.insert_before2(new_val, inst);
-                            new_val
-                        } else {
-                            *k
-                        };
-                        for (k, v) in linvar.iter().skip(1) {
-                            if *v == 1 {
-                                acc = unit.binary(BinaryOpType::Add, acc, *k);
-                                unit.insert_before2(acc, inst);
+                        let mut acc = None;
+                        for (&k, &v) in linvar.iter() {
+                            let kval = unit.values[k].value.clone();
+                            if kval.is_constant() {
+                                let kval = kval.as_constant();
+                                if let ConstantValue::I32(kval) = kval {
+                                    if *kval == 0 {
+                                        continue;
+                                    }
+                                }
+                            }
+                            if v == 1 {
+                                if let Some(a) = acc {
+                                    acc = Some(unit.binary(BinaryOpType::Add, a, k));
+                                    unit.insert_before2(acc.unwrap(), inst);
+                                } else {
+                                    acc = Some(k);
+                                }
+                            } else if v == -1 {
+                                if let Some(a) = acc {
+                                    acc = Some(unit.binary(BinaryOpType::Sub, a, k));
+                                    unit.insert_before2(acc.unwrap(), inst);
+                                } else {
+                                    let zero = unit.const_i32(0);
+                                    acc = Some(unit.binary(BinaryOpType::Sub, zero, k));
+                                    unit.insert_before2(acc.unwrap(), inst);
+                                }
                             } else {
-                                let multiplier = unit.const_i32(*v as i32);
-                                let new_val = unit.binary(BinaryOpType::Mul, *k, multiplier);
-                                acc = unit.binary(BinaryOpType::Add, acc, new_val);
-                                unit.insert_before2(acc, inst);
+                                let multiplier = unit.const_i32(v as i32);
+                                let new_val = unit.binary(BinaryOpType::Mul, k, multiplier);
                                 unit.insert_before2(new_val, inst);
+                                if let Some(a) = acc {
+                                    acc = Some(unit.binary(BinaryOpType::Add, a, new_val));
+                                    unit.insert_before2(acc.unwrap(), inst);
+                                } else {
+                                    acc = Some(new_val);
+                                }
                             }
                         }
+                        if acc.is_none() {
+                            acc = Some(unit.const_i32(0));
+                        }
+                        let acc = acc.unwrap();
                         unit.replace(inst, acc);
                         unit.remove2(inst);
                         let var = linvar.clone();
