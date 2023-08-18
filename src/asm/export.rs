@@ -18,6 +18,7 @@ impl MachineProgram {
 
         let mut counter = 0;
 
+        let mut bb_names = HashMap::new();
         let mut funcs = self.funcs.iter().collect::<Vec<_>>();
         funcs.sort_by_key(|(name, _)| *name);
         for (_, f) in funcs {
@@ -34,7 +35,6 @@ impl MachineProgram {
             writeln!(writer, "\t.type\t{}, @function", f.func)?;
             writeln!(writer, "{}:", f.func)?;
 
-            let mut bb_names = HashMap::new();
             for bb in f.bbs.iter() {
                 let mbb = &self.blocks[*bb];
                 bb_names.insert(*bb, format!(".LBB{}_{}.{}", counter, count2(), mbb.name));
@@ -148,6 +148,18 @@ impl MachineProgram {
             writeln!(writer, "{}:", s)?;
             for dd in data {
                 writeln!(writer, "\t{}", dd)?;
+            }
+            writeln!(writer)?;
+        }
+
+        let mut tables = self.tables.iter().collect::<Vec<_>>();
+        tables.sort_by_key(|(name, _)| *name);
+        for (s, data) in tables {
+            writeln!(writer, "\t.section\t.rodata")?;
+            writeln!(writer, "\t.type\t{}, @object", s)?;
+            writeln!(writer, "{}:", s)?;
+            for dd in &data.1 {
+                writeln!(writer, "\t.word\t{}-{}", bb_names[dd], s)?;
             }
             writeln!(writer)?;
         }

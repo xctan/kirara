@@ -1212,10 +1212,10 @@ impl RV64InstBuilder {
     pub fn LADDR(rd: GPOperand, label: String) -> RV64Instruction {
         RV64Instruction::LADDR { rd, label }
     }
-    #[allow(non_snake_case)]
-    pub fn OFFSET(dest: Id<MachineBB>, base: String) -> RV64Instruction {
-        RV64Instruction::OFFSET { dest, base }
-    }
+    // #[allow(non_snake_case)]
+    // pub fn OFFSET(dest: Id<MachineBB>, base: String) -> RV64Instruction {
+    //     RV64Instruction::OFFSET { dest, base }
+    // }
     #[allow(non_snake_case)]
     pub fn BLTUl(rs1: GPOperand, rs2: GPOperand, succ: Id<MachineBB>) -> RV64Instruction {
         RV64Instruction::BLTUl { rs1, rs2, succ }
@@ -1324,6 +1324,7 @@ pub struct MachineProgram {
 
     /// data of global variables (functions are not included)
     pub symbols: HashMap<String, AsmGlobalObject>,
+    pub tables: HashMap<String, (String, Vec<Id<MachineBB>>)>,
 
     // global_decl
 
@@ -1341,6 +1342,7 @@ impl MachineProgram {
         Self {
             funcs: HashMap::new(),
             symbols: HashMap::new(),
+            tables: HashMap::new(),
             blocks: Arena::new(),
             insts: Arena::new(),
             block_map: HashMap::new(),

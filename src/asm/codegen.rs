@@ -1162,10 +1162,10 @@ impl<'a> AsmFuncBuilder<'a> {
                             emit!(LW dest, indexed, 0);
                             emit!(ADD dest, dest, base);
                             emit!(JALR pre!(zero), dest, 0);
-                            emit!(LABEL table_name.clone());
-                            for t in table {
-                                emit!(OFFSET t, table_name.clone());
-                            }
+                            self.prog.tables.insert(
+                                table_name.clone(),
+                                (table_name, table)
+                            );
                         } else {
                             // in theory, binary search is better here
                             for (case, target) in cases {
