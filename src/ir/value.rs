@@ -276,6 +276,7 @@ pub enum InstructionValue {
     TailCall(TailCallInst),
     MemOp(MemOpInst),
     MemPhi(MemPhiInst),
+    Switch(SwitchInst),
 }
 
 impl_value_trait!{InstructionValue{
@@ -293,6 +294,7 @@ impl_value_trait!{InstructionValue{
     TailCall,
     MemOp,
     MemPhi,
+    Switch,
 }}
 
 #[derive(Debug, Clone)]
@@ -423,6 +425,15 @@ pub struct MemPhiInst {
 
 impl ValueTrait for MemPhiInst {}
 
+#[derive(Debug, Clone)]
+pub struct SwitchInst {
+    pub cond: ValueId,
+    pub default: BlockId,
+    pub cases: Vec<(i32, BlockId)>,
+}
+
+impl ValueTrait for SwitchInst {}
+
 pub fn calculate_used_by(unit: &mut TransUnit, func: &str) {
     let func = unit.funcs[func].clone();
 
@@ -496,6 +507,10 @@ pub fn calculate_used_by(unit: &mut TransUnit, func: &str) {
                 },
                 InstructionValue::MemOp(_) => {},
                 InstructionValue::MemPhi(_) => {},
+                InstructionValue::Switch(s) => {
+                    let cond_mut = unit.values.get_mut(s.cond).unwrap();
+                    cond_mut.used_by.insert(inst);
+                }
             }
         }
     }

@@ -148,6 +148,7 @@ impl<'a> AsmFuncBuilder<'a> {
 
     fn build_inner(&mut self) -> MachineFunc {
         let mut mfunc = self.prog.new_func(self.name.clone());
+        let mut counter = 0;
         calculate_used_by(self.unit, self.name.as_str());
 
         // 1. create machine bb as per ir bb
@@ -182,8 +183,6 @@ impl<'a> AsmFuncBuilder<'a> {
             let mbb = self.bb_map[bb];
             let block = &self.unit.blocks[*bb];
             macro_rules! emit {
-                // as for the first operand:
-                // - for SW/SD, the first operand is also rs
                 ($mnemonic:ident $($operand0:expr)? $(, $($operand:expr),*)?) => {{
                     self.prog.push_to_end(mbb, RV64InstBuilder::$mnemonic($($operand0, )? $($($operand),*)?))
                 }};
@@ -813,38 +812,40 @@ impl<'a> AsmFuncBuilder<'a> {
                     },
                     InstructionValue::Branch(b) => {
                         let cond_reg = self.resolve_ensure_reg(b.cond, mbb);
-                        if let Some(cond_id) = self.prog.vreg_def.get(&cond_reg) {
+                        let term = if let Some(cond_id) = self.prog.vreg_def.get(&cond_reg) {
                             let cond_inst = self.prog.insts[*cond_id].inst.clone();
                             match cond_inst {
                                 RV64Instruction::SEQ { rs1, rs2, .. } => {
-                                    emit!(JEQ rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail]);
+                                    emit!(JEQ rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail])
                                 },
                                 RV64Instruction::SNE { rs1, rs2, .. } => {
-                                    emit!(JNE rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail]);
+                                    emit!(JNE rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail])
                                 },
                                 RV64Instruction::SLT { rs1, rs2, .. } => {
-                                    emit!(JLT rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail]);
+                                    emit!(JLT rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail])
                                 },
                                 RV64Instruction::SGE { rs1, rs2, .. } => {
-                                    emit!(JGE rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail]);
+                                    emit!(JGE rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail])
                                 },
                                 RV64Instruction::SLTU { rs1, rs2, .. } => {
-                                    emit!(JLTU rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail]);
+                                    emit!(JLTU rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail])
                                 },
                                 RV64Instruction::SGEU { rs1, rs2, .. } => {
-                                    emit!(JGEU rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail]);
+                                    emit!(JGEU rs1, rs2, self.bb_map[&b.succ], self.bb_map[&b.fail])
                                 },
                                 _ => {
-                                    emit!(JNE cond_reg, pre!(zero), self.bb_map[&b.succ], self.bb_map[&b.fail]);
+                                    emit!(JNE cond_reg, pre!(zero), self.bb_map[&b.succ], self.bb_map[&b.fail])
                                 }
                             }
                         } else {
-                            emit!(JNE cond_reg, pre!(zero), self.bb_map[&b.succ], self.bb_map[&b.fail]);
-                        }
+                            emit!(JNE cond_reg, pre!(zero), self.bb_map[&b.succ], self.bb_map[&b.fail])
+                        };
+                        self.prog.mark_terminal(mbb, term);
                         break;
                     },
                     InstructionValue::Jump(j) => {
-                        emit!(JUMP self.bb_map[&j.succ]);
+                        let term = emit!(JUMP self.bb_map[&j.succ]);
+                        self.prog.mark_terminal(mbb, term);
                         break;
                     },
                     InstructionValue::Unary(c) => {
@@ -1102,13 +1103,83 @@ impl<'a> AsmFuncBuilder<'a> {
                             emit!(LEAVE);
                             emit!(TAIL c.func.clone(), args.clone());
                         } else {
-                            emit!(TAIL format!("{}$ENTRY", c.func), args.clone());
+                            emit!(TAIL format!(".L{}$ENTRY", c.func), args.clone());
                         }
                         // never return
                         break;
                     },
                     InstructionValue::MemOp(_) => unreachable!("remaining memdep in codegen"),
                     InstructionValue::MemPhi(_) => unreachable!("remaining memdep in codegen"),
+                    InstructionValue::Switch(sw) => {
+                        let cond = self.resolve(sw.cond, mbb);
+                        let term = emit!(NOP);
+                        let mut cases = sw.cases;
+                        // simplify codegen
+                        assert!(cases.len() >= 2);
+                        cases.sort_by_key(|c| c.0);
+                        let min = cases[0].0;
+                        let max = cases[cases.len() - 1].0;
+                        if max - min < 256 {
+                            // jump table
+                            let mut table = vec![
+                                None;
+                                (max - min + 1) as usize
+                            ];
+                            for (val, bb) in cases {
+                                if table[(val - min) as usize].is_none() {
+                                    table[(val - min) as usize] = Some(self.bb_map[&bb]);
+                                }
+                            }
+                            let table: Vec<_> = table
+                                .into_iter()
+                                .map(|t| t.unwrap_or(self.bb_map[&sw.default]))
+                                .collect();
+                            let table_name = format!(".L{}$JIT${}", self.name, counter);
+                            counter += 1;
+                            let adjusted = self.new_vreg();
+                            if min == 0 {
+                                emit!(MV adjusted, cond);
+                            } else if is_imm12(-min) {
+                                emit!(ADDI adjusted, cond, -min);
+                            } else {
+                                let tmp = self.new_vreg64();
+                                emit!(LIMM tmp, -min);
+                                emit!(ADD adjusted, cond, tmp);
+                            };
+                            let upper = self.new_vreg();
+                            emit!(LIMM upper, max - min);
+                            emit!(BLTUl upper, adjusted, self.bb_map[&sw.default]);
+                            let base = self.new_vreg64();
+                            emit!(LADDR base, table_name.clone());
+                            // // without Zba
+                            // let index = self.new_vreg64();
+                            // emit!(SLLI index, adjusted, 3);
+                            // emit!(ADD base, base, index);
+                            // with Zba
+                            let indexed = self.new_vreg64();
+                            emit!(SH2ADD indexed, adjusted, base);
+                            let dest = self.new_vreg64();
+                            emit!(LW dest, indexed, 0);
+                            emit!(ADD dest, dest, base);
+                            emit!(JALR pre!(zero), dest, 0);
+                            emit!(LABEL table_name.clone());
+                            for t in table {
+                                emit!(OFFSET t, table_name.clone());
+                            }
+                        } else {
+                            // in theory, binary search is better here
+                            for (case, target) in cases {
+                                let tmp = self.new_vreg();
+                                emit!(LIMM tmp, case);
+                                emit!(BNE cond, tmp, 4001); // bne cond, tmp, 1f
+                                emit!(JUMP self.bb_map[&target]);
+                                emit!(LABEL format!("1"));
+                            }
+                            emit!(JUMP self.bb_map[&sw.default]);
+                        }
+                        self.prog.mark_terminal(mbb, term);
+                        break;
+                    }
                 }
             }
         }
@@ -1211,14 +1282,8 @@ impl<'a> AsmFuncBuilder<'a> {
             }
             for (pred, insts) in outgoing {
                 let mbb = self.bb_map[&pred];
-                if let Some(last) = self.prog.blocks[mbb].insts_tail {
-                    for (lhs, rhs) in insts {
-                        self.prog.insert_before(last, RV64InstBuilder::MV(lhs, rhs));
-                    }
-                } else {
-                    for (lhs, rhs) in insts {
-                        self.prog.push_to_end(mbb, RV64InstBuilder::MV(lhs, rhs));
-                    }
+                for (lhs, rhs) in insts {
+                    self.prog.insert_before_end(mbb, RV64InstBuilder::MV(lhs, rhs));
                 }
             }
             for (pred, insts) in outgoing_imm {
@@ -1231,26 +1296,14 @@ impl<'a> AsmFuncBuilder<'a> {
                         _ => continue,
                     }
                 }
-                if let Some(last) = self.prog.blocks[mbb].insts_tail {
-                    for inst in loads {
-                        self.prog.insert_before(last, inst);
-                    }
-                } else {
-                    for inst in loads {
-                        self.prog.push_to_end(mbb, inst);
-                    }
+                for inst in loads {
+                    self.prog.insert_before_end(mbb, inst);
                 }
             }
             for (pred, insts) in outgoing_f {
                 let mbb = self.bb_map[&pred];
-                if let Some(last) = self.prog.blocks[mbb].insts_tail {
-                    for (lhs, rhs) in insts {
-                        self.prog.insert_before(last, RV64InstBuilder::FMVDD(lhs, rhs));
-                    }
-                } else {
-                    for (lhs, rhs) in insts {
-                        self.prog.push_to_end(mbb, RV64InstBuilder::FMVDD(lhs, rhs));
-                    }
+                for (lhs, rhs) in insts {
+                    self.prog.insert_before_end(mbb, RV64InstBuilder::FMVDD(lhs, rhs));
                 }
             }
             for (pred, insts) in outgoing_fimm {
@@ -1266,14 +1319,8 @@ impl<'a> AsmFuncBuilder<'a> {
                         _ => continue,
                     }
                 }
-                if let Some(last) = self.prog.blocks[mbb].insts_tail {
-                    for inst in loads {
-                        self.prog.insert_before(last, inst);
-                    }
-                } else {
-                    for inst in loads {
-                        self.prog.push_to_end(mbb, inst);
-                    }
+                for inst in loads {
+                    self.prog.insert_before_end(mbb, inst);
                 }
             }
         }
@@ -1281,7 +1328,7 @@ impl<'a> AsmFuncBuilder<'a> {
         // 4. add real prolouge
         self.prog.push_to_begin(
             mfunc.entry.unwrap(),
-            RV64InstBuilder::LABEL(format!("{}$ENTRY", self.name))
+            RV64InstBuilder::LABEL(format!(".L{}$ENTRY", self.name))
         );
         self.prog.push_to_begin(
             mfunc.entry.unwrap(),

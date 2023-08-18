@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use crate::ir::{structure::TransUnit, value::{InstructionValue, BranchInst, JumpInst}};
+use crate::{
+    ir::{structure::TransUnit, value::{InstructionValue, BranchInst, JumpInst, ConstantValue}},
+    ctype::BinaryOpType
+};
 
 use super::IrPass;
 
@@ -16,6 +19,222 @@ impl IrPass for BasicBlockOptimization {
 
 pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
     let bbs = unit.funcs[func].bbs.clone();
+
+    if crate::ARGS.optimize == "1" {
+        // recognize switch pattern
+        // use crate::ir::export::IrFuncFormatter;
+        // eprintln!("before switch merging\n{}", IrFuncFormatter::new(unit, func));
+        let mut visited = HashSet::new();
+        let mut worklist = vec![unit.funcs[func].entry_bb];
+        while let Some(bb) = worklist.pop() {
+            if visited.contains(&bb) {
+                continue;
+            }
+            visited.insert(bb);
+            
+            // scan for switch pattern
+            // header:
+            //   ...
+            //   %cond0 = icmp eq %a, constant0
+            //   br %cond0, %bb0, %case1
+            // case1:
+            //   %cond1 = icmp eq %a, constant1
+            //   br %cond1, %bb1, %case2
+            // case2:
+            //   %cond2 = icmp ne %a, constant2
+            //   br %cond2, %case3, %bb2
+            // case3:
+            //   %cond3 = icmp ne %a, constant3
+            //   br %cond3, %default, %bb3 ; <- default is last non-switch bb
+            // ...
+            let mut targets = vec![];
+            let mut next = bb;
+            let mut base = None;
+            let mut delete = vec![];
+            let mut delete_bbs = vec![];
+
+            'switch: loop {
+                visited.insert(next);
+                if targets.len() == 0 {
+                    if unit.bb_inst_count(next) < 2 {
+                        break;
+                    }
+                } else {
+                    if unit.bb_inst_count(next) != 2 {
+                        break;
+                    }
+                }
+                let last = unit.blocks[next].insts_end.unwrap();
+                let last_val = &unit.values[last];
+                let (cond, cond_value, br) =
+                    if let InstructionValue::Branch(br) = last_val.value.as_inst()
+                {
+                    let cond = br.cond;
+                    let cond_value = &unit.values[br.cond];
+                    if cond_value.used_by.len() > 1
+                        || !cond_value.value.is_inst()
+                        || unit.inst_bb[&last] != unit.inst_bb[&br.cond] {
+                        // cond is used by other instruction, we cannot delete it
+                        break;
+                    }
+                    (cond, cond_value, br)
+                } else {
+                    break;
+                };
+                let new_next = if let InstructionValue::Binary(bin) = cond_value.value.as_inst() {
+                    let lhs = &unit.values[bin.lhs];
+                    let rhs = &unit.values[bin.rhs];
+                    if lhs.value.is_constant() || !rhs.value.is_constant() {
+                        break;
+                    }
+                    if let Some(b) = base {
+                        if bin.lhs != b {
+                            break;
+                        }
+                    } else {
+                        base = Some(bin.lhs);
+                    }
+                    let rhs_literal = match rhs.value.as_constant() {
+                        ConstantValue::I32(x) => *x,
+                        _ => break,
+                    };
+                    if bin.op == BinaryOpType::Eq {
+                        // check phi inst
+                        let target = &unit.blocks[br.succ];
+                        let target_first = unit.values[target.insts_start.unwrap()].clone();
+                        if let InstructionValue::Phi(_phi) = target_first.value.as_inst() {
+                            // keep this bb to distinguish from the other bb if needed
+                            for p in &target.preds {
+                                if *p == next {
+                                    // skip self
+                                    continue;
+                                }
+                                let succ = unit.succ(*p);
+                                if succ.into_iter().any(|tpred| tpred == next) {
+                                    // abandon
+                                    targets.clear();
+                                    break 'switch;
+                                }
+                            }
+                        }
+
+                        targets.push((rhs_literal, br.succ));
+                        br.fail
+                    } else if bin.op == BinaryOpType::Ne {
+                        // check phi inst
+                        let target = &unit.blocks[br.fail];
+                        let target_first = unit.values[target.insts_start.unwrap()].clone();
+                        if let InstructionValue::Phi(_phi) = target_first.value.as_inst() {
+                            // keep this bb to distinguish from the other bb if needed
+                            for p in &target.preds {
+                                if *p == next {
+                                    // skip self
+                                    continue;
+                                }
+                                let succ = unit.succ(*p);
+                                if succ.into_iter().any(|tpred| tpred == next) {
+                                    // abandon
+                                    targets.clear();
+                                    break 'switch;
+                                }
+                            }
+                        }
+
+                        targets.push((rhs_literal, br.fail));
+                        br.succ
+                    } else {
+                        // not eq/ne, cannot be switch pattern
+                        break;
+                    }
+                } else {
+                    break;
+                };
+                // don't delete switch head
+                if targets.len() > 1 {
+                    delete_bbs.push(next);
+                }
+                delete.push(cond);
+                delete.push(last);
+                next = new_next;
+            }
+            // eprintln!("{targets:?}");
+
+            if targets.len() >= 4 {
+                // rewrite as switch
+                let head = bb;
+                let cond = base.unwrap();
+                let default = next;
+                for bb in &delete_bbs {
+                    for s in unit.succ(*bb) {
+                        if let Some(block) = unit.blocks.get_mut(s) {
+                            let idx = block.preds
+                                .iter()
+                                .position(|p| *p == *bb)
+                                .unwrap();
+                            block.preds.remove(idx);
+                            let mut iter = block.insts_start;
+                            while let Some(inst) = iter {
+                                let insn = &mut unit.values[inst];
+                                iter = insn.next;
+                                let insn = insn.value.as_inst_mut();
+                                if let InstructionValue::Phi(phi) = insn {
+                                    phi.args.remove(idx);
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    unit.blocks.remove(*bb);
+                }
+                for v in &delete {
+                    unit.remove2(*v);
+                }
+                for (_, target) in targets.iter().skip(1) {
+                    let tblk = &mut unit.blocks[*target];
+                    if tblk.preds.contains(&head) {
+                        continue;
+                    }
+                    tblk.preds.push(head);
+                    let mut iter = tblk.insts_start;
+                    let undef = unit.undef();
+                    while let Some(inst) = iter {
+                        let insn = &mut unit.values[inst];
+                        iter = insn.next;
+                        let insn = insn.value.as_inst_mut();
+                        if let InstructionValue::Phi(phi) = insn {
+                            phi.args.push((undef, head));
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                let tblk = &mut unit.blocks[default];
+                tblk.preds.push(head);
+                let mut iter = tblk.insts_start;
+                let undef = unit.undef();
+                while let Some(inst) = iter {
+                    let insn = &mut unit.values[inst];
+                    iter = insn.next;
+                    let insn = insn.value.as_inst_mut();
+                    if let InstructionValue::Phi(phi) = insn {
+                        phi.args.push((undef, head));
+                    } else {
+                        break;
+                    }
+                }
+                let sw = unit.switch(cond, default, targets);
+                unit.insert_at_end(head, sw);
+            }
+
+            for s in unit.succ(bb) {
+                worklist.push(s);
+            }
+        }
+        
+        unit.rebuild_bb_cahce(func);
+        // eprintln!("after switch merging\n{}", IrFuncFormatter::new(unit, func));
+    }
 
     let mut changed = true;
     while changed {
@@ -106,14 +325,15 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
                     // eprintln!("optimize empty bb: {}", unit.blocks[*bb].name);
                     let target_first = unit.values[target.insts_start.unwrap()].clone();
                     if let InstructionValue::Phi(_phi) = target_first.value.as_inst() {
+                        // keep this bb to distinguish from the other bb if needed
                         for p in &target.preds {
-                            let pred = &unit.blocks[*p];
-                            let pred_tail = unit.values[pred.insts_end.unwrap()].clone();
-                            if let InstructionValue::Branch(br) = pred_tail.value.as_inst() {
-                                // keep this bb to distinguish from the other bb
-                                if br.succ == *bb || br.fail == *bb {
-                                    continue 'bb;
-                                }
+                            if *p == *bb {
+                                // skip self
+                                continue;
+                            }
+                            let succ = unit.succ(*p);
+                            if succ.into_iter().any(|tpred| tpred == *bb) {
+                                continue 'bb;
                             }
                         }
                     }
