@@ -331,6 +331,20 @@ impl TransUnit {
                                 writeln!(writer)?;
                             }
                             InstructionValue::MemPhi(_) => {}
+                            InstructionValue::Switch(ref sw) => {
+                                let cond_v = arena.get(sw.cond).unwrap();
+                                write!(writer, "switch {} ", cond_v.ty())?;
+                                self.print_value(sw.cond, writer)?;
+                                writeln!(writer, ", label %{} [", self.blocks.get(sw.default).unwrap().name)?;
+                                for (_idx, &(val, bb)) in sw.cases.iter().enumerate() {
+                                    // if idx != 0 {
+                                    //     write!(writer, ", ")?;
+                                    // }
+                                    // only supported type
+                                    writeln!(writer, "    i32 {}, label %{}", val, self.blocks.get(bb).unwrap().name)?;
+                                }
+                                writeln!(writer, "  ]")?;
+                            }
                         }
                     }
                     ValueType::Constant(_) => unimplemented!(),

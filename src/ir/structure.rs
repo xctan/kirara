@@ -6,7 +6,7 @@ use crate::ast::Initializer;
 use crate::ctype::{Type, BinaryOpType, Linkage};
 use crate::ir::value::{
     InstructionValue, ReturnInst, StoreInst, LoadInst, BinaryInst, BranchInst, 
-    UnaryInst, GetElemPtrInst, ValueType, PhiInst, ParameterValue, calculate_used_by
+    UnaryInst, GetElemPtrInst, ValueType, PhiInst, ParameterValue, calculate_used_by, SwitchInst
 };
 
 use super::builder::IrFuncBuilder;
@@ -306,6 +306,16 @@ impl TransUnit {
                     // can we copy memdep information?
                     InstructionValue::MemOp(_) => todo!(),
                     InstructionValue::MemPhi(_) => todo!(),
+                    InstructionValue::Switch(sw) => {
+                        InstructionValue::Switch(SwitchInst {
+                            cond: replace(sw.cond),
+                            default: bbmap[&sw.default],
+                            cases: sw.cases
+                                .iter()
+                                .map(|(v, b)| (v.clone(), bbmap[b]))
+                                .collect(),
+                        })
+                    },
                 };
 
                 let dstvid = replace(vid);
@@ -340,6 +350,21 @@ impl TransUnit {
                     // too many instructions, giving up
                     return super::transform::inline::INLINE_CALLER_LIMIT;
                 }
+            }
+        }
+        count
+    }
+
+    pub fn bb_inst_count(&self, bb: BlockId) -> usize {
+        let mut iter = self.blocks[bb].insts_start;
+        let mut count = 0;
+        while let Some(vid) = iter {
+            let inst = &self.values[vid];
+            iter = inst.next;
+            count += 1;
+            if count > super::transform::inline::INLINE_CALLEE_LIMIT {
+                // too many instructions, giving up
+                return super::transform::inline::INLINE_CALLEE_LIMIT;
             }
         }
         count
@@ -460,7 +485,14 @@ impl TransUnit {
     }
 
     pub fn takeout(&mut self, value: ValueId) {
-        let bb = *self.inst_bb.get(&value).unwrap();
+        let bb = *match self.inst_bb.get(&value) {
+            Some(bb) => bb,
+            None => return,
+        };
+        if self.blocks.get(bb).is_none() {
+            // already removed
+            return
+        }
         let this = self.values.get(value).unwrap().clone();
         match this.prev {
             Some(prev) => {
@@ -500,6 +532,7 @@ impl TransUnit {
         for opr in oprs {
             self.remove_used_by(opr, value);
         }
+        self.inst_bb.remove(&value);
         self.values.remove(value);
     }
 
@@ -550,6 +583,7 @@ impl TransUnit {
                 }
                 ret
             },
+            InstructionValue::Switch(sw) => vec![sw.cond],
         }
     }
 
@@ -636,6 +670,9 @@ impl TransUnit {
                 }
                 raw @ InstructionValue::MemOp(_) => raw,
                 raw @ InstructionValue::MemPhi(_) => raw,
+                InstructionValue::Switch(sw) => {
+                    rep!(sw, Switch, SwitchInst { cond })
+                }
             };
             let user = self.values.get_mut(oc).unwrap();
             user.value = ValueType::Instruction(new_value);
@@ -657,6 +694,11 @@ impl TransUnit {
             &InstructionValue::Return(_) => {
                 vec![]
             }
+            &InstructionValue::Switch(ref sw) => {
+                let mut ret = vec![sw.default.clone()];
+                ret.extend(sw.cases.iter().map(|(_, bb)| bb).cloned());
+                ret
+            }
             _ => panic!("Invalid terminator instruction"),
         }
     }
@@ -675,6 +717,11 @@ impl TransUnit {
             &mut InstructionValue::Return(_) => {
                 vec![]
             }
+            &mut InstructionValue::Switch(ref mut sw) => {
+                let mut ret = vec![&mut sw.default];
+                ret.extend(sw.cases.iter_mut().map(|(_, bb)| bb));
+                ret
+            }
             _ => panic!("Invalid terminator instruction"),
         }
     }
@@ -685,6 +732,7 @@ impl TransUnit {
             InstructionValue::Branch(_) |
             InstructionValue::Jump(_) |
             InstructionValue::Return(_) |
+            InstructionValue::Switch(_) |
             InstructionValue::Store(_) => true,
             InstructionValue::Call(c) => {
                 // TODO: check if function is pure or const
@@ -981,5 +1029,18 @@ impl TransUnit {
         let val = ValueType::Instruction(InstructionValue::MemOp(inst));
         let val = Value::new(val);
         self.values.alloc(val)
+    }
+
+    pub fn switch(&mut self, cond: ValueId, default: BlockId, cases: Vec<(i32, BlockId)>) -> ValueId {
+        let inst = SwitchInst {
+            cond,
+            default,
+            cases,
+        };
+        let val = ValueType::Instruction(InstructionValue::Switch(inst));
+        let val = Value::new(val);
+        let id = self.values.alloc(val);
+        self.add_used_by(cond, id);
+        id
     }
 }

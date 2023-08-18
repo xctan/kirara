@@ -850,6 +850,9 @@ pub enum RV64Instruction {
     SNE { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
     SGE { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
     SGEU { rd: GPOperand, rs1: GPOperand, rs2: GPOperand },
+    // for jump table
+    OFFSET { dest: Id<MachineBB>, base: String },
+    BLTUl { rs1: GPOperand, rs2: GPOperand, succ: Id<MachineBB> },
     // prologue and epilogue of a function
     ENTER,
     LEAVE,
@@ -877,6 +880,7 @@ macro_rules! implement_typed_instruction {
         $implementer!(i; SLLI);
         $implementer!(i; SRLI);
         $implementer!(i; SRAI);
+        $implementer!(i; JALR);
 
         $implementer!(r; ADD);
         $implementer!(r; SUB);
@@ -932,6 +936,13 @@ macro_rules! implement_typed_instruction {
         $implementer!(cj; JGE);
         $implementer!(cj; JLTU);
         $implementer!(cj; JGEU);
+
+        $implementer!(b; BEQ);
+        $implementer!(b; BNE);
+        $implementer!(b; BLT);
+        $implementer!(b; BGE);
+        $implementer!(b; BLTU);
+        $implementer!(b; BGEU);
 
         $implementer!(r; SEQ);
         $implementer!(r; SNE);
@@ -1054,27 +1065,6 @@ impl RV64Instruction {
         }
     }
 
-    pub fn is_terminal(&self) -> bool {
-        match self.clone() {
-            RV64Instruction::JAL { .. } => true,
-            RV64Instruction::JALR { .. } => true,
-            RV64Instruction::RET { .. } => true,
-            RV64Instruction::JUMP { .. } => true,
-            RV64Instruction::BEQ { .. } => true,
-            RV64Instruction::BNE { .. } => true,
-            RV64Instruction::BLT { .. } => true,
-            RV64Instruction::BGE { .. } => true,
-            RV64Instruction::BLTU { .. } => true,
-            RV64Instruction::BGEU { .. } => true,
-            RV64Instruction::JEQ { .. } => true,
-            RV64Instruction::JNE { .. } => true,
-            RV64Instruction::JLT { .. } => true,
-            RV64Instruction::JGE { .. } => true,
-            RV64Instruction::JLTU { .. } => true,
-            RV64Instruction::JGEU { .. } => true,
-            _ => false,
-        }
-    }
 }
 
 macro_rules! builder_impl_rv64 {
@@ -1103,6 +1093,12 @@ macro_rules! builder_impl_rv64 {
         #[allow(non_snake_case, unused)]
         pub fn $mnemonic(rs1: GPOperand, rs2: GPOperand, succ: Id<MachineBB>, fail: Id<MachineBB>) -> RV64Instruction {
             RV64Instruction::$mnemonic { rs1, rs2, succ, fail }
+        }
+    };
+    (b; $mnemonic:ident) => {
+        #[allow(non_snake_case, unused)]
+        pub fn $mnemonic(rs1: GPOperand, rs2: GPOperand, imm: i32) -> RV64Instruction {
+            RV64Instruction::$mnemonic { rs1, rs2, imm }
         }
     };
     (fi; $mnemonic:ident) => {
@@ -1217,6 +1213,18 @@ impl RV64InstBuilder {
         RV64Instruction::LADDR { rd, label }
     }
     #[allow(non_snake_case)]
+    pub fn OFFSET(dest: Id<MachineBB>, base: String) -> RV64Instruction {
+        RV64Instruction::OFFSET { dest, base }
+    }
+    #[allow(non_snake_case)]
+    pub fn BLTUl(rs1: GPOperand, rs2: GPOperand, succ: Id<MachineBB>) -> RV64Instruction {
+        RV64Instruction::BLTUl { rs1, rs2, succ }
+    }
+    #[allow(non_snake_case)]
+    pub fn NOP() -> RV64Instruction {
+        RV64Instruction::NOP
+    }
+    #[allow(non_snake_case)]
     pub fn LEAVE() -> RV64Instruction {
         RV64Instruction::LEAVE
     }
@@ -1235,6 +1243,7 @@ pub struct MachineBB {
     pub name: String,
     pub insts_head: Option<Id<MachineInst>>,
     pub insts_tail: Option<Id<MachineInst>>,
+    pub terminal: Option<Id<MachineInst>>,
     pub preds: Vec<Id<MachineBB>>,
     pub succs: Vec<Id<MachineBB>>,
 
@@ -1247,6 +1256,7 @@ impl MachineBB {
             name: String::from(name),
             insts_head: None,
             insts_tail: None,
+            terminal: None,
             preds: Vec::new(),
             succs: Vec::new(),
         }
@@ -1420,13 +1430,8 @@ impl MachineProgram {
 
     pub fn insert_before_end(&mut self, mbb: Id<MachineBB>, inst: RV64Instruction) -> Id<MachineInst> {
         // insert before branch instructions
-        if let Some(last) = self.blocks[mbb].insts_tail {
-            let minst = &self.insts[last];
-            if minst.inst.is_terminal() {
-                self.insert_before(last, inst)
-            } else {
-                self.push_to_end(mbb, inst)
-            }
+        if let Some(last) = self.blocks[mbb].terminal {
+            self.insert_before(last, inst)
         } else {
             self.push_to_end(mbb, inst)
         }
@@ -1473,6 +1478,10 @@ impl MachineProgram {
         if matches!(vreg, GPOperand::Virtual(_)) {
             self.vreg_def.insert(vreg, minst);
         }
+    }
+
+    pub fn mark_terminal(&mut self, mbb: Id<MachineBB>, minst: Id<MachineInst>) {
+        self.blocks[mbb].terminal = Some(minst);
     }
 
 }

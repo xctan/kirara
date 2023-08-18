@@ -88,6 +88,15 @@ impl MachineProgram {
                         continue;
                     }
 
+                    if let RV64Instruction::OFFSET { dest, base } = inst.inst {
+                        writeln!(writer, "\t.word\t{}-{}", bb_names[&dest], base)?;
+                        continue;
+                    }
+                    if let RV64Instruction::BLTUl { rs1, rs2, succ } = inst.inst {
+                        writeln!(writer, "\tbltu\t{}, {}, {}", rs1, rs2, bb_names[&succ])?;
+                        continue;
+                    }
+
                     match inst.inst {
                         RV64Instruction::SEQ { rd, rs1, rs2 } => {
                             writeln!(writer, "\txor\t{}, {}, {}", rd, rs1, rs2)?;
@@ -378,6 +387,35 @@ impl Display for RV64Instruction {
                 write!(f, "li\t{}, {}", rd, imm),
             RV64Instruction::LADDR { rd, label } =>
                 write!(f, "la\t{}, {}", rd, label),
+            RV64Instruction::BEQ { rs1, rs2, imm } => {
+                if 4000 <= *imm && *imm <= 4009 {
+                    // forward local label
+                    write!(f, "beq\t{}, {}, {}f", rs1, rs2, imm - 4000)
+                } else if 6000 <= *imm && *imm <= 6009 {
+                    // backward local label
+                    write!(f, "beq\t{}, {}, {}b", rs1, rs2, imm - 6000)
+                } else {
+                    panic!("unimplemented branch: {}", imm);
+                }
+            }
+            RV64Instruction::BLTU { rs1, rs2, imm } => {
+                if 4000 <= *imm && *imm <= 4009 {
+                    // forward local label
+                    write!(f, "bltu\t{}, {}, {}f", rs1, rs2, imm - 4000)
+                } else if 6000 <= *imm && *imm <= 6009 {
+                    // backward local label
+                    write!(f, "bltu\t{}, {}, {}b", rs1, rs2, imm - 6000)
+                } else {
+                    panic!("unimplemented branch: {}", imm);
+                }
+            }
+            RV64Instruction::JALR { rd, rs1, imm } => {
+                if *imm == 0 && *rd == GPOperand::PreColored(RVGPR::X0) {
+                    write!(f, "jr\t{}", rs1)
+                } else {
+                    write!(f, "jalr\t{}, {}({})", rd, imm, rs1)
+                }
+            }
             RV64Instruction::ENTER =>
                 write!(f, "enter"),
             RV64Instruction::LEAVE =>

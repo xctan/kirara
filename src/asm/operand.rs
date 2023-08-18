@@ -49,6 +49,11 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
                     return (vec![], vec![*rs1, *rs2])
                 }
             };
+            (b; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
+                    return (vec![], vec![*rs1, *rs2])
+                }
+            };
             (fi; $mnemonic:ident) => {
                 #[allow(non_snake_case, unused)]
                 if let RV64Instruction::$mnemonic { rd, rs1, imm } = self {
@@ -133,6 +138,12 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
         if let RV64Instruction::NOP = self {
             return (vec![], vec![]);
         }
+        if let RV64Instruction::OFFSET { .. } = self {
+            return (vec![], vec![]);
+        }
+        if let RV64Instruction::BLTUl { rs1, rs2, .. } = self {
+            return (vec![], vec![*rs1, *rs2])
+        }
         if let RV64Instruction::CALL { params, .. } = self {
             let uses: Vec<_> = params
                 .iter()
@@ -181,6 +192,11 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
                 }
             };
             (cj; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { .. } = self {
+                    return vec![]
+                }
+            };
+            (b; $mnemonic:ident) => {
                 if let RV64Instruction::$mnemonic { .. } = self {
                     return vec![]
                 }
@@ -254,6 +270,12 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
         if let RV64Instruction::LADDR { rd, .. } = self {
             return vec![rd]
         }
+        if let RV64Instruction::OFFSET { .. } = self {
+            return vec![];
+        }
+        if let RV64Instruction::BLTUl { .. } = self {
+            return vec![]
+        }
 
         macro_rules! nop {
             ($mnemonic:ident) => {
@@ -293,6 +315,11 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
                 }
             };
             (cj; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
+                    return vec![rs1, rs2]
+                }
+            };
+            (b; $mnemonic:ident) => {
                 if let RV64Instruction::$mnemonic { rs1, rs2, .. } = self {
                     return vec![rs1, rs2]
                 }
@@ -366,6 +393,10 @@ impl OperandInfo<GPOperand, RVGPR, VirtGPR> for RV64Instruction {
         }
         nop!(FMVSS);
         nop!(FMVDD);
+        nop!(OFFSET);
+        if let RV64Instruction::BLTUl { rs1, rs2, .. } = self {
+            return vec![rs1, rs2]
+        }
 
         panic!("unimplemented: {:?}", self)
     }
@@ -400,6 +431,11 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
                 }
             };
             (cj; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { .. } = self {
+                    return (vec![], vec![])
+                }
+            };
+            (b; $mnemonic:ident) => {
                 if let RV64Instruction::$mnemonic { .. } = self {
                     return (vec![], vec![])
                 }
@@ -489,6 +525,12 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
         if let RV64Instruction::NOP = self {
             return (vec![], vec![]);
         }
+        if let RV64Instruction::OFFSET { .. } = self {
+            return (vec![], vec![]);
+        }
+        if let RV64Instruction::BLTUl { .. } = self {
+            return (vec![], vec![]);
+        }
         if let RV64Instruction::CALL { params, .. } = self {
             let uses: Vec<_> = params
                 .iter()
@@ -537,6 +579,11 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
                 }
             };
             (cj; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { .. } = self {
+                    return vec![]
+                }
+            };
+            (b; $mnemonic:ident) => {
                 if let RV64Instruction::$mnemonic { .. } = self {
                     return vec![]
                 }
@@ -610,6 +657,12 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
         if let RV64Instruction::LADDR { .. } = self {
             return vec![]
         }
+        if let RV64Instruction::OFFSET { .. } = self {
+            return vec![];
+        }
+        if let RV64Instruction::BLTUl { .. } = self {
+            return vec![]
+        }
 
         macro_rules! nop {
             ($mnemonic:ident) => {
@@ -649,6 +702,11 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
                 }
             };
             (cj; $mnemonic:ident) => {
+                if let RV64Instruction::$mnemonic { .. } = self {
+                    return vec![]
+                }
+            };
+            (b; $mnemonic:ident) => {
                 if let RV64Instruction::$mnemonic { .. } = self {
                     return vec![]
                 }
@@ -710,6 +768,8 @@ impl OperandInfo<FPOperand, RVFPR, VirtFPR> for RV64Instruction {
         nop!(LABEL);
         nop!(CALL);
         nop!(TAIL);
+        nop!(OFFSET);
+        nop!(BLTUl);
 
         nop!(FMVWX);
         if let RV64Instruction::FMVXW { rs1, .. } = self {
