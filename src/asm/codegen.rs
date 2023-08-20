@@ -993,6 +993,7 @@ impl<'a> AsmFuncBuilder<'a> {
                             let value = self.unit.values[*arg].clone();
                             match value.ty().kind {
                                 TypeKind::I32 | TypeKind::Ptr(_) => {
+                                    args.push(false);
                                     let target = pre!(a idx);
                                     if let Some(imm) = self.resolve_constant(*arg) {
                                         emit!(LIMM target, imm);
@@ -1000,17 +1001,18 @@ impl<'a> AsmFuncBuilder<'a> {
                                     }
                                     let reg = self.resolve(*arg, mbb);
                                     emit!(MV target, reg);
-                                    args.push(false);
                                 },
                                 TypeKind::F32 => {
+                                    args.push(true);
                                     let target = pre!(fa idx);
                                     let reg = self.resolve_fp(*arg, mbb);
                                     emit!(FMVDD target, reg);
-                                    args.push(true);
                                 }
                                 _ => unimplemented!("call arg type: {:?}", value.ty()),
                             };
-                            
+                        }
+                        if c.args.len() <= 8 {
+                            assert!(c.args.len() == args.len());
                         }
                         if c.args.len() > 8 {
                             let extra = c.args.len() - 8;
