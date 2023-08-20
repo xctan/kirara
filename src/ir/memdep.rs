@@ -5,6 +5,27 @@ use super::{
     structure::TransUnit, IrPass
 };
 
+#[derive(Debug)]
+pub struct RelatedAccess {
+    id: usize,
+    loads: Vec<ValueId>,
+    pub stores: HashSet<ValueId>,
+    pub killed_by: HashMap<ValueId, Vec<ValueId>>,
+    store_ops: HashMap<ValueId, ValueId>,
+}
+
+impl RelatedAccess {
+    fn new(id: usize) -> Self {
+        Self {
+            id,
+            loads: vec![],
+            stores: HashSet::new(),
+            killed_by: HashMap::new(),
+            store_ops: HashMap::new(),
+        }
+    }
+}
+
 impl TransUnit {
     pub fn clear_memdep(&mut self, func: &str) {
         let f = self.funcs[func].clone();
@@ -61,25 +82,6 @@ impl TransUnit {
     }
 
     pub fn compute_memdep(&mut self, func: &str, mr: &ModRef) {
-        struct RelatedAccess {
-            id: usize,
-            loads: Vec<ValueId>,
-            stores: HashSet<ValueId>,
-            killed_by: HashMap<ValueId, Vec<ValueId>>,
-            store_ops: HashMap<ValueId, ValueId>,
-        }
-        impl RelatedAccess {
-            fn new(id: usize) -> Self {
-                Self {
-                    id,
-                    loads: vec![],
-                    stores: HashSet::new(),
-                    killed_by: HashMap::new(),
-                    store_ops: HashMap::new(),
-                }
-            }
-        }
-
         // super::cfg::compute_dom(self, func);
         // ensure cfg info is calculated before this!
         let f = self.funcs[func].clone();
@@ -283,7 +285,11 @@ impl TransUnit {
             }
         }
 
+        self.ra.clear();
+        self.ra.extend(loads);
+
     }
+
 }
 
 
@@ -360,7 +366,7 @@ impl TransUnit {
         }
     }
 
-    fn call_may_alias(&self, val: ValueId, call: CallInst, mr: &ModRef) -> bool {
+    pub fn call_may_alias(&self, val: ValueId, call: CallInst, mr: &ModRef) -> bool {
         let value = self.values[val].clone();
         match value.value {
             ValueType::Parameter(p) => {

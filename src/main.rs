@@ -122,9 +122,14 @@ fn main() {
             Box::new(ir::memdep::ComputeGlobalModRef),
             Box::new(ir::transform::rename::Canonicalize),
             Box::new(ir::transform::gvngcm::GVNGCM),
+            // Box::new(ir::transform::rename::Canonicalize),
+            // Box::new(ir::transform::licm::LoopInvariantCodeMotion),
+            // Box::new(ir::transform::rename::Canonicalize),
+            // Box::new(ir::transform::bbopt::BasicBlockOptimization),
             Box::new(ir::transform::instcomb::ScalarLinearInduction),
             Box::new(ir::transform::dce::DeadCodeElimination),
             Box::new(ir::transform::gvngcm::GVNGCM),
+            Box::new(ir::transform::misc::Reorder),
             Box::new(ir::transform::rename::Canonicalize),
         ],
         _ => vec![
@@ -142,6 +147,7 @@ fn main() {
     let mut cnt = 0;
     for pass in &passes {
         if ARGS.dump {
+            // ir::cfg::ComputeControlFlow.run(&mut unit);
             std::fs::write(
                 pwd.join(format!("{}.{cnt:02}.ll", input_basename)),
                 unit.to_string()

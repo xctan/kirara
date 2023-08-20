@@ -12,7 +12,7 @@ use crate::ir::value::{
 use super::builder::IrFuncBuilder;
 use super::callgraph::CallGraphInfo;
 use super::cfg::LoopInfo;
-use super::memdep::ModRef;
+use super::memdep::{ModRef, RelatedAccess};
 use super::value::{ValueId, Value, ConstantValue, AllocaInst, ValueTrait, JumpInst, GlobalValue, CallInst, UnaryOp, MemPhiInst, MemOpInst, TailCallInst};
 
 #[derive(Debug, Clone)]
@@ -91,6 +91,7 @@ pub struct TransUnit {
     pub loopinfo: HashMap<String, LoopInfo>,
     pub modref: Option<ModRef>,
     pub dom_level: HashMap<String, HashMap<BlockId, u32>>,
+    pub ra: HashMap<ValueId, RelatedAccess>,
 
     counter: usize,
 }
@@ -115,6 +116,7 @@ impl TransUnit {
             loopinfo: HashMap::new(),
             modref: None,
             dom_level: HashMap::new(),
+            ra: HashMap::new(),
             counter: 0,
         };
         let val = ConstantValue::Undef;
@@ -135,6 +137,126 @@ impl TransUnit {
             jumps: Vec::new(),
             ty,
             params: Vec::new(),
+        }
+    }
+
+    pub fn clone_inst(
+        &mut self,
+        src: &InstructionValue,
+        valuemap: &HashMap<ValueId, ValueId>,
+        bbmap: &HashMap<BlockId, BlockId>,
+    ) -> InstructionValue {
+        let replace = move |v: ValueId| {
+            if let Some(dstv) = valuemap.get(&v) {
+                *dstv
+            } else {
+                v
+            }
+        };
+        let bb_replace = move |b: BlockId| {
+            if let Some(dstb) = bbmap.get(&b) {
+                *dstb
+            } else {
+                b
+            }
+        };
+
+        match src {
+            InstructionValue::Binary(bin) => {
+                InstructionValue::Binary(BinaryInst {
+                    lhs: replace(bin.lhs),
+                    rhs: replace(bin.rhs),
+                    ..bin.clone()
+                })
+            },
+            InstructionValue::Load(l) => {
+                InstructionValue::Load(LoadInst {
+                    ptr: replace(l.ptr),
+                    ..l.clone()
+                })
+            },
+            InstructionValue::Store(s) => {
+                InstructionValue::Store(StoreInst {
+                    ptr: replace(s.ptr),
+                    value: replace(s.value),
+                })
+            },
+            a @ InstructionValue::Alloca(_) => {
+                a.clone()
+            },
+            InstructionValue::Return(r) => {
+                InstructionValue::Return(ReturnInst {
+                    value: r.value.map(|v| replace(v))
+                })
+            },
+            InstructionValue::Branch(br) => {
+                InstructionValue::Branch(BranchInst {
+                    cond: replace(br.cond),
+                    succ: bb_replace(br.succ),
+                    fail: bb_replace(br.fail),
+                })
+            },
+            InstructionValue::Jump(j) => {
+                InstructionValue::Jump(JumpInst {
+                    succ: bb_replace(j.succ),
+                })
+            },
+            InstructionValue::Unary(un) => {
+                InstructionValue::Unary(UnaryInst {
+                    value: replace(un.value),
+                    ..un.clone()
+                })
+            },
+            InstructionValue::Phi(phi) => {
+                InstructionValue::Phi(PhiInst {
+                    args: phi.args
+                        .iter()
+                        .map(|(v, b)| (replace(*v), bb_replace(*b)))
+                        .collect(),
+                    ..phi.clone()
+                })
+            },
+            InstructionValue::GetElemPtr(gep) => {
+                InstructionValue::GetElemPtr(GetElemPtrInst {
+                    ptr: replace(gep.ptr),
+                    indices: gep.indices
+                        .iter()
+                        .map(|v| replace(*v))
+                        .collect(),
+                    ..gep.clone()
+                })
+            },
+            InstructionValue::Call(call) => {
+                InstructionValue::Call(CallInst {
+                    args: call.args
+                        .iter()
+                        .map(|v| replace(*v))
+                        .collect(),
+                    ..call.clone()
+                })
+            },
+            InstructionValue::TailCall(call) => {
+                InstructionValue::TailCall(TailCallInst {
+                    args: call.args
+                        .iter()
+                        .map(|v| replace(*v))
+                        .collect(),
+                    ..call.clone()
+                })
+            },
+            // can we copy memdep information?
+            InstructionValue::MemOp(_) => todo!(),
+            InstructionValue::MemPhi(_) => todo!(),
+            InstructionValue::Switch(sw) => {
+                InstructionValue::Switch(SwitchInst {
+                    cond: replace(sw.cond),
+                    default: bbmap[&sw.default],
+                    cases: sw.cases
+                        .iter()
+                        .map(|(v, b)| (v.clone(), bb_replace(*b)))
+                        .collect(),
+                })
+            },
         }
     }
 
@@ -201,13 +323,6 @@ impl TransUnit {
         
         // basic block pass 2
         // instruction pass 2
-        let replace = move |v: ValueId| {
-            if let Some(dstv) = valuemap.get(&v) {
-                *dstv
-            } else {
-                v
-            }
-        };
         for srcbb in &srcbbs {
             let srcpreds = self.blocks[*srcbb].preds.clone();
             let dstblock = self.blocks.get_mut(bbmap[srcbb]).unwrap();
@@ -221,105 +336,9 @@ impl TransUnit {
                 let inst = self.values[vid].clone();
                 iter = inst.next;
 
-                let inner = match inst.value.as_inst() {
-                    InstructionValue::Binary(bin) => {
-                        InstructionValue::Binary(BinaryInst {
-                            lhs: replace(bin.lhs),
-                            rhs: replace(bin.rhs),
-                            ..bin.clone()
-                        })
-                    },
-                    InstructionValue::Load(l) => {
-                        InstructionValue::Load(LoadInst {
-                            ptr: replace(l.ptr),
-                            ..l.clone()
-                        })
-                    },
-                    InstructionValue::Store(s) => {
-                        InstructionValue::Store(StoreInst {
-                            ptr: replace(s.ptr),
-                            value: replace(s.value),
-                        })
-                    },
-                    a @ InstructionValue::Alloca(_) => {
-                        a.clone()
-                    },
-                    InstructionValue::Return(r) => {
-                        InstructionValue::Return(ReturnInst {
-                            value: r.value.map(|v| replace(v))
-                        })
-                    },
-                    InstructionValue::Branch(br) => {
-                        InstructionValue::Branch(BranchInst {
-                            cond: replace(br.cond),
-                            succ: bbmap[&br.succ],
-                            fail: bbmap[&br.fail],
-                        })
-                    },
-                    InstructionValue::Jump(j) => {
-                        InstructionValue::Jump(JumpInst {
-                            succ: bbmap[&j.succ],
-                        })
-                    },
-                    InstructionValue::Unary(un) => {
-                        InstructionValue::Unary(UnaryInst {
-                            value: replace(un.value),
-                            ..un.clone()
-                        })
-                    },
-                    InstructionValue::Phi(phi) => {
-                        InstructionValue::Phi(PhiInst {
-                            args: phi.args
-                                .iter()
-                                .map(|(v, b)| (replace(*v), bbmap[b]))
-                                .collect(),
-                            ..phi.clone()
-                        })
-                    },
-                    InstructionValue::GetElemPtr(gep) => {
-                        InstructionValue::GetElemPtr(GetElemPtrInst {
-                            ptr: replace(gep.ptr),
-                            indices: gep.indices
-                                .iter()
-                                .map(|v| replace(*v))
-                                .collect(),
-                            ..gep.clone()
-                        })
-                    },
-                    InstructionValue::Call(call) => {
-                        InstructionValue::Call(CallInst {
-                            args: call.args
-                                .iter()
-                                .map(|v| replace(*v))
-                                .collect(),
-                            ..call.clone()
-                        })
-                    },
-                    InstructionValue::TailCall(call) => {
-                        InstructionValue::TailCall(TailCallInst {
-                            args: call.args
-                                .iter()
-                                .map(|v| replace(*v))
-                                .collect(),
-                            ..call.clone()
-                        })
-                    },
-                    // can we copy memdep information?
-                    InstructionValue::MemOp(_) => todo!(),
-                    InstructionValue::MemPhi(_) => todo!(),
-                    InstructionValue::Switch(sw) => {
-                        InstructionValue::Switch(SwitchInst {
-                            cond: replace(sw.cond),
-                            default: bbmap[&sw.default],
-                            cases: sw.cases
-                                .iter()
-                                .map(|(v, b)| (v.clone(), bbmap[b]))
-                                .collect(),
-                        })
-                    },
-                };
+                let inner = self.clone_inst(inst.value.as_inst(), &valuemap, &bbmap);
 
-                let dstvid = replace(vid);
+                let dstvid = valuemap[&vid];
                 let dstvalue = self.values.get_mut(dstvid).unwrap();
                 dstvalue.value = ValueType::Instruction(inner);
             }
@@ -588,104 +607,86 @@ impl TransUnit {
         }
     }
 
+    pub fn get_operands_mut(&mut self, inst: ValueId) -> Vec<&mut ValueId> {
+        let inst = self.values.get_mut(inst).unwrap().value.as_inst_mut();
+        match inst {
+            InstructionValue::Alloca(_) => vec![],
+            InstructionValue::Return(ret) => {
+                if let Some(ret) = ret.value.as_mut() {
+                    vec![ret]
+                } else {
+                    vec![]
+                }
+            }
+            InstructionValue::Store(st) => vec![&mut st.value, &mut st.ptr],
+            InstructionValue::Load(ld) => vec![&mut ld.ptr],
+            InstructionValue::Binary(bin) => vec![&mut bin.lhs, &mut bin.rhs],
+            InstructionValue::Branch(br) => vec![&mut br.cond],
+            InstructionValue::Jump(_) => vec![],
+            InstructionValue::Unary(un) => vec![&mut un.value],
+            InstructionValue::GetElemPtr(gep) => {
+                let mut ret = vec![&mut gep.ptr];
+                for idx in &mut gep.indices {
+                    ret.push(idx);
+                }
+                ret
+            },
+            InstructionValue::Phi(phi) => {
+                let mut ret = vec![];
+                for (val, _) in &mut phi.args {
+                    ret.push(val);
+                }
+                ret
+            },
+            InstructionValue::Call(call) => {
+                let mut ret = vec![];
+                for arg in &mut call.args {
+                    ret.push(arg);
+                }
+                ret
+            },
+            InstructionValue::TailCall(call) => {
+                let mut ret = vec![];
+                for arg in &mut call.args {
+                    ret.push(arg);
+                }
+                ret
+            },
+            InstructionValue::MemOp(_) => vec![],
+            InstructionValue::MemPhi(mphi) => {
+                let mut ret = vec![];
+                for (val, _) in &mut mphi.args {
+                    ret.push(val);
+                }
+                ret
+            },
+            InstructionValue::Switch(sw) => vec![&mut sw.cond],
+        }
+    }
+
     /// replace all occurrences of old inst value with new
     pub fn replace(&mut self, old: ValueId, new: ValueId) {
         let occurrences = self.values.get(old).unwrap().used_by.clone();
         for oc in occurrences {
-            let user = match self.values.get(oc) {
-                Some(user) => user.clone(),
-                None => continue,
-            };
-            self.add_used_by(new, oc);
-            macro_rules! rep {
-                ($this:ident, $kind:ident, $st:ident { $($member:ident),+ }) => {{
-                    let mut new_st = $this.clone();
-                    $(
-                        if new_st.$member == old {
-                            new_st.$member = new;
-                        }
-                    )+
-                    InstructionValue::$kind(new_st)
-                }}
+            if self.values.get(oc).is_none() {
+                continue;
             }
-            let new_value = match user.value.as_inst().clone() {
-                InstructionValue::Alloca(_) => unreachable!(),
-                InstructionValue::Return(ReturnInst { value }) => {
-                    if let Some(value) = value {
-                        if value == old {
-                            InstructionValue::Return(ReturnInst { value: Some(new) })
-                        } else {
-                            unreachable!()
-                        }
-                    } else {
-                        unreachable!()
-                    }
+            self.add_used_by(new, oc);
+            self.remove_used_by(old, oc);
+            for opr in self.get_operands_mut(oc) {
+                if *opr == old {
+                    *opr = new;
                 }
-                InstructionValue::Store(this) => rep!(this, Store, StoreInst { ptr, value }),
-                InstructionValue::Load(li) => rep!(li, Load, LoadInst { ptr }),
-                InstructionValue::Binary(bin) => rep!(bin, Binary, BinaryInst { lhs, rhs }),
-                InstructionValue::Branch(br) => rep!(br, Branch, BranchInst { cond }),
-                InstructionValue::Jump(_) => unreachable!(),
-                InstructionValue::Unary(ze) => rep!(ze, Unary, UnaryInst { value }),
-                InstructionValue::GetElemPtr(gep) => {
-                    // rep!(gep, GetElemPtr, GetElemPtrInst { ptr, index })
-                    if gep.ptr == old {
-                        InstructionValue::GetElemPtr(GetElemPtrInst { ptr: new, ..gep })
-                    } else {
-                        let new_indices = gep.indices.iter().map(|&idx| {
-                            if idx == old {
-                                new
-                            } else {
-                                idx
-                            }
-                        }).collect();
-                        InstructionValue::GetElemPtr(GetElemPtrInst { indices: new_indices, ..gep })
-                    }
-                }
-                InstructionValue::Phi(phi) => {
-                    let mut new_phi = phi.clone();
-                    new_phi
-                        .args
-                        .iter_mut()
-                        .filter(|arg| arg.0 == old)
-                        .for_each(|arg| arg.0 = new);
-                    InstructionValue::Phi(new_phi)
-                }
-                InstructionValue::Call(call) => {
-                    let mut new_call = call.clone();
-                    new_call
-                        .args
-                        .iter_mut()
-                        .filter(|arg| **arg == old)
-                        .for_each(|arg| *arg = new);
-                    InstructionValue::Call(new_call)
-                }
-                InstructionValue::TailCall(call) => {
-                    let mut new_call = call.clone();
-                    new_call
-                        .args
-                        .iter_mut()
-                        .filter(|arg| **arg == old)
-                        .for_each(|arg| *arg = new);
-                    InstructionValue::TailCall(new_call)
-                }
-                raw @ InstructionValue::MemOp(_) => raw,
-                raw @ InstructionValue::MemPhi(_) => raw,
-                InstructionValue::Switch(sw) => {
-                    rep!(sw, Switch, SwitchInst { cond })
-                }
-            };
-            let user = self.values.get_mut(oc).unwrap();
-            user.value = ValueType::Instruction(new_value);
+            }
         }
     }
 
     /// get successors of a bb
     pub fn succ(&self, bb: BlockId) -> Vec<BlockId> {
-        let bb = self.blocks.get(bb).unwrap();
-        let last = bb.insts_end.unwrap();
+        let block: &BasicBlock = self.blocks.get(bb).unwrap();
+        let last = block.insts_end.unwrap();
         let last = self.values.get(last).unwrap();
-        match last.value.as_inst() {
+        let ret = match last.value.as_inst() {
             &InstructionValue::Branch(ref insn) => {
                 vec![insn.succ, insn.fail]
             }
@@ -701,7 +702,11 @@ impl TransUnit {
                 ret
             }
             _ => panic!("Invalid terminator instruction"),
-        }
+        };
+        ret.iter().for_each(|sbb| {
+            assert!(self.blocks.get(*sbb).is_some(), "bb {} has invalid succ", self.blocks[bb].name);
+        });
+        ret
     }
 
     pub fn succ_mut(&mut self, bb: BlockId) -> Vec<&mut BlockId> {

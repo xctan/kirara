@@ -380,6 +380,7 @@ pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
 
     // remove unreachable basic blocks
     // mark
+    eprintln!("remove unreachable bb");
     let mut visited = HashSet::new();
     let mut worklist = vec![unit.funcs[func].entry_bb];
     while let Some(bb) = worklist.pop() {

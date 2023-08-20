@@ -115,6 +115,7 @@ impl TransUnit {
 
     fn print_func(&self, name: &str, func: &IrFunc, writer: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ty = func.ty.as_function();
+        // let loopinfo = self.loopinfo.get(name).unwrap();
         write!(writer, "define {} @{}(", ty.ret_type, name)?;
         for (idx, (_, argty)) in ty.params.iter().enumerate() {
             if idx != 0 {
@@ -137,6 +138,12 @@ impl TransUnit {
                 }
                 write!(writer, "%{}", self.blocks.get(*bb).map(|bb| bb.name.as_str()).unwrap_or("???")).unwrap();
             });
+            // if let Some(l) = loopinfo.loop_of_bb.get(&bb) {
+            //     write!(writer, "; loop depth = {}", loopinfo.depth(bb))?;
+            //     if l.borrow().blocks[0] == bb {
+            //         write!(writer, " header")?;
+            //     }
+            // }
             writeln!(writer, )?;
             let mut insts = bb0.insts_start;
             while let Some(vid) = insts {
