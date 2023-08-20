@@ -50,6 +50,11 @@ macro_rules! ttag {
             $crate::token::Token($t, $crate::token::TokenType::Punctuation)
         )
     };
+    (S) => {
+        nom::bytes::complete::tag(
+            $crate::token::TokenType::StringLiteral
+        )
+    };
 }
 
 fn integer_constant(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
@@ -80,6 +85,15 @@ fn float_constant(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>>
     )(cursor)
 }
 
+fn string_literal(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
+    map(
+        ttag!(S),
+        |token: TokenSpan<'_>| {
+            AstNode::string_literal(token.as_str().to_owned(), token.as_range())
+        }
+    )(cursor)
+}
+
 fn identifier(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
     map(
         ttag!(I),
@@ -106,6 +120,7 @@ fn primary(cursor: TokenSpan) -> IResult<TokenSpan, Rc<RefCell<AstNode>>> {
         identifier,
         integer_constant,
         float_constant,
+        string_literal,
     ))(cursor)
 }
 
@@ -642,6 +657,9 @@ fn local_initializer(init: &mut Vec<Rc<RefCell<AstNode>>>, mut this: Rc<RefCell<
                     local_initializer(init, member, &d, expr_only);
                 }
             }
+        }
+        InitData::StringLiteral(_s) => {
+            unimplemented!()
         }
     }
 }

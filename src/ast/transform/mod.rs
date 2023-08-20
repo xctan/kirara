@@ -116,6 +116,7 @@ pub trait AstRewriteVisitor {
             crate::ast::AstNodeType::I32Number(num) => self.visit_i32_number(num),
             crate::ast::AstNodeType::I64Number(num) => self.visit_i64_number(num),
             crate::ast::AstNodeType::F32Number(num) => self.visit_f32_number(num),
+            crate::ast::AstNodeType::StringLiteral(_) => None,
             crate::ast::AstNodeType::Variable(id) => self.visit_variable(id),
             crate::ast::AstNodeType::Convert(convert) => self.visit_convert(convert.from, convert.to),
             crate::ast::AstNodeType::FunCall(funcall) => self.visit_funcall(funcall.func, funcall.args),

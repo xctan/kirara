@@ -126,6 +126,7 @@ impl TransUnit {
 
     pub fn builder<'a>(&'a mut self, ty: Rc<Type>) -> IrFuncBuilder<'a> {
         IrFuncBuilder {
+            id: self.count(),
             unit: self,
             cur_bb: None,
             bbs: Vec::new(),

@@ -54,6 +54,7 @@ pub enum AstNodeType {
     I32Number(i32),
     I64Number(i64),
     F32Number(f32),
+    StringLiteral(String),
     Variable(ObjectId),
     UnaryOp(UnaryOp),
     BinaryOp(BinaryOp),
@@ -131,6 +132,11 @@ impl AstNode {
 
     pub fn f32_number(val: f32, token: TokenRange) -> Rc<RefCell<Self>> {
         let node = Self::new(AstNodeType::F32Number(val), token);
+        Rc::new(RefCell::new(node))
+    }
+
+    pub fn string_literal(val: String, token: TokenRange) -> Rc<RefCell<Self>> {
+        let node = Self::new(AstNodeType::StringLiteral(val), token);
         Rc::new(RefCell::new(node))
     }
     
@@ -285,6 +291,7 @@ pub enum InitData {
     ScalarI32(i32),
     ScalarF32(f32),
     Aggregate(Box<Vec<Initializer>>),
+    StringLiteral(Box<String>),
     ZeroInit,
 }
 
@@ -337,6 +344,7 @@ impl InitData {
             Self::ScalarI32(_) => true,
             Self::ScalarF32(_) => true,
             Self::Aggregate(data) => data.iter().all(|init| init.data.is_const()),
+            Self::StringLiteral(_) => true,
             Self::ZeroInit => true,
         }
     }
@@ -353,6 +361,7 @@ impl InitData {
                 }
                 sum / data.len() as f64
             },
+            Self::StringLiteral(_) => 1.0,
             Self::ZeroInit => 1.0,
         }
     }
@@ -361,6 +370,7 @@ impl InitData {
         match self {
             Self::Expr(_) => Self::ZeroInit,
             a @ Self::ScalarI32(_) |
+            a @ Self::StringLiteral(_) |
             a @ Self::ScalarF32(_) => a.clone(),
             Self::Aggregate(data) => {
                 let mut new_data = Vec::new();
@@ -379,6 +389,7 @@ impl InitData {
             Self::ScalarI32(_) => false,
             Self::ScalarF32(_) => false,
             Self::Aggregate(data) => data.iter().all(|init| init.data.is_all_zeroinit()),
+            Self::StringLiteral(_) => false,
             Self::ZeroInit => true,
         }
     }

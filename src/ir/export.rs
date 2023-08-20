@@ -101,6 +101,8 @@ impl TransUnit {
                 write!(writer, "]")
             },
             InitData::ZeroInit => write!(writer, "zeroinitializer"),
+            // FIXME: dump str correctly
+            InitData::StringLiteral(ref s) => write!(writer, "c\"{}\"", s),
             _ => panic!("unexpected non-constant initializer: {:?}", init.data),
         }
     }

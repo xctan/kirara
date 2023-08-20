@@ -9,6 +9,7 @@ pub enum TokenType {
     Keyword,
     Identifier,
     Punctuation,
+    StringLiteral,
 }
 
 #[derive(Debug, Copy, Clone, Eq)]

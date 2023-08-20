@@ -4,7 +4,7 @@ use nom::{
     character::complete::{one_of, satisfy, multispace1, alpha1, alphanumeric1, digit1},
     combinator::{recognize, value, opt, map, not, peek},
     multi::{many0_count, separated_list1, many1},
-    sequence::{pair, tuple},
+    sequence::{pair, tuple, delimited},
     IResult,
 };
 
@@ -185,6 +185,16 @@ fn word(input: &str) -> IResult<&str, Token> {
     ))(input)
 }
 
+fn string_literal(input: &str) -> IResult<&str, Token> {
+    map(
+        delimited(
+            tag("\""),
+            take_until("\""),
+            tag("\"")),
+        |s| Token(s, TokenType::StringLiteral)
+    )(input)
+}
+
 fn punctuation(input: &str) -> IResult<&str, Token> {
     map(
         alt((
@@ -227,7 +237,8 @@ fn combined(input: &str) -> IResult<&str, Token> {
         floating_const,
         integer_const,
         word,
-        punctuation
+        punctuation,
+        string_literal,
     ))(input)
 }
 

@@ -476,6 +476,7 @@ impl Display for RVFPR {
 impl Display for DataLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            DataLiteral::Byte(b) => write!(f, ".byte\t{}", b),
             DataLiteral::Word(w) => write!(f, ".word\t{}", w),
             DataLiteral::WordHex(w) => write!(
                 f,

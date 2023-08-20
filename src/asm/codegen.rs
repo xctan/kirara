@@ -43,6 +43,14 @@ fn flatten_initializer(init: &Initializer) -> Vec<DataLiteral> {
             res
         }
         InitData::ZeroInit => vec![DataLiteral::Zero(init.ty.size as u32)],
+        InitData::StringLiteral(ref s) => {
+            let mut res = Vec::new();
+            for c in s.bytes() {
+                res.push(DataLiteral::Byte(c as u8));
+            }
+            res.push(DataLiteral::Byte(0));
+            res
+        }
         _ => unimplemented!("flatten_initializer"),
     }
 }
@@ -52,6 +60,13 @@ fn compress(data: Vec<DataLiteral>) -> Vec<DataLiteral> {
     let mut zero_counter = 0;
     for d in data {
         match d {
+            DataLiteral::Byte(_) => {
+                if zero_counter > 0 {
+                    res.push(DataLiteral::Zero(zero_counter));
+                    zero_counter = 0;
+                }
+                res.push(d);
+            }
             DataLiteral::Word(w) => {
                 if w != 0 {
                     if zero_counter > 0 {

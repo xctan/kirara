@@ -20,6 +20,7 @@ pub fn ast_const_fold(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::I32Number(_) => None,
         AstNodeType::I64Number(_) => None,
         AstNodeType::F32Number(_) => None,
+        AstNodeType::StringLiteral(_) => None,
         AstNodeType::Variable(var) => {
             let variable = get_object(var).unwrap();
             let var_ty = variable.ty.clone();

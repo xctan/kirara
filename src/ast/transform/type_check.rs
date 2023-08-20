@@ -20,6 +20,7 @@ pub fn ast_type_check(tree: Rc<RefCell<AstNode>>) {
         AstNodeType::I32Number(_) => Type::const_of(Type::i32_type()),
         AstNodeType::I64Number(_) => Type::const_of(Type::i64_type()),
         AstNodeType::F32Number(_) => Type::const_of(Type::f32_type()),
+        AstNodeType::StringLiteral(_) => Type::ptr_to(Type::void_type()),
         AstNodeType::Variable(id) => get_object(id).unwrap().ty.clone(),
         AstNodeType::Convert(Convert { from, to }) => {
             ast_type_check(from);

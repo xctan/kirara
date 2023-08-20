@@ -7,6 +7,7 @@ pub mod instcomb;
 pub mod dce;
 pub mod gvngcm;
 pub mod inline;
+pub mod loopunroll;
 
 pub trait IrPass {
     fn run(&self, unit: &mut TransUnit);

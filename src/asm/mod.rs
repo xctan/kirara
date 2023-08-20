@@ -1302,7 +1302,7 @@ impl FuncVirtReg<VirtFPR> for MachineFunc {
 
 #[derive(Debug, Clone, Copy)]
 pub enum DataLiteral {
-    // .byte
+    Byte(u8),
     // .half
     /// .word
     Word(u32),

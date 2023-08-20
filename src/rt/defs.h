@@ -11,6 +11,7 @@ void putfloat(float);
 void putfarray(int, float a[]);
 
 // putf(char *s, ...)
+void putf();
 
 // macros are not supported as for now
 // #define starttime() _sysy_starttime(__LINE__)

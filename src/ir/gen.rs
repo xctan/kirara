@@ -252,6 +252,21 @@ impl EmitIrExpr for AstNodeType {
             AstNodeType::I1Number(num) => builder.const_i1(*num),
             AstNodeType::I32Number(num) => builder.const_i32(*num),
             AstNodeType::F32Number(num) => builder.const_f32(*num),
+            AstNodeType::StringLiteral(s) => {
+                let init = InitData::StringLiteral(Box::new(s.clone()));
+                let init = Initializer {
+                    ty: Type::ptr_to(Type::void_type()),
+                    data: init,
+                };
+                let localid = builder.count();
+                let name = format!(".Lstr.{}_{}", builder.id, localid);
+                builder.unit.globals.insert(
+                    name.clone(),
+                    GlobalObject{ init, linkage: crate::ctype::Linkage::Static }
+                );
+
+                builder.unit.global(&name, Type::ptr_to(Type::void_type()))
+            }
             AstNodeType::Convert(Convert { from, to }) => {
                 let from_id = from.emit_ir_expr(builder, ctx);
                 match (&from.borrow().ty.clone().unwrap().kind, &to.kind) {

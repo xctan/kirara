@@ -20,7 +20,7 @@ impl IrPass for BasicBlockOptimization {
 pub fn bbopt(unit: &mut TransUnit, func: &str) -> bool {
     let bbs = unit.funcs[func].bbs.clone();
 
-    if crate::ARGS.optimize == "1" {
+    if crate::ARGS.optimize == "999" {
         // recognize switch pattern
         // use crate::ir::export::IrFuncFormatter;
         // eprintln!("before switch merging\n{}", IrFuncFormatter::new(unit, func));

@@ -12,6 +12,7 @@ use super::{
 /// A builder for constructing IR functions, with various helper methods for control flow manipulation.
 #[derive(Debug)]
 pub struct IrFuncBuilder<'a> {
+    pub id: usize,
     pub bbs: Vec<BlockId>,
     pub(in crate::ir) entry_bb: Option<BlockId>,
     pub(in crate::ir) cur_bb: Option<BlockId>,
